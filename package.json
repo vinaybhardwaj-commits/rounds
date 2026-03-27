@@ -1,0 +1,35 @@
+{
+  "name": "rounds",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rounds — AI-organized hospital communication platform for Even Hospital",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:seed": "tsx scripts/seed-departments.ts"
+  },
+  "dependencies": {
+    "@vercel/postgres": "^0.10.0",
+    "next": "14.2.15",
+    "next-auth": "^5.0.0-beta.25",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "bcryptjs": "^2.4.3",
+    "csv-parse": "^5.6.0",
+    "lucide-react": "^0.460.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

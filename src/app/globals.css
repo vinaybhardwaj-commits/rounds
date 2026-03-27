@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Even Hospital Brand Design Tokens */
+:root {
+  --even-blue: #0055FF;
+  --even-navy: #002054;
+  --even-white: #FCFCFC;
+  --even-pink: #F96EB1;
+  --even-green: #22C55E;
+  --even-red: #EF4444;
+  --even-orange: #F97316;
+  --even-purple: #8B5CF6;
+
+  --background: var(--even-white);
+  --foreground: #1a1a1a;
+  --sidebar-bg: var(--even-navy);
+  --sidebar-text: var(--even-white);
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+/* Message type badges */
+.badge-request { background-color: var(--even-blue); color: white; }
+.badge-update { background-color: var(--even-green); color: white; }
+.badge-escalation { background-color: var(--even-red); color: white; }
+.badge-fyi { background-color: #6B7280; color: white; }
+.badge-decision { background-color: var(--even-orange); color: white; }
+.badge-lead { background-color: var(--even-purple); color: white; }
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
