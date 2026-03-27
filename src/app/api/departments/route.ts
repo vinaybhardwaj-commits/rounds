@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { auth } from '@/lib/auth';
 
-const sql = neon(process.env.POSTGRES_URL!);
+// Lazy-init: avoid calling neon() at module load (breaks build without POSTGRES_URL)
+let _sql: ReturnType<typeof neon> | null = null;
+function sql(strings: TemplateStringsArray, ...values: unknown[]) {
+  if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
+  return _sql(strings, ...values);
+}
 
 // GET /api/departments — list all departments
 export async function GET() {

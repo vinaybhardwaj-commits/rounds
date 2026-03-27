@@ -2,7 +2,12 @@ import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
 import { neon } from '@neondatabase/serverless';
 
-const sql = neon(process.env.POSTGRES_URL!);
+// Lazy-init: avoid calling neon() at module load time (breaks Next.js build)
+let _sql: ReturnType<typeof neon> | null = null;
+function getSql() {
+  if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
+  return _sql;
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -28,13 +33,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       // Auto-provision internal staff on first login
       if (isInternal) {
-        const existing = await sql`
+        const existing = await getSql()`
           SELECT id FROM profiles WHERE email = ${user.email}
         `;
 
         if (existing.length === 0) {
           // Create profile on first OAuth login
-          await sql`
+          await getSql()`
             INSERT INTO profiles (email, full_name, display_name, avatar_url, role, account_type)
             VALUES (
               ${user.email},
@@ -47,7 +52,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           `;
         } else {
           // Update avatar and last_seen on subsequent logins
-          await sql`
+          await getSql()`
             UPDATE profiles
             SET avatar_url = ${user.image || null},
                 last_seen_at = NOW()
@@ -58,7 +63,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       // Guest users must have a valid invitation
-      const invitation = await sql`
+      const invitation = await getSql()`
         SELECT id FROM guest_invitations
         WHERE email = ${user.email}
           AND accepted_at IS NULL
@@ -71,7 +76,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session }) {
       if (session.user?.email) {
         // Attach profile data to session
-        const profile = await sql`
+        const profile = await getSql()`
           SELECT p.id, p.role, p.account_type, p.department_id, p.is_active,
                  d.name as department_name, d.slug as department_slug
           FROM profiles p

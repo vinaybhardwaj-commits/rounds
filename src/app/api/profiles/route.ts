@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { auth } from '@/lib/auth';
 
-const sql = neon(process.env.POSTGRES_URL!);
+// Lazy-init: avoid calling neon() at module load (breaks build without POSTGRES_URL)
+let _sql: ReturnType<typeof neon> | null = null;
+function sql(strings: TemplateStringsArray, ...values: unknown[]) {
+  if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
+  return _sql(strings, ...values);
+}
+function sqlQuery(text: string, params: unknown[]) {
+  if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
+  return _sql(text, params as never[]);
+}
 
 // GET /api/profiles — list all profiles (admin only) or search
 export async function GET(request: NextRequest) {
@@ -53,7 +62,7 @@ export async function GET(request: NextRequest) {
     queryText += ` ORDER BY p.full_name ASC LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`;
     params.push(limit, offset);
 
-    const rows = await sql(queryText, params);
+    const rows = await sqlQuery(queryText, params);
 
     // Get total count for pagination
     let countQuery = `SELECT COUNT(*) as count FROM profiles p LEFT JOIN departments d ON p.department_id = d.id WHERE p.is_active = true`;
@@ -75,7 +84,7 @@ export async function GET(request: NextRequest) {
       countParams.push(role);
     }
 
-    const countResult = await sql(countQuery, countParams);
+    const countResult = await sqlQuery(countQuery, countParams);
     const total = parseInt(String((countResult[0] as Record<string, unknown>).count));
 
     // Sanitize output for non-admins

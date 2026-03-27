@@ -4,7 +4,12 @@ import { auth } from '@/lib/auth';
 import { parse } from 'csv-parse/sync';
 import type { CSVImportResult } from '@/types';
 
-const sql = neon(process.env.POSTGRES_URL!);
+// Lazy-init: avoid calling neon() at module load (breaks build without POSTGRES_URL)
+let _sql: ReturnType<typeof neon> | null = null;
+function sql(strings: TemplateStringsArray, ...values: unknown[]) {
+  if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
+  return _sql(strings, ...values);
+}
 
 // POST /api/profiles/import — bulk import profiles from CSV
 // Expected CSV columns: email, full_name, department, role, designation, phone
