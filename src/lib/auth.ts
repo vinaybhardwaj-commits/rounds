@@ -81,12 +81,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         if (profile[0]) {
           const p = profile[0] as Record<string, unknown>;
-          (session.user as Record<string, unknown>).profileId = p.id;
-          (session.user as Record<string, unknown>).role = p.role;
-          (session.user as Record<string, unknown>).accountType = p.account_type;
-          (session.user as Record<string, unknown>).departmentId = p.department_id;
-          (session.user as Record<string, unknown>).departmentName = p.department_name;
-          (session.user as Record<string, unknown>).isActive = p.is_active;
+          const u = session.user as unknown as Record<string, unknown>;
+          u.profileId = p.id;
+          u.role = p.role;
+          u.accountType = p.account_type;
+          u.departmentId = p.department_id;
+          u.departmentName = p.department_name;
+          u.isActive = p.is_active;
         }
       }
       return session;
