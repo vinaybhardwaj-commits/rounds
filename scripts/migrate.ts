@@ -6,12 +6,14 @@
  * Requires POSTGRES_URL in .env.local
  */
 
-import { sql } from '@vercel/postgres';
+import { neon } from '@neondatabase/serverless';
 import * as fs from 'fs';
 import * as path from 'path';
 
 async function migrate() {
   console.log('🏥 Rounds — Running database migration...\n');
+
+  const sql = neon(process.env.POSTGRES_URL!);
 
   const schemaPath = path.join(__dirname, '..', 'src', 'lib', 'schema.sql');
   const schemaSql = fs.readFileSync(schemaPath, 'utf-8');
@@ -27,7 +29,7 @@ async function migrate() {
 
   for (const statement of statements) {
     try {
-      await sql.query(statement + ';');
+      await sql(statement + ';');
       executed++;
       // Log first 60 chars of each statement
       const preview = statement.replace(/\s+/g, ' ').substring(0, 60);

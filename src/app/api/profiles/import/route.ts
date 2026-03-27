@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from '@vercel/postgres';
+import { neon } from '@neondatabase/serverless';
 import { auth } from '@/lib/auth';
 import { parse } from 'csv-parse/sync';
 import type { CSVImportResult } from '@/types';
+
+const sql = neon(process.env.POSTGRES_URL!);
 
 // POST /api/profiles/import — bulk import profiles from CSV
 // Expected CSV columns: email, full_name, department, role, designation, phone
@@ -35,9 +37,10 @@ export async function POST(request: NextRequest) {
     // Pre-fetch department slugs for mapping
     const departments = await sql`SELECT id, slug, name FROM departments WHERE is_active = true`;
     const deptMap = new Map<string, string>();
-    for (const d of departments.rows) {
-      deptMap.set(d.slug.toLowerCase(), d.id);
-      deptMap.set(d.name.toLowerCase(), d.id);
+    for (const d of departments) {
+      const dept = d as Record<string, string>;
+      deptMap.set(dept.slug.toLowerCase(), dept.id);
+      deptMap.set(dept.name.toLowerCase(), dept.id);
     }
 
     const result: CSVImportResult = {
@@ -99,7 +102,7 @@ export async function POST(request: NextRequest) {
           RETURNING (xmax = 0) AS is_new
         `;
 
-        if (upsertResult.rows[0]?.is_new) {
+        if ((upsertResult[0] as Record<string, unknown>)?.is_new) {
           result.created++;
         } else {
           result.updated++;

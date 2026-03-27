@@ -6,7 +6,9 @@
  * Safe to run multiple times — uses ON CONFLICT.
  */
 
-import { sql } from '@vercel/postgres';
+import { neon } from '@neondatabase/serverless';
+
+const sql = neon(process.env.POSTGRES_URL!);
 
 const DEPARTMENTS = [
   { name: 'Emergency', slug: 'emergency', headEmail: 'gautham.shankar@even.in' },
@@ -40,7 +42,7 @@ async function seed() {
       const headResult = await sql`
         SELECT id FROM profiles WHERE email = ${dept.headEmail}
       `;
-      const headId = headResult.rows[0]?.id || null;
+      const headId = (headResult[0] as Record<string, unknown>)?.id || null;
 
       const result = await sql`
         INSERT INTO departments (name, slug, head_profile_id)
@@ -51,7 +53,7 @@ async function seed() {
         RETURNING (xmax = 0) AS is_new
       `;
 
-      if (result.rows[0]?.is_new) {
+      if ((result[0] as Record<string, unknown>)?.is_new) {
         created++;
         console.log(`  ✅ Created: ${dept.name} (${dept.slug})`);
       } else {

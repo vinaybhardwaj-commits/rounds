@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from '@vercel/postgres';
+import { neon } from '@neondatabase/serverless';
 import { auth } from '@/lib/auth';
+
+const sql = neon(process.env.POSTGRES_URL!);
 
 // GET /api/departments — list all departments
 export async function GET() {
@@ -19,7 +21,7 @@ export async function GET() {
       ORDER BY d.name ASC
     `;
 
-    return NextResponse.json({ success: true, data: result.rows });
+    return NextResponse.json({ success: true, data: result });
   } catch (error) {
     console.error('GET /api/departments error:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch departments' }, { status: 500 });
@@ -55,7 +57,7 @@ export async function POST(request: NextRequest) {
       RETURNING *
     `;
 
-    return NextResponse.json({ success: true, data: result.rows[0] });
+    return NextResponse.json({ success: true, data: result[0] });
   } catch (error) {
     console.error('POST /api/departments error:', error);
     return NextResponse.json({ success: false, error: 'Failed to create department' }, { status: 500 });

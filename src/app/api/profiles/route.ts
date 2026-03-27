@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from '@vercel/postgres';
+import { neon } from '@neondatabase/serverless';
 import { auth } from '@/lib/auth';
+
+const sql = neon(process.env.POSTGRES_URL!);
 
 // GET /api/profiles — list all profiles (admin only) or search
 export async function GET(request: NextRequest) {
@@ -27,7 +29,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN departments d ON p.department_id = d.id
       WHERE p.is_active = true
     `;
-    const params: unknown[] = [];
+    const params: (string | number)[] = [];
     let paramIdx = 1;
 
     if (search) {
@@ -48,15 +50,14 @@ export async function GET(request: NextRequest) {
       paramIdx++;
     }
 
-    // Non-admins only see basic info
     queryText += ` ORDER BY p.full_name ASC LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`;
     params.push(limit, offset);
 
-    const result = await sql.query(queryText, params);
+    const rows = await sql(queryText, params);
 
     // Get total count for pagination
-    let countQuery = `SELECT COUNT(*) FROM profiles p LEFT JOIN departments d ON p.department_id = d.id WHERE p.is_active = true`;
-    const countParams: unknown[] = [];
+    let countQuery = `SELECT COUNT(*) as count FROM profiles p LEFT JOIN departments d ON p.department_id = d.id WHERE p.is_active = true`;
+    const countParams: string[] = [];
     let countIdx = 1;
 
     if (search) {
@@ -74,13 +75,13 @@ export async function GET(request: NextRequest) {
       countParams.push(role);
     }
 
-    const countResult = await sql.query(countQuery, countParams);
-    const total = parseInt(countResult.rows[0].count);
+    const countResult = await sql(countQuery, countParams);
+    const total = parseInt(String((countResult[0] as Record<string, unknown>).count));
 
     // Sanitize output for non-admins
     const profiles = isAdmin
-      ? result.rows
-      : result.rows.map((p: Record<string, unknown>) => ({
+      ? rows
+      : rows.map((p: Record<string, unknown>) => ({
           id: p.id,
           full_name: p.full_name,
           display_name: p.display_name,
@@ -142,7 +143,7 @@ export async function POST(request: NextRequest) {
       RETURNING *
     `;
 
-    return NextResponse.json({ success: true, data: result.rows[0] });
+    return NextResponse.json({ success: true, data: result[0] });
   } catch (error) {
     console.error('POST /api/profiles error:', error);
     return NextResponse.json({ success: false, error: 'Failed to create profile' }, { status: 500 });

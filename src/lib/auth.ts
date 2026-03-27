@@ -1,6 +1,8 @@
 import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
-import { sql } from '@vercel/postgres';
+import { neon } from '@neondatabase/serverless';
+
+const sql = neon(process.env.POSTGRES_URL!);
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -19,7 +21,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: '/auth/signin',
   },
   callbacks: {
-    async signIn({ user, account }) {
+    async signIn({ user }) {
       if (!user.email) return false;
 
       const isInternal = user.email.endsWith('@even.in');
@@ -30,7 +32,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           SELECT id FROM profiles WHERE email = ${user.email}
         `;
 
-        if (existing.rows.length === 0) {
+        if (existing.length === 0) {
           // Create profile on first OAuth login
           await sql`
             INSERT INTO profiles (email, full_name, display_name, avatar_url, role, account_type)
@@ -39,8 +41,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               ${user.name || user.email.split('@')[0]},
               ${user.name || null},
               ${user.image || null},
-              'staff',
-              'internal'
+              ${'staff'},
+              ${'internal'}
             )
           `;
         } else {
@@ -63,7 +65,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           AND expires_at > NOW()
       `;
 
-      return invitation.rows.length > 0;
+      return invitation.length > 0;
     },
 
     async session({ session }) {
@@ -77,8 +79,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           WHERE p.email = ${session.user.email}
         `;
 
-        if (profile.rows[0]) {
-          const p = profile.rows[0];
+        if (profile[0]) {
+          const p = profile[0] as Record<string, unknown>;
           (session.user as Record<string, unknown>).profileId = p.id;
           (session.user as Record<string, unknown>).role = p.role;
           (session.user as Record<string, unknown>).accountType = p.account_type;
