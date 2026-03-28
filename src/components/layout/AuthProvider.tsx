@@ -1,7 +1,9 @@
 'use client';
 
-import { SessionProvider } from 'next-auth/react';
+// Custom auth provider — no longer uses NextAuth SessionProvider
+// JWT-based auth is handled server-side via cookies + middleware
+// This wrapper is kept for future context providers (e.g., user context)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  return <SessionProvider>{children}</SessionProvider>;
+  return <>{children}</>;
 }

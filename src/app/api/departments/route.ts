@@ -1,27 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { auth } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 
-// Lazy-init: avoid calling neon() at module load (breaks build without POSTGRES_URL)
 let _sql: ReturnType<typeof neon> | null = null;
 function sql(strings: TemplateStringsArray, ...values: unknown[]) {
   if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
   return _sql(strings, ...values);
 }
 
-// GET /api/departments — list all departments
+// GET /api/departments — list all departments (public for signup form)
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-  }
-
   try {
     const result = await sql`
-      SELECT d.*, p.full_name as head_name, p.email as head_email,
-        (SELECT COUNT(*) FROM profiles pr WHERE pr.department_id = d.id AND pr.is_active = true) as member_count
+      SELECT d.id, d.name, d.slug, d.is_active,
+        (SELECT COUNT(*) FROM profiles pr WHERE pr.department_id = d.id AND pr.status = 'active') as member_count
       FROM departments d
-      LEFT JOIN profiles p ON d.head_profile_id = p.id
       WHERE d.is_active = true
       ORDER BY d.name ASC
     `;
@@ -35,13 +28,8 @@ export async function GET() {
 
 // POST /api/departments — create or update a department (admin only)
 export async function POST(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const user = session.user as Record<string, unknown>;
-  if (user.role !== 'super_admin') {
+  const user = await getCurrentUser();
+  if (!user || user.role !== 'super_admin') {
     return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
   }
 

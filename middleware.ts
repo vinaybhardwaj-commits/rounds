@@ -1,8 +1,96 @@
-export { auth as middleware } from '@/lib/auth';
+import { NextRequest, NextResponse } from 'next/server';
+import { jwtVerify } from 'jose';
+
+const COOKIE_NAME = 'rounds_session';
+
+// Routes that don't require authentication
+const PUBLIC_ROUTES = ['/auth/login', '/auth/signup', '/auth/pending'];
+const PUBLIC_API_ROUTES = ['/api/auth/login', '/api/auth/signup', '/api/auth/logout'];
+
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) return null;
+  return new TextEncoder().encode(secret);
+}
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Allow static assets, _next, favicon, manifest
+  if (
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/favicon') ||
+    pathname.startsWith('/manifest') ||
+    pathname.startsWith('/icon-') ||
+    pathname.endsWith('.png') ||
+    pathname.endsWith('.ico')
+  ) {
+    return NextResponse.next();
+  }
+
+  // Allow public routes
+  if (PUBLIC_ROUTES.some(r => pathname.startsWith(r))) {
+    return NextResponse.next();
+  }
+
+  // Allow public API routes
+  if (PUBLIC_API_ROUTES.some(r => pathname.startsWith(r))) {
+    return NextResponse.next();
+  }
+
+  // Check for session cookie
+  const token = request.cookies.get(COOKIE_NAME)?.value;
+  if (!token) {
+    // API routes return 401, pages redirect to login
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    return NextResponse.redirect(new URL('/auth/login', request.url));
+  }
+
+  // Verify JWT
+  const secret = getJwtSecret();
+  if (!secret) {
+    return NextResponse.redirect(new URL('/auth/login', request.url));
+  }
+
+  try {
+    const { payload } = await jwtVerify(token, secret);
+
+    // Block non-active users from everything except /auth/pending
+    if (payload.status !== 'active') {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json(
+          { success: false, error: 'Account pending approval' },
+          { status: 403 }
+        );
+      }
+      return NextResponse.redirect(new URL('/auth/pending', request.url));
+    }
+
+    // Block non-admins from /admin routes
+    if (pathname.startsWith('/admin') && payload.role !== 'super_admin' && payload.role !== 'department_head') {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      }
+      return NextResponse.redirect(new URL('/', request.url));
+    }
+
+    return NextResponse.next();
+  } catch {
+    // Invalid or expired token — clear cookie and redirect to login
+    const response = pathname.startsWith('/api/')
+      ? NextResponse.json({ success: false, error: 'Session expired' }, { status: 401 })
+      : NextResponse.redirect(new URL('/auth/login', request.url));
+
+    response.cookies.delete(COOKIE_NAME);
+    return response;
+  }
+}
 
 export const config = {
   matcher: [
-    // Protect all routes except auth, api/auth, and static assets
-    '/((?!auth|api/auth|_next/static|_next/image|favicon.ico|manifest.json|icon-.*\\.png).*)',
+    // Match everything except static assets
+    '/((?!_next/static|_next/image).*)',
   ],
 };

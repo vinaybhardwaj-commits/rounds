@@ -14,6 +14,9 @@ export type UserRole =
 // --- Account Type ---
 export type AccountType = 'internal' | 'guest';
 
+// --- Profile Status ---
+export type ProfileStatus = 'pending_approval' | 'active' | 'suspended' | 'rejected';
+
 // --- Profile ---
 export interface Profile {
   id: string;
@@ -27,11 +30,16 @@ export interface Profile {
   department_name?: string;
   designation: string | null;
   phone: string | null;
+  status: ProfileStatus;
   is_active: boolean;
+  password_hash?: string | null;
   kiosk_pin_hash: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
   created_at: string;
   updated_at: string;
   last_seen_at: string | null;
+  last_login_at: string | null;
 }
 
 // --- Department ---

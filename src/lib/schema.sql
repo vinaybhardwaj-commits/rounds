@@ -1,6 +1,7 @@
 -- ============================================
 -- Rounds — Database Schema (Neon PostgreSQL)
 -- Phase 1: Communication Foundation
+-- Custom Auth (no third-party auth library)
 -- ============================================
 
 -- Enable UUID generation
@@ -16,7 +17,7 @@ CREATE TABLE IF NOT EXISTS departments (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- --- Profiles ---
+-- --- Profiles (with custom auth fields) ---
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email VARCHAR(255) NOT NULL UNIQUE,
@@ -30,11 +31,19 @@ CREATE TABLE IF NOT EXISTS profiles (
   department_id UUID REFERENCES departments(id),
   designation VARCHAR(200),
   phone VARCHAR(20),
+  -- Auth fields
+  password_hash VARCHAR(255),              -- bcrypt hash of 4-digit PIN
+  status VARCHAR(20) NOT NULL DEFAULT 'pending_approval'
+    CHECK (status IN ('pending_approval', 'active', 'suspended', 'rejected')),
+  approved_by UUID REFERENCES profiles(id),
+  approved_at TIMESTAMPTZ,
+  -- Activity tracking
   is_active BOOLEAN NOT NULL DEFAULT true,
-  kiosk_pin_hash VARCHAR(255),  -- bcrypt hash for kiosk PIN (Phase 2)
+  kiosk_pin_hash VARCHAR(255),             -- Phase 2
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  last_seen_at TIMESTAMPTZ
+  last_seen_at TIMESTAMPTZ,
+  last_login_at TIMESTAMPTZ
 );
 
 -- Add FK from departments back to profiles
@@ -49,7 +58,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     CHECK (type IN ('group', 'dm')),
   name VARCHAR(200),          -- NULL for DMs
   description TEXT,
-  department_id UUID REFERENCES departments(id),  -- optional dept association
+  department_id UUID REFERENCES departments(id),
   created_by UUID NOT NULL REFERENCES profiles(id),
   is_archived BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -77,7 +86,7 @@ CREATE TABLE IF NOT EXISTS messages (
   priority VARCHAR(10) NOT NULL DEFAULT 'normal'
     CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
   content TEXT NOT NULL,
-  parent_message_id UUID REFERENCES messages(id),  -- light threading
+  parent_message_id UUID REFERENCES messages(id),
   is_edited BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -89,13 +98,13 @@ CREATE TABLE IF NOT EXISTS file_attachments (
   message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
   file_name VARCHAR(500) NOT NULL,
   file_url TEXT NOT NULL,
-  file_size INTEGER,               -- bytes
+  file_size INTEGER,
   mime_type VARCHAR(100),
   uploaded_by UUID NOT NULL REFERENCES profiles(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- --- Message Receipts (read receipts) ---
+-- --- Message Receipts ---
 CREATE TABLE IF NOT EXISTS message_receipts (
   message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
   profile_id UUID NOT NULL REFERENCES profiles(id),
@@ -121,6 +130,7 @@ CREATE TABLE IF NOT EXISTS guest_invitations (
 CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
 CREATE INDEX IF NOT EXISTS idx_profiles_department ON profiles(department_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles(role);
+CREATE INDEX IF NOT EXISTS idx_profiles_status ON profiles(status);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
 CREATE INDEX IF NOT EXISTS idx_messages_type ON messages(message_type);

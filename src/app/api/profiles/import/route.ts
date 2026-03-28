@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { auth } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 import { parse } from 'csv-parse/sync';
 import type { CSVImportResult } from '@/types';
 
-// Lazy-init: avoid calling neon() at module load (breaks build without POSTGRES_URL)
 let _sql: ReturnType<typeof neon> | null = null;
 function sql(strings: TemplateStringsArray, ...values: unknown[]) {
   if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
@@ -12,16 +11,10 @@ function sql(strings: TemplateStringsArray, ...values: unknown[]) {
 }
 
 // POST /api/profiles/import — bulk import profiles from CSV
-// Expected CSV columns: email, full_name, department, role, designation, phone
 export async function POST(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const user = session.user as Record<string, unknown>;
-  if (user.role !== 'super_admin') {
-    return NextResponse.json({ success: false, error: 'Only Super Admins can import profiles' }, { status: 403 });
+  const user = await getCurrentUser();
+  if (!user || user.role !== 'super_admin') {
+    return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
   }
 
   try {

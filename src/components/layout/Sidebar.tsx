@@ -1,6 +1,5 @@
 'use client';
 
-import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -8,13 +7,14 @@ import {
   Users,
   Settings,
   Shield,
-  LayoutDashboard,
+  UserCheck,
   X,
 } from 'lucide-react';
 
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
+  isAdmin?: boolean;
 }
 
 const navItems = [
@@ -23,21 +23,17 @@ const navItems = [
 ];
 
 const adminItems = [
-  { label: 'Admin Dashboard', href: '/admin', icon: LayoutDashboard },
-  { label: 'Manage Profiles', href: '/admin/profiles', icon: Users },
+  { label: 'Pending Approvals', href: '/admin/approvals', icon: UserCheck },
+  { label: 'All Users', href: '/admin/users', icon: Users },
   { label: 'Departments', href: '/admin/departments', icon: Shield },
   { label: 'Settings', href: '/admin/settings', icon: Settings },
 ];
 
-export function Sidebar({ isOpen, onClose }: SidebarProps) {
-  const { data: session } = useSession();
+export function Sidebar({ isOpen, onClose, isAdmin = false }: SidebarProps) {
   const pathname = usePathname();
-  const user = session?.user as Record<string, unknown> | undefined;
-  const isAdmin = user?.role === 'super_admin' || user?.role === 'department_head';
 
   return (
     <>
-      {/* Mobile overlay */}
       {isOpen && (
         <div
           className="fixed inset-0 bg-black/40 z-40 lg:hidden"
@@ -45,7 +41,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={`
           fixed top-14 left-0 bottom-0 w-64 bg-even-navy text-even-white z-50
@@ -54,7 +49,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
-        {/* Mobile close */}
         <button
           onClick={onClose}
           className="lg:hidden absolute top-3 right-3 p-1 rounded hover:bg-white/10"
@@ -63,7 +57,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         </button>
 
         <nav className="mt-4 px-3 space-y-1">
-          {/* Main nav */}
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href;
@@ -73,8 +66,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 href={item.href}
                 onClick={onClose}
                 className={`
-                  flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
-                  transition-colors
+                  flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
                   ${active ? 'bg-even-blue text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'}
                 `}
               >
@@ -84,7 +76,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             );
           })}
 
-          {/* Admin section */}
           {isAdmin && (
             <>
               <div className="pt-4 pb-1 px-3">
@@ -101,8 +92,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                     href={item.href}
                     onClick={onClose}
                     className={`
-                      flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
-                      transition-colors
+                      flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
                       ${active ? 'bg-even-blue text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'}
                     `}
                   >

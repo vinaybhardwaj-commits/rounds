@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { auth } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 
-// Lazy-init: avoid calling neon() at module load (breaks build without POSTGRES_URL)
 let _sql: ReturnType<typeof neon> | null = null;
 function sql(strings: TemplateStringsArray, ...values: unknown[]) {
   if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
@@ -15,18 +14,18 @@ function sqlQuery(text: string, params: unknown[]) {
 
 // GET /api/profiles — list all profiles (admin only) or search
 export async function GET(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
 
-  const user = session.user as Record<string, unknown>;
   const isAdmin = user.role === 'super_admin' || user.role === 'department_head';
 
   const { searchParams } = new URL(request.url);
   const search = searchParams.get('search') || '';
   const department = searchParams.get('department') || '';
   const role = searchParams.get('role') || '';
+  const status = searchParams.get('status') || '';
   const page = parseInt(searchParams.get('page') || '1');
   const limit = parseInt(searchParams.get('limit') || '50');
   const offset = (page - 1) * limit;
@@ -36,10 +35,15 @@ export async function GET(request: NextRequest) {
       SELECT p.*, d.name as department_name
       FROM profiles p
       LEFT JOIN departments d ON p.department_id = d.id
-      WHERE p.is_active = true
+      WHERE 1=1
     `;
     const params: (string | number)[] = [];
     let paramIdx = 1;
+
+    // Non-admins only see active users
+    if (!isAdmin) {
+      queryText += ` AND p.status = 'active'`;
+    }
 
     if (search) {
       queryText += ` AND (p.full_name ILIKE $${paramIdx} OR p.email ILIKE $${paramIdx})`;
@@ -59,16 +63,25 @@ export async function GET(request: NextRequest) {
       paramIdx++;
     }
 
+    if (status && isAdmin) {
+      queryText += ` AND p.status = $${paramIdx}`;
+      params.push(status);
+      paramIdx++;
+    }
+
     queryText += ` ORDER BY p.full_name ASC LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`;
     params.push(limit, offset);
 
     const rows = await sqlQuery(queryText, params);
 
-    // Get total count for pagination
-    let countQuery = `SELECT COUNT(*) as count FROM profiles p LEFT JOIN departments d ON p.department_id = d.id WHERE p.is_active = true`;
+    // Get total count
+    let countQuery = `SELECT COUNT(*) as count FROM profiles p LEFT JOIN departments d ON p.department_id = d.id WHERE 1=1`;
     const countParams: string[] = [];
     let countIdx = 1;
 
+    if (!isAdmin) {
+      countQuery += ` AND p.status = 'active'`;
+    }
     if (search) {
       countQuery += ` AND (p.full_name ILIKE $${countIdx} OR p.email ILIKE $${countIdx})`;
       countParams.push(`%${search}%`);
@@ -82,12 +95,17 @@ export async function GET(request: NextRequest) {
     if (role) {
       countQuery += ` AND p.role = $${countIdx}`;
       countParams.push(role);
+      countIdx++;
+    }
+    if (status && isAdmin) {
+      countQuery += ` AND p.status = $${countIdx}`;
+      countParams.push(status);
     }
 
     const countResult = await sqlQuery(countQuery, countParams);
     const total = parseInt(String((countResult[0] as Record<string, unknown>).count));
 
-    // Sanitize output for non-admins
+    // Sanitize output for non-admins (hide sensitive fields)
     const profiles = isAdmin
       ? rows
       : rows.map((p: Record<string, unknown>) => ({
@@ -113,13 +131,8 @@ export async function GET(request: NextRequest) {
 
 // POST /api/profiles — create a single profile (admin only)
 export async function POST(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const user = session.user as Record<string, unknown>;
-  if (user.role !== 'super_admin') {
+  const user = await getCurrentUser();
+  if (!user || user.role !== 'super_admin') {
     return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
   }
 
@@ -132,15 +145,16 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await sql`
-      INSERT INTO profiles (email, full_name, role, department_id, designation, phone, account_type)
+      INSERT INTO profiles (email, full_name, role, department_id, designation, phone, account_type, status)
       VALUES (
-        ${email},
+        ${email.toLowerCase()},
         ${full_name},
         ${role || 'staff'},
         ${department_id || null},
         ${designation || null},
         ${phone || null},
-        ${email.endsWith('@even.in') ? 'internal' : 'guest'}
+        ${email.endsWith('@even.in') ? 'internal' : 'guest'},
+        'active'
       )
       ON CONFLICT (email) DO UPDATE SET
         full_name = EXCLUDED.full_name,
