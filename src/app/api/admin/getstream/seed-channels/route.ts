@@ -110,7 +110,7 @@ export async function POST() {
 
     const client = getStreamServerClient();
     const results: string[] = [];
-    const callerUserId = user.id;
+    const callerUserId = user.profileId;
 
     // 1. Fetch all active departments from our DB
     const departments = await sql`
