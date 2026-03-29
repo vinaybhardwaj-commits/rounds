@@ -7,6 +7,9 @@ const COOKIE_NAME = 'rounds_session';
 const PUBLIC_ROUTES = ['/auth/login', '/auth/signup', '/auth/pending'];
 const PUBLIC_API_ROUTES = ['/api/auth/login', '/api/auth/signup', '/api/auth/logout'];
 
+// Routes that bypass auth entirely (webhooks from external services)
+const WEBHOOK_ROUTES = ['/api/webhooks/'];
+
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET;
   if (!secret) return null;
@@ -35,6 +38,16 @@ export async function middleware(request: NextRequest) {
 
   // Allow public API routes
   if (PUBLIC_API_ROUTES.some(r => pathname.startsWith(r))) {
+    return NextResponse.next();
+  }
+
+  // Allow webhook routes (GetStream, Vercel Cron, etc.)
+  if (WEBHOOK_ROUTES.some(r => pathname.startsWith(r))) {
+    return NextResponse.next();
+  }
+
+  // Allow cron job routes (verified by Vercel's CRON_SECRET)
+  if (pathname.startsWith('/api/cron/')) {
     return NextResponse.next();
   }
 

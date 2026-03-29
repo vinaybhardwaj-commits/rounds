@@ -1,11 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { verifyPin, createToken, setSessionCookie } from '@/lib/auth';
+import { generateStreamToken, syncUserToGetStream } from '@/lib/getstream';
 
 let _sql: ReturnType<typeof neon> | null = null;
 function sql(strings: TemplateStringsArray, ...values: unknown[]) {
   if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
   return _sql(strings, ...values);
+}
+
+// --- Simple rate limiting (in-memory, per serverless instance) ---
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const MAX_ATTEMPTS = 5;
+const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
+function checkRateLimit(key: string): { allowed: boolean; remaining: number } {
+  const now = Date.now();
+  const entry = loginAttempts.get(key);
+  if (!entry || now > entry.resetAt) {
+    loginAttempts.set(key, { count: 1, resetAt: now + WINDOW_MS });
+    return { allowed: true, remaining: MAX_ATTEMPTS - 1 };
+  }
+  entry.count++;
+  if (entry.count > MAX_ATTEMPTS) {
+    return { allowed: false, remaining: 0 };
+  }
+  return { allowed: true, remaining: MAX_ATTEMPTS - entry.count };
 }
 
 export async function POST(request: NextRequest) {
@@ -20,9 +40,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Rate limit by email (normalized)
+    const rateLimitKey = email.toLowerCase().trim();
+    const { allowed, remaining } = checkRateLimit(rateLimitKey);
+    if (!allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Too many login attempts. Please wait 15 minutes and try again.' },
+        { status: 429 }
+      );
+    }
+
     // Find the profile
     const result = await sql`
-      SELECT id, email, full_name, role, status, password_hash, account_type
+      SELECT id, email, full_name, role, status, password_hash, account_type, department_id
       FROM profiles
       WHERE email = ${email.toLowerCase()}
     `;
@@ -90,6 +120,22 @@ export async function POST(request: NextRequest) {
     });
     await setSessionCookie(token);
 
+    // Sync user to GetStream and generate stream token
+    let streamToken: string | null = null;
+    try {
+      await syncUserToGetStream({
+        id: profile.id as string,
+        name: profile.full_name as string,
+        email: profile.email as string,
+        role: profile.role as string,
+        department_id: profile.department_id as string | null,
+      });
+      streamToken = generateStreamToken(profile.id as string);
+    } catch (streamError) {
+      // Log but don't fail login — chat is degraded, not broken
+      console.error('GetStream sync failed during login:', streamError);
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -97,6 +143,8 @@ export async function POST(request: NextRequest) {
         email: profile.email,
         full_name: profile.full_name,
         role: profile.role,
+        department_id: profile.department_id,
+        stream_token: streamToken,
       },
       message: 'Logged in successfully',
     });
