@@ -486,10 +486,17 @@ export const SURGERY_POSTING: FormSchema = {
   ],
 };
 
+
 // -------------------------------------------
-// 3–13. REMAINING FORM SCHEMAS (skeletons)
-// These have the core sections defined but
-// fewer fields — to be fleshed out in Step 4.2/4.3
+// 3–13. ENRICHED FORM SCHEMAS (Step 4.3)
+// All 11 remaining forms fully specified with
+// multi-section layouts, readiness items, and
+// Indian hospital workflow fields.
+// -------------------------------------------
+
+// -------------------------------------------
+// 3. ADMISSION_ADVICE (opd → pre_admission)
+// Consultant advises admission.
 // -------------------------------------------
 
 export const ADMISSION_ADVICE: FormSchema = {
@@ -504,23 +511,85 @@ export const ADMISSION_ADVICE: FormSchema = {
     {
       id: 'admission_details',
       title: 'Admission Details',
+      description: 'Core admission information and timeline.',
       fields: [
-        { key: 'diagnosis', label: 'Diagnosis', type: 'text', validation: { required: true } },
-        { key: 'reason_for_admission', label: 'Reason for Admission', type: 'textarea', validation: { required: true } },
+        { key: 'diagnosis', label: 'Primary Diagnosis', type: 'text', validation: { required: true, maxLength: 500 }, helpText: 'ICD-10 diagnosis if available' },
+        { key: 'reason_for_admission', label: 'Reason for Admission', type: 'textarea', validation: { required: true, maxLength: 1000 }, helpText: 'Why is inpatient admission necessary?' },
         { key: 'admission_type', label: 'Admission Type', type: 'select', validation: { required: true }, options: [
-          { value: 'elective', label: 'Elective' }, { value: 'emergency', label: 'Emergency' }, { value: 'daycare', label: 'Day Care' },
+          { value: 'elective', label: 'Elective' },
+          { value: 'emergency', label: 'Emergency' },
+          { value: 'daycare', label: 'Day Care' },
         ], width: 'half' },
         { key: 'preferred_date', label: 'Preferred Admission Date', type: 'date', validation: { required: true }, width: 'half' },
-        { key: 'expected_los', label: 'Expected Length of Stay (days)', type: 'number', validation: { min: 1, max: 90 }, width: 'half' },
+        { key: 'expected_los', label: 'Expected Length of Stay (days)', type: 'number', validation: { required: true, min: 1, max: 90 }, width: 'half' },
         { key: 'room_preference', label: 'Room Category Preference', type: 'select', options: [
-          { value: 'general', label: 'General Ward' }, { value: 'semi_private', label: 'Semi-Private' },
-          { value: 'private', label: 'Private' }, { value: 'suite', label: 'Suite' },
+          { value: 'general', label: 'General Ward' },
+          { value: 'semi_private', label: 'Semi-Private' },
+          { value: 'private', label: 'Private' },
+          { value: 'suite', label: 'Suite' },
         ], width: 'half' },
-        { key: 'special_instructions', label: 'Special Instructions', type: 'textarea' },
+      ],
+    },
+    {
+      id: 'clinical_context',
+      title: 'Clinical Context',
+      description: 'Relevant clinical history and current status.',
+      fields: [
+        { key: 'comorbidities', label: 'Comorbidities', type: 'textarea', placeholder: 'E.g. DM, HTN, IHD, Asthma', helpText: 'Existing medical conditions' },
+        { key: 'allergies', label: 'Known Allergies', type: 'textarea', placeholder: 'Drug allergies, food, latex, etc.', helpText: 'Include severity and reaction type' },
+        { key: 'current_medications', label: 'Current Medications', type: 'textarea', placeholder: 'List all medications patient is taking', helpText: 'Include doses and frequency' },
+        { key: 'special_needs', label: 'Special Needs / Precautions', type: 'textarea', placeholder: 'E.g. mobility issues, isolation required, interpreter needed' },
+      ],
+    },
+    {
+      id: 'consultant_orders',
+      title: 'Consultant Orders',
+      description: 'Initial orders for admission management.',
+      fields: [
+        { key: 'diet_order', label: 'Diet Order', type: 'select', options: [
+          { value: 'npo', label: 'NPO (Nil by mouth)' },
+          { value: 'liquid', label: 'Clear Liquids' },
+          { value: 'soft', label: 'Soft Diet' },
+          { value: 'full', label: 'Full Diet' },
+          { value: 'diabetic', label: 'Diabetic Diet' },
+          { value: 'low_sodium', label: 'Low Sodium' },
+          { value: 'other', label: 'Other (specify below)' },
+        ], width: 'half' },
+        { key: 'diet_other', label: 'Other Diet Details', type: 'text', visibleWhen: { field: 'diet_order', operator: 'eq', value: 'other' }, width: 'half' },
+        { key: 'activity_level', label: 'Activity Level', type: 'select', options: [
+          { value: 'bedrest', label: 'Bed Rest' },
+          { value: 'bathroom_only', label: 'Bathroom Privileges Only' },
+          { value: 'limited_mobility', label: 'Limited Mobility' },
+          { value: 'ambulatory', label: 'Ambulatory' },
+        ], width: 'half' },
+        { key: 'monitoring_level', label: 'Monitoring Level', type: 'select', options: [
+          { value: 'routine', label: 'Routine' },
+          { value: 'high_dependency', label: 'High Dependency Unit (HDU)' },
+          { value: 'icu', label: 'Intensive Care Unit (ICU)' },
+        ], width: 'half' },
+        { key: 'investigations_ordered', label: 'Investigations to be Done', type: 'textarea', placeholder: 'E.g. CBC, CT scan, ECG, blood culture', helpText: 'Pre-admission or on-admission investigations' },
+      ],
+    },
+    {
+      id: 'readiness_checklist',
+      title: 'Pre-Admission Readiness',
+      description: 'Items to confirm before admission is processed.',
+      fields: [
+        { key: 'insurance_verified', label: 'Insurance verification initiated', type: 'checkbox',
+          readinessItem: { itemName: 'Insurance verification started', category: 'billing', responsibleRole: 'insurance_coordinator', slaHours: 12, description: 'Policy details checked and pre-auth process initiated if needed' } },
+        { key: 'room_availability_confirmed', label: 'Room availability confirmed', type: 'checkbox',
+          readinessItem: { itemName: 'Room availability confirmed', category: 'logistics', responsibleRole: 'ip_coordinator', slaHours: 4, description: 'Required room category is available on preferred date' } },
+        { key: 'consultant_admission_confirmed', label: 'Consultant confirmed admission', type: 'checkbox',
+          readinessItem: { itemName: 'Consultant confirmed admission', category: 'clearance', responsibleRole: 'clinical_care', slaHours: 24, description: 'Admission is finalized and patient counseled' } },
       ],
     },
   ],
 };
+
+// -------------------------------------------
+// 4. FINANCIAL_COUNSELING (pre_admission)
+// Financial discussion before admission.
+// -------------------------------------------
 
 export const FINANCIAL_COUNSELING: FormSchema = {
   formType: 'financial_counseling',
@@ -532,28 +601,78 @@ export const FINANCIAL_COUNSELING: FormSchema = {
   requiresPatient: true,
   sections: [
     {
-      id: 'financial_details',
-      title: 'Financial Details',
+      id: 'payment_profile',
+      title: 'Payment Profile',
+      description: 'Patient payment method and insurance details.',
       fields: [
         { key: 'payment_mode', label: 'Payment Mode', type: 'select', validation: { required: true }, options: [
-          { value: 'cash', label: 'Cash / Self-Pay' }, { value: 'insurance', label: 'Insurance' },
-          { value: 'corporate', label: 'Corporate' }, { value: 'credit', label: 'Credit' },
+          { value: 'cash', label: 'Cash / Self-Pay' },
+          { value: 'insurance', label: 'Insurance' },
+          { value: 'corporate', label: 'Corporate Tie-up' },
+          { value: 'credit', label: 'Credit / EMI' },
         ], width: 'half' },
-        { key: 'package_name', label: 'Package Name', type: 'text', width: 'half' },
-        { key: 'estimated_cost', label: 'Estimated Total Cost (₹)', type: 'number', validation: { required: true, min: 0 }, width: 'half' },
-        { key: 'deposit_amount', label: 'Deposit Amount (₹)', type: 'number', validation: { min: 0 }, width: 'half' },
-        { key: 'deposit_collected', label: 'Deposit Collected', type: 'checkbox',
-          readinessItem: { itemName: 'Deposit collected', category: 'billing', responsibleRole: 'billing_executive', slaHours: 24 } },
         { key: 'insurance_provider', label: 'Insurance Provider', type: 'text', visibleWhen: { field: 'payment_mode', operator: 'eq', value: 'insurance' }, width: 'half' },
         { key: 'policy_number', label: 'Policy Number', type: 'text', visibleWhen: { field: 'payment_mode', operator: 'eq', value: 'insurance' }, width: 'half' },
-        { key: 'preauth_required', label: 'Pre-Authorization Required', type: 'checkbox', visibleWhen: { field: 'payment_mode', operator: 'eq', value: 'insurance' } },
-        { key: 'counseling_notes', label: 'Counseling Notes', type: 'textarea' },
-        { key: 'patient_signature_obtained', label: 'Patient / attendant acknowledged estimate', type: 'checkbox', validation: { required: true },
-          readinessItem: { itemName: 'Financial estimate acknowledged', category: 'consent', responsibleRole: 'billing_executive', slaHours: 4 } },
+        { key: 'insurance_id', label: 'Insurance Card ID', type: 'text', visibleWhen: { field: 'payment_mode', operator: 'eq', value: 'insurance' }, width: 'half' },
+        { key: 'corporate_name', label: 'Corporate Name', type: 'text', visibleWhen: { field: 'payment_mode', operator: 'eq', value: 'corporate' }, width: 'half' },
+        { key: 'corporate_employee_id', label: 'Employee ID', type: 'text', visibleWhen: { field: 'payment_mode', operator: 'eq', value: 'corporate' }, width: 'half' },
+      ],
+    },
+    {
+      id: 'cost_estimate',
+      title: 'Cost Estimate',
+      description: 'Itemized cost breakdown for the admission.',
+      fields: [
+        { key: 'package_name', label: 'Package Name / Type', type: 'text', placeholder: 'E.g. Appendectomy Package', width: 'half' },
+        { key: 'is_package', label: 'Package or Non-Package?', type: 'select', options: [
+          { value: 'package', label: 'Package' },
+          { value: 'non_package', label: 'Non-Package (à la carte)' },
+        ], width: 'half' },
+        { key: 'estimated_cost', label: 'Estimated Total Cost (₹)', type: 'number', validation: { required: true, min: 0 }, width: 'half' },
+        { key: 'cost_breakdown', label: 'Cost Breakdown', type: 'textarea', placeholder: 'Room, surgery, investigations, implants, etc.', helpText: 'Itemized cost components' },
+        { key: 'exclusions', label: 'Exclusions (if any)', type: 'textarea', placeholder: 'Items NOT covered in estimate', helpText: 'What is the patient responsible for beyond this estimate?' },
+      ],
+    },
+    {
+      id: 'deposit_payment',
+      title: 'Deposit & Payment',
+      description: 'Deposit collection and payment arrangement.',
+      fields: [
+        { key: 'deposit_amount', label: 'Deposit Amount (₹)', type: 'number', validation: { required: true, min: 0 }, width: 'half' },
+        { key: 'deposit_percentage', label: 'Deposit as % of estimate', type: 'number', validation: { min: 0, max: 100 }, width: 'half', helpText: 'E.g. 50% of ₹1,00,000 = ₹50,000' },
+        { key: 'deposit_collected', label: 'Deposit Collected', type: 'checkbox',
+          readinessItem: { itemName: 'Deposit collected', category: 'billing', responsibleRole: 'billing_executive', slaHours: 4, description: 'Full or partial deposit received in hospital account' } },
+        { key: 'deposit_collected_amount', label: 'Actual Amount Collected (₹)', type: 'number', validation: { min: 0 }, width: 'half' },
+        { key: 'balance_plan', label: 'Balance Payment Plan', type: 'select', options: [
+          { value: 'at_discharge', label: 'At Discharge' },
+          { value: 'post_discharge', label: 'Within 30 days of discharge' },
+          { value: 'installments', label: 'Installments' },
+          { value: 'insurance_claim', label: 'Insurance claim to settle' },
+        ], width: 'half' },
+        { key: 'credit_terms', label: 'Credit Terms (if applicable)', type: 'text', placeholder: 'E.g. 12 months, 15% interest', visibleWhen: { field: 'balance_plan', operator: 'eq', value: 'installments' } },
+      ],
+    },
+    {
+      id: 'patient_consent',
+      title: 'Patient Consent',
+      description: 'Patient acknowledgment of cost estimate and payment terms.',
+      fields: [
+        { key: 'estimate_acknowledged', label: 'Patient / attendant acknowledged estimate', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Financial estimate acknowledged', category: 'consent', responsibleRole: 'billing_executive', slaHours: 2, description: 'Patient understands and accepts estimated cost' } },
+        { key: 'payment_terms_agreed', label: 'Payment terms agreed', type: 'checkbox', validation: { required: true } },
+        { key: 'preauth_initiated', label: 'Insurance pre-authorization initiated (if applicable)', type: 'checkbox',
+          readinessItem: { itemName: 'Pre-auth initiated if insurance', category: 'billing', responsibleRole: 'insurance_coordinator', slaHours: 24, description: 'Insurance pre-auth process started for claims coverage' },
+          visibleWhen: { field: 'payment_mode', operator: 'eq', value: 'insurance' } },
+        { key: 'counseling_notes', label: 'Counseling Notes', type: 'textarea', placeholder: 'Any special payment arrangements, exemptions, discounts, etc.' },
       ],
     },
   ],
 };
+
+// -------------------------------------------
+// 5. OT_BILLING_CLEARANCE (pre_op)
+// Finance confirms billing before surgery.
+// -------------------------------------------
 
 export const OT_BILLING_CLEARANCE: FormSchema = {
   formType: 'ot_billing_clearance',
@@ -565,23 +684,64 @@ export const OT_BILLING_CLEARANCE: FormSchema = {
   requiresPatient: true,
   sections: [
     {
-      id: 'billing_clearance',
-      title: 'Billing Clearance',
+      id: 'surgery_cost',
+      title: 'Surgery Cost Summary',
+      description: 'Final cost estimate for the surgical procedure.',
       fields: [
-        { key: 'total_estimate', label: 'Total Surgery Estimate (₹)', type: 'number', validation: { required: true, min: 0 } },
+        { key: 'total_estimate', label: 'Total Surgery Estimate (₹)', type: 'number', validation: { required: true, min: 0 }, width: 'half' },
+        { key: 'package_type', label: 'Package or Non-Package', type: 'select', validation: { required: true }, options: [
+          { value: 'package', label: 'Package Surgery' },
+          { value: 'non_package', label: 'Non-Package (à la carte)' },
+        ], width: 'half' },
+        { key: 'implant_cost', label: 'Implant Cost (₹)', type: 'number', validation: { min: 0 }, width: 'half', helpText: 'Prosthetics, stents, plates, etc.' },
+        { key: 'implant_details', label: 'Implant Details', type: 'text', placeholder: 'E.g. Intramedullary nail, Titanium plate', visibleWhen: { field: 'implant_cost', operator: 'truthy' }, width: 'half' },
+        { key: 'cost_breakdown', label: 'Cost Breakdown', type: 'textarea', placeholder: 'Surgeon fee, OR charges, anesthesia, consumables, etc.' },
+      ],
+    },
+    {
+      id: 'payment_status',
+      title: 'Payment Status',
+      description: 'Confirmation of deposits and outstanding balance.',
+      fields: [
         { key: 'deposit_received', label: 'Deposit Received (₹)', type: 'number', validation: { required: true, min: 0 }, width: 'half' },
+        { key: 'advance_received', label: 'Advance Received (₹)', type: 'number', validation: { min: 0 }, width: 'half' },
+        { key: 'total_collected', label: 'Total Amount Collected (₹)', type: 'number', width: 'half' },
         { key: 'outstanding_balance', label: 'Outstanding Balance (₹)', type: 'number', width: 'half' },
+        { key: 'insurance_preauth_status', label: 'Insurance Pre-Auth Status', type: 'select', options: [
+          { value: 'not_applicable', label: 'Not Applicable' },
+          { value: 'pending', label: 'Pending' },
+          { value: 'approved', label: 'Approved' },
+          { value: 'approved_partial', label: 'Partially Approved' },
+          { value: 'rejected', label: 'Rejected' },
+        ], width: 'half' },
+        { key: 'preauth_approval_amount', label: 'Pre-Auth Approved Amount (₹)', type: 'number', validation: { min: 0 }, visibleWhen: { field: 'insurance_preauth_status', operator: 'in', value: ['approved', 'approved_partial'] } },
+      ],
+    },
+    {
+      id: 'clearance_decision',
+      title: 'Clearance Decision',
+      description: 'Final billing clearance status and approval.',
+      fields: [
         { key: 'clearance_status', label: 'Clearance Status', type: 'select', validation: { required: true }, options: [
-          { value: 'cleared', label: 'Cleared — Proceed' }, { value: 'conditional', label: 'Conditional — Pending balance' },
-          { value: 'blocked', label: 'Blocked — Not cleared' },
-        ] },
-        { key: 'billing_cleared', label: 'Billing clearance confirmed', type: 'checkbox',
-          readinessItem: { itemName: 'OT billing clearance confirmed', category: 'billing', responsibleRole: 'billing_executive', slaHours: 4 } },
-        { key: 'notes', label: 'Notes', type: 'textarea' },
+          { value: 'cleared', label: 'Cleared — Proceed with surgery' },
+          { value: 'conditional', label: 'Conditional — Pending final payment' },
+          { value: 'blocked', label: 'Blocked — Not cleared for surgery' },
+        ], width: 'half' },
+        { key: 'billing_cleared', label: 'Billing Clearance Confirmed', type: 'checkbox',
+          readinessItem: { itemName: 'OT billing clearance confirmed', category: 'billing', responsibleRole: 'billing_executive', slaHours: 2, description: 'Surgery can proceed from a billing/financial standpoint' } },
+        { key: 'clearance_conditions', label: 'Conditions for Clearance (if any)', type: 'textarea', placeholder: 'E.g. Additional deposit to be collected before anesthesia', visibleWhen: { field: 'clearance_status', operator: 'eq', value: 'conditional' } },
+        { key: 'escalation_reason', label: 'Reason for Block / Escalation', type: 'textarea', placeholder: 'If status is Blocked, explain why', visibleWhen: { field: 'clearance_status', operator: 'eq', value: 'blocked' } },
+        { key: 'cleared_by', label: 'Cleared By (Name)', type: 'text', validation: { required: true } },
+        { key: 'cleared_date_time', label: 'Clearance Date & Time', type: 'datetime', validation: { required: true } },
       ],
     },
   ],
 };
+
+// -------------------------------------------
+// 6. ADMISSION_CHECKLIST (admitted)
+// IP Coordinator confirms all admission requirements.
+// -------------------------------------------
 
 export const ADMISSION_CHECKLIST: FormSchema = {
   formType: 'admission_checklist',
@@ -593,27 +753,83 @@ export const ADMISSION_CHECKLIST: FormSchema = {
   requiresPatient: true,
   sections: [
     {
-      id: 'checklist',
-      title: 'Admission Checklist Items',
+      id: 'identity_consent',
+      title: 'Identity & Consent',
+      description: 'Verify patient identity and collect admission consents.',
       fields: [
         { key: 'id_verified', label: 'Patient identity verified (Aadhaar / ID)', type: 'checkbox', validation: { required: true },
-          readinessItem: { itemName: 'Patient identity verified', category: 'consent', responsibleRole: 'ip_coordinator', slaHours: 2 } },
-        { key: 'consent_general', label: 'General consent for treatment signed', type: 'checkbox',
-          readinessItem: { itemName: 'General consent signed', category: 'consent', responsibleRole: 'ip_coordinator', slaHours: 2 } },
-        { key: 'room_assigned', label: 'Room / bed assigned', type: 'checkbox',
-          readinessItem: { itemName: 'Room assigned', category: 'logistics', responsibleRole: 'ip_coordinator', slaHours: 1 } },
+          readinessItem: { itemName: 'Patient identity verified', category: 'consent', responsibleRole: 'ip_coordinator', slaHours: 1, description: 'Valid ID proof matched with admission record' } },
+        { key: 'id_type', label: 'ID Type', type: 'select', options: [
+          { value: 'aadhaar', label: 'Aadhaar' },
+          { value: 'pan', label: 'PAN' },
+          { value: 'passport', label: 'Passport' },
+          { value: 'dl', label: 'Driving License' },
+          { value: 'voter_id', label: 'Voter ID' },
+          { value: 'other', label: 'Other' },
+        ], width: 'half' },
+        { key: 'id_number', label: 'ID Number', type: 'text', width: 'half' },
+        { key: 'general_consent', label: 'General Consent for Treatment signed', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'General consent signed', category: 'consent', responsibleRole: 'ip_coordinator', slaHours: 2, description: 'Patient has signed consent form for admission and treatment' } },
+        { key: 'admission_form_signed', label: 'Admission Form signed', type: 'checkbox', validation: { required: true } },
+      ],
+    },
+    {
+      id: 'room_assignment',
+      title: 'Room Assignment',
+      description: 'Assign room and bed to patient.',
+      fields: [
+        { key: 'room_assigned', label: 'Room / Bed Assigned', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Room assigned', category: 'logistics', responsibleRole: 'ip_coordinator', slaHours: 1, description: 'Patient room and bed number finalized' } },
         { key: 'room_number', label: 'Room Number', type: 'text', visibleWhen: { field: 'room_assigned', operator: 'truthy' }, width: 'half' },
-        { key: 'vitals_recorded', label: 'Admission vitals recorded', type: 'checkbox',
-          readinessItem: { itemName: 'Admission vitals recorded', category: 'nursing', responsibleRole: 'nurse', slaHours: 1 } },
-        { key: 'diet_order_placed', label: 'Diet order placed', type: 'checkbox',
-          readinessItem: { itemName: 'Diet order placed', category: 'nursing', responsibleRole: 'nurse', slaHours: 2 } },
-        { key: 'pharmacy_notified', label: 'Pharmacy notified of admission', type: 'checkbox',
-          readinessItem: { itemName: 'Pharmacy notified', category: 'logistics', responsibleRole: 'pharmacist', slaHours: 1 } },
-        { key: 'notes', label: 'Admission Notes', type: 'textarea' },
+        { key: 'bed_number', label: 'Bed Number', type: 'text', visibleWhen: { field: 'room_assigned', operator: 'truthy' }, width: 'half' },
+        { key: 'room_type', label: 'Room Type', type: 'select', options: [
+          { value: 'general', label: 'General Ward' },
+          { value: 'semi_private', label: 'Semi-Private' },
+          { value: 'private', label: 'Private' },
+          { value: 'suite', label: 'Suite' },
+        ], width: 'half' },
+      ],
+    },
+    {
+      id: 'clinical_orders',
+      title: 'Clinical Orders',
+      description: 'Initialize clinical care orders on admission.',
+      fields: [
+        { key: 'vitals_recorded', label: 'Admission Vitals Recorded', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Admission vitals recorded', category: 'nursing', responsibleRole: 'nurse', slaHours: 1, description: 'BP, HR, Temp, SpO2, RR documented' } },
+        { key: 'medication_chart_started', label: 'Medication Chart Started', type: 'checkbox',
+          readinessItem: { itemName: 'Medication chart started', category: 'nursing', responsibleRole: 'nurse', slaHours: 1, description: 'Medication reconciliation done, chart initiated' } },
+        { key: 'diet_ordered', label: 'Diet Order Placed', type: 'checkbox',
+          readinessItem: { itemName: 'Diet order placed', category: 'nursing', responsibleRole: 'nurse', slaHours: 2, description: 'Dietary requirements communicated to kitchen' } },
+        { key: 'diet_type', label: 'Diet Type', type: 'select', visibleWhen: { field: 'diet_ordered', operator: 'truthy' }, options: [
+          { value: 'npo', label: 'NPO' },
+          { value: 'liquid', label: 'Clear Liquids' },
+          { value: 'soft', label: 'Soft Diet' },
+          { value: 'full', label: 'Full Diet' },
+        ], width: 'half' },
+      ],
+    },
+    {
+      id: 'notifications',
+      title: 'Department Notifications',
+      description: 'Notify all concerned departments of the admission.',
+      fields: [
+        { key: 'pharmacy_notified', label: 'Pharmacy Notified of Admission', type: 'checkbox',
+          readinessItem: { itemName: 'Pharmacy notified', category: 'logistics', responsibleRole: 'pharmacist', slaHours: 1, description: 'Pharmacy aware of admission and medication requirements' } },
+        { key: 'nursing_notified', label: 'Nursing Notified of Admission', type: 'checkbox',
+          readinessItem: { itemName: 'Nursing notified', category: 'logistics', responsibleRole: 'nurse', slaHours: 1, description: 'Floor nurses informed of new admission' } },
+        { key: 'consultant_informed', label: 'Consultant Informed of Admission', type: 'checkbox',
+          readinessItem: { itemName: 'Consultant informed', category: 'logistics', responsibleRole: 'clinical_care', slaHours: 2, description: 'Primary consultant aware of patient arrival' } },
+        { key: 'admission_notes', label: 'Admission Notes', type: 'textarea', placeholder: 'Any special notes about this admission' },
       ],
     },
   ],
 };
+
+// -------------------------------------------
+// 7. PRE_OP_NURSING_CHECKLIST (pre_op)
+// Nursing confirms patient ready for OT.
+// -------------------------------------------
 
 export const PRE_OP_NURSING_CHECKLIST: FormSchema = {
   formType: 'pre_op_nursing_checklist',
@@ -625,30 +841,78 @@ export const PRE_OP_NURSING_CHECKLIST: FormSchema = {
   requiresPatient: true,
   sections: [
     {
-      id: 'pre_op_checks',
-      title: 'Pre-Op Checks',
+      id: 'patient_verification',
+      title: 'Patient Verification',
+      description: 'Confirm patient identity and consent for surgery.',
       fields: [
-        { key: 'npo_verified', label: 'NPO status verified', type: 'checkbox',
-          readinessItem: { itemName: 'NPO status verified (nursing)', category: 'nursing', responsibleRole: 'nurse', slaHours: 2 } },
-        { key: 'pre_op_vitals', label: 'Pre-op vitals recorded', type: 'checkbox',
-          readinessItem: { itemName: 'Pre-op vitals recorded', category: 'nursing', responsibleRole: 'nurse', slaHours: 1 } },
-        { key: 'iv_line_secured', label: 'IV line secured', type: 'checkbox',
-          readinessItem: { itemName: 'IV line secured', category: 'nursing', responsibleRole: 'nurse', slaHours: 1 } },
-        { key: 'prep_done', label: 'Surgical site prep done', type: 'checkbox',
-          readinessItem: { itemName: 'Surgical site prep done', category: 'nursing', responsibleRole: 'nurse', slaHours: 2 } },
-        { key: 'jewelry_removed', label: 'Jewelry / dentures / prosthetics removed', type: 'checkbox',
-          readinessItem: { itemName: 'Personal items secured', category: 'nursing', responsibleRole: 'nurse', slaHours: 1 } },
-        { key: 'premed_given', label: 'Pre-medication administered', type: 'checkbox',
-          readinessItem: { itemName: 'Pre-medication given', category: 'nursing', responsibleRole: 'nurse', slaHours: 1 } },
-        { key: 'patient_gown', label: 'Patient in OT gown', type: 'checkbox',
-          readinessItem: { itemName: 'Patient in OT gown', category: 'nursing', responsibleRole: 'nurse', slaHours: 1 } },
-        { key: 'file_complete', label: 'Patient file accompanies patient', type: 'checkbox',
-          readinessItem: { itemName: 'Patient file with patient', category: 'investigation', responsibleRole: 'nurse', slaHours: 1 } },
-        { key: 'notes', label: 'Nursing Notes', type: 'textarea' },
+        { key: 'id_band_checked', label: 'ID Band Checked and Verified', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Patient ID verified', category: 'nursing', responsibleRole: 'nurse', slaHours: 1, description: 'Wristband matches patient record' } },
+        { key: 'consent_verified', label: 'Surgical Consent Verified', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Surgical consent verified', category: 'consent', responsibleRole: 'nurse', slaHours: 1, description: 'Signed consent form reviewed and authenticated' } },
+        { key: 'allergy_band', label: 'Allergy Band on Patient', type: 'checkbox',
+          readinessItem: { itemName: 'Allergy band on patient', category: 'nursing', responsibleRole: 'nurse', slaHours: 1, description: 'Red band applied if allergies present' } },
+        { key: 'allergies_documented', label: 'Allergies Documented on Chart', type: 'checkbox', validation: { required: true } },
+      ],
+    },
+    {
+      id: 'preparation',
+      title: 'Patient Preparation',
+      description: 'Confirm NPO status, site preparation, and attire.',
+      fields: [
+        { key: 'npo_verified', label: 'NPO Status Verified (Fasting)', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'NPO status verified', category: 'nursing', responsibleRole: 'nurse', slaHours: 2, description: 'Confirmed patient has not eaten/drunk as per orders' } },
+        { key: 'npo_time', label: 'Last Oral Intake Time', type: 'time', width: 'half' },
+        { key: 'site_prep_done', label: 'Surgical Site Prep Done', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Surgical site prepped', category: 'nursing', responsibleRole: 'nurse', slaHours: 2, description: 'Hair removal and skin antiseptic applied' } },
+        { key: 'gown_on', label: 'Patient in OT Gown', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Patient in OT gown', category: 'nursing', responsibleRole: 'nurse', slaHours: 1, description: 'Patient changed into sterile surgical gown' } },
+        { key: 'jewelry_removed', label: 'Jewelry / Dentures / Prosthetics Removed', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Personal items secured', category: 'nursing', responsibleRole: 'nurse', slaHours: 1, description: 'All removable items stored safely' } },
+        { key: 'valuables_logged', label: 'Patient Valuables Logged', type: 'checkbox' },
+      ],
+    },
+    {
+      id: 'clinical_checks',
+      title: 'Clinical Checks',
+      description: 'Final vital signs and line management.',
+      fields: [
+        { key: 'preop_vitals_recorded', label: 'Pre-Op Vitals Recorded', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Pre-op vitals recorded', category: 'nursing', responsibleRole: 'nurse', slaHours: 1, description: 'BP, HR, Temp, SpO2 documented' } },
+        { key: 'bp_systolic', label: 'BP (Systolic) mmHg', type: 'number', validation: { min: 60, max: 220 }, width: 'third' },
+        { key: 'bp_diastolic', label: 'BP (Diastolic) mmHg', type: 'number', validation: { min: 40, max: 140 }, width: 'third' },
+        { key: 'pulse', label: 'Pulse (bpm)', type: 'number', validation: { min: 40, max: 150 }, width: 'third' },
+        { key: 'temperature', label: 'Temperature (°C)', type: 'number', validation: { min: 35, max: 40 }, width: 'third' },
+        { key: 'spo2', label: 'SpO2 (%)', type: 'number', validation: { min: 70, max: 100 }, width: 'third' },
+        { key: 'resp_rate', label: 'Respiratory Rate (/min)', type: 'number', validation: { min: 8, max: 40 }, width: 'third' },
+        { key: 'iv_line_secured', label: 'IV Line Secured', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'IV line secured', category: 'nursing', responsibleRole: 'nurse', slaHours: 1, description: 'IV cannula in place and patent' } },
+        { key: 'catheter_if_needed', label: 'Foley Catheter Placed (if needed)', type: 'checkbox',
+          readinessItem: { itemName: 'Catheter placed as ordered', category: 'nursing', responsibleRole: 'nurse', slaHours: 1 } },
+      ],
+    },
+    {
+      id: 'final_checks',
+      title: 'Final Pre-Op Checks',
+      description: 'Last-minute verifications before patient leaves ward.',
+      fields: [
+        { key: 'premed_given', label: 'Pre-Medication Given as Ordered', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Pre-medication administered', category: 'nursing', responsibleRole: 'nurse', slaHours: 1, description: 'Pre-op drugs (if any) administered at correct time' } },
+        { key: 'premed_time', label: 'Pre-Med Given Time', type: 'time', visibleWhen: { field: 'premed_given', operator: 'truthy' }, width: 'half' },
+        { key: 'file_complete', label: 'Patient File / Chart Complete', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Patient file complete', category: 'investigation', responsibleRole: 'nurse', slaHours: 1, description: 'All investigations, consents, and orders attached' } },
+        { key: 'blood_arranged', label: 'Blood Units Arranged (if needed)', type: 'checkbox',
+          readinessItem: { itemName: 'Blood arranged if needed', category: 'logistics', responsibleRole: 'nurse', slaHours: 4 } },
+        { key: 'blood_units', label: 'Blood Units Count', type: 'number', validation: { min: 0 }, visibleWhen: { field: 'blood_arranged', operator: 'truthy' }, width: 'half' },
+        { key: 'preop_notes', label: 'Pre-Op Nursing Notes', type: 'textarea', placeholder: 'Any special observations or concerns' },
       ],
     },
   ],
 };
+
+// -------------------------------------------
+// 8. WHO_SAFETY_CHECKLIST (surgery)
+// WHO-mandated 3-phase safety check.
+// -------------------------------------------
 
 export const WHO_SAFETY_CHECKLIST: FormSchema = {
   formType: 'who_safety_checklist',
@@ -662,40 +926,76 @@ export const WHO_SAFETY_CHECKLIST: FormSchema = {
     {
       id: 'sign_in',
       title: 'Sign In (Before Anesthesia)',
+      description: 'Pre-anesthesia verification and safety checks.',
       fields: [
-        { key: 'si_identity_confirmed', label: 'Patient identity confirmed', type: 'checkbox', validation: { required: true } },
-        { key: 'si_site_marked', label: 'Site marked / not applicable', type: 'checkbox', validation: { required: true } },
-        { key: 'si_consent_confirmed', label: 'Consent confirmed', type: 'checkbox', validation: { required: true } },
-        { key: 'si_pulse_ox', label: 'Pulse oximeter on patient and functioning', type: 'checkbox', validation: { required: true } },
-        { key: 'si_allergy_checked', label: 'Known allergy checked', type: 'checkbox', validation: { required: true } },
-        { key: 'si_airway_assessed', label: 'Difficult airway / aspiration risk assessed', type: 'checkbox', validation: { required: true } },
-        { key: 'si_blood_loss_risk', label: 'Risk of >500ml blood loss planned for', type: 'checkbox', validation: { required: true } },
+        { key: 'si_identity_confirmed', label: 'Patient Identity Confirmed with Wristband', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Sign In: Identity verified', category: 'consent', responsibleRole: 'nurse', slaHours: 0.5, description: 'Name and ID number match OR-sent documentation' } },
+        { key: 'si_site_marked', label: 'Surgical Site Marked / Not Applicable', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Sign In: Site marked', category: 'consent', responsibleRole: 'clinical_care', slaHours: 0.5, description: 'Correct site marked with surgeon\'s initials' } },
+        { key: 'si_consent_confirmed', label: 'Informed Consent Confirmed', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Sign In: Consent confirmed', category: 'consent', responsibleRole: 'nurse', slaHours: 0.5 } },
+        { key: 'si_pulse_ox', label: 'Pulse Oximeter on Patient and Functioning', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Sign In: Pulse ox on', category: 'nursing', responsibleRole: 'anesthesiologist', slaHours: 0.5 } },
+        { key: 'si_allergy_checked', label: 'Known Allergies Checked and Communicated', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Sign In: Allergies checked', category: 'consent', responsibleRole: 'nurse', slaHours: 0.5 } },
+        { key: 'si_airway_assessed', label: 'Difficult Airway / Aspiration Risk Assessed', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Sign In: Airway assessed', category: 'clearance', responsibleRole: 'anesthesiologist', slaHours: 0.5 } },
+        { key: 'si_blood_loss_risk', label: 'Risk of >500ml Blood Loss? Planned For', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Sign In: Blood loss risk noted', category: 'logistics', responsibleRole: 'anesthesiologist', slaHours: 0.5 } },
       ],
     },
     {
       id: 'time_out',
       title: 'Time Out (Before Incision)',
+      description: 'Pre-incision team briefing and final verification.',
       fields: [
-        { key: 'to_team_introduced', label: 'All team members introduced by name and role', type: 'checkbox', validation: { required: true } },
-        { key: 'to_patient_confirmed', label: 'Patient name, procedure, and site confirmed', type: 'checkbox', validation: { required: true } },
-        { key: 'to_antibiotics_given', label: 'Antibiotic prophylaxis given within last 60 minutes', type: 'checkbox' },
-        { key: 'to_imaging_displayed', label: 'Essential imaging displayed', type: 'checkbox' },
-        { key: 'to_critical_steps', label: 'Critical steps / equipment concerns discussed', type: 'checkbox', validation: { required: true } },
+        { key: 'to_team_introduced', label: 'All Team Members Introduced by Name and Role', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Time Out: Team introduced', category: 'nursing', responsibleRole: 'nurse', slaHours: 0.5, description: 'Verbal introduction of all staff in OT' } },
+        { key: 'to_patient_confirmed', label: 'Patient Name, Procedure, Site Confirmed Aloud', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Time Out: Patient confirmed', category: 'consent', responsibleRole: 'clinical_care', slaHours: 0.5 } },
+        { key: 'to_procedure_name', label: 'Procedure Name (confirm aloud)', type: 'text', width: 'half' },
+        { key: 'to_site_confirmed', label: 'Surgical Site Confirmed Aloud', type: 'text', width: 'half' },
+        { key: 'to_antibiotics_given', label: 'Prophylactic Antibiotic Given Within 60 Minutes', type: 'checkbox',
+          readinessItem: { itemName: 'Time Out: Antibiotics given', category: 'nursing', responsibleRole: 'anesthesiologist', slaHours: 1 } },
+        { key: 'to_imaging_displayed', label: 'Essential Imaging Displayed and Reviewed', type: 'checkbox',
+          readinessItem: { itemName: 'Time Out: Imaging reviewed', category: 'investigation', responsibleRole: 'clinical_care', slaHours: 0.5 } },
+        { key: 'to_critical_steps', label: 'Critical Steps and Equipment Concerns Discussed', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Time Out: Critical steps discussed', category: 'clearance', responsibleRole: 'clinical_care', slaHours: 0.5, description: 'Team briefing on procedure complexity and risks' } },
+        { key: 'to_special_concerns', label: 'Special Concerns / Equipment Needs', type: 'textarea', placeholder: 'E.g. special positioning, nerve monitoring' },
       ],
     },
     {
       id: 'sign_out',
       title: 'Sign Out (Before Patient Leaves OT)',
+      description: 'Post-procedure verification and documentation.',
       fields: [
-        { key: 'so_procedure_recorded', label: 'Procedure name recorded', type: 'checkbox', validation: { required: true } },
-        { key: 'so_counts_complete', label: 'Instrument, sponge, needle counts correct', type: 'checkbox', validation: { required: true } },
-        { key: 'so_specimen_labeled', label: 'Specimen labeled correctly', type: 'checkbox' },
-        { key: 'so_equipment_issues', label: 'Equipment problems addressed', type: 'checkbox' },
-        { key: 'so_recovery_plan', label: 'Recovery and post-op plan communicated', type: 'checkbox', validation: { required: true } },
+        { key: 'so_procedure_recorded', label: 'Procedure Name and Key Interventions Recorded', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Sign Out: Procedure recorded', category: 'investigation', responsibleRole: 'nurse', slaHours: 0.5, description: 'OR notes documented' } },
+        { key: 'so_counts_correct', label: 'Instrument, Sponge, Needle Counts Correct', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Sign Out: Counts verified', category: 'consent', responsibleRole: 'nurse', slaHours: 0.5, description: 'All instrument and sponge counts match' } },
+        { key: 'so_specimen_labeled', label: 'Specimen Labeled Correctly (if any)', type: 'checkbox',
+          readinessItem: { itemName: 'Sign Out: Specimen labeled', category: 'investigation', responsibleRole: 'nurse', slaHours: 0.5 } },
+        { key: 'so_specimen_list', label: 'Specimen Description', type: 'text', placeholder: 'E.g. gallbladder, lymph nodes', visibleWhen: { field: 'so_specimen_labeled', operator: 'truthy' } },
+        { key: 'so_equipment_issues', label: 'Equipment Problems Addressed / Logged', type: 'checkbox',
+          readinessItem: { itemName: 'Sign Out: Equipment issues logged', category: 'logistics', responsibleRole: 'nurse', slaHours: 0.5 } },
+        { key: 'so_equipment_problems', label: 'Equipment Problems Noted', type: 'textarea', placeholder: 'If any', visibleWhen: { field: 'so_equipment_issues', operator: 'truthy' } },
+        { key: 'so_recovery_plan', label: 'Recovery and Post-Op Plan Communicated to Team', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Sign Out: Recovery plan communicated', category: 'clearance', responsibleRole: 'clinical_care', slaHours: 0.5, description: 'Post-op destination, monitoring, medications confirmed' } },
+        { key: 'so_post_destination', label: 'Post-Op Destination', type: 'select', options: [
+          { value: 'ward', label: 'Ward' },
+          { value: 'icu', label: 'ICU' },
+          { value: 'hdu', label: 'HDU' },
+          { value: 'recovery_room', label: 'Recovery Room' },
+        ], width: 'half' },
       ],
     },
   ],
 };
+
+// -------------------------------------------
+// 9. NURSING_SHIFT_HANDOFF (admitted/pre_op/post_op)
+// Structured shift handoff.
+// -------------------------------------------
 
 export const NURSING_SHIFT_HANDOFF: FormSchema = {
   formType: 'nursing_shift_handoff',
@@ -707,26 +1007,109 @@ export const NURSING_SHIFT_HANDOFF: FormSchema = {
   requiresPatient: true,
   sections: [
     {
-      id: 'handoff',
-      title: 'Shift Handoff',
+      id: 'shift_info',
+      title: 'Shift Information',
+      description: 'Identify outgoing and incoming nursing staff.',
       fields: [
         { key: 'outgoing_shift', label: 'Outgoing Shift', type: 'select', validation: { required: true }, options: [
-          { value: 'day', label: 'Day (8AM–2PM)' }, { value: 'evening', label: 'Evening (2PM–8PM)' },
-          { value: 'night', label: 'Night (8PM–8AM)' },
-        ], width: 'half' },
+          { value: 'day', label: 'Day (8 AM – 2 PM)' },
+          { value: 'evening', label: 'Evening (2 PM – 8 PM)' },
+          { value: 'night', label: 'Night (8 PM – 8 AM)' },
+        ], width: 'third' },
         { key: 'incoming_shift', label: 'Incoming Shift', type: 'select', validation: { required: true }, options: [
-          { value: 'day', label: 'Day (8AM–2PM)' }, { value: 'evening', label: 'Evening (2PM–8PM)' },
-          { value: 'night', label: 'Night (8PM–8AM)' },
+          { value: 'day', label: 'Day (8 AM – 2 PM)' },
+          { value: 'evening', label: 'Evening (2 PM – 8 PM)' },
+          { value: 'night', label: 'Night (8 PM – 8 AM)' },
+        ], width: 'third' },
+        { key: 'handoff_date_time', label: 'Handoff Date & Time', type: 'datetime', validation: { required: true }, width: 'third' },
+        { key: 'outgoing_nurse_name', label: 'Outgoing Nurse Name', type: 'text', validation: { required: true }, width: 'half' },
+        { key: 'incoming_nurse_name', label: 'Incoming Nurse Name', type: 'text', validation: { required: true }, width: 'half' },
+      ],
+    },
+    {
+      id: 'patient_status',
+      title: 'Patient Status Summary',
+      description: 'Overview of current clinical status.',
+      fields: [
+        { key: 'diagnosis', label: 'Primary Diagnosis / Reason for Admission', type: 'text', validation: { required: true } },
+        { key: 'current_condition', label: 'Current Clinical Condition', type: 'select', validation: { required: true }, options: [
+          { value: 'stable', label: 'Stable' },
+          { value: 'improving', label: 'Improving' },
+          { value: 'stable_concerns', label: 'Stable with some concerns' },
+          { value: 'unstable', label: 'Unstable / Deteriorating' },
         ], width: 'half' },
-        { key: 'current_status', label: 'Current Patient Status', type: 'textarea', validation: { required: true }, placeholder: 'Brief clinical status, vitals summary' },
-        { key: 'active_orders', label: 'Active Orders / Medications', type: 'textarea', validation: { required: true } },
-        { key: 'pending_tasks', label: 'Pending Tasks for Next Shift', type: 'textarea' },
-        { key: 'alerts', label: 'Alerts / Special Precautions', type: 'textarea', placeholder: 'Fall risk, allergy alerts, isolation, etc.' },
-        { key: 'family_communication', label: 'Family Communication Notes', type: 'textarea' },
+        { key: 'consciousness_level', label: 'Consciousness Level', type: 'select', options: [
+          { value: 'alert', label: 'Alert & Oriented' },
+          { value: 'confused', label: 'Confused / Disoriented' },
+          { value: 'drowsy', label: 'Drowsy but Arousable' },
+          { value: 'unconscious', label: 'Unconscious' },
+        ], width: 'half' },
+        { key: 'mobility_status', label: 'Mobility Status', type: 'select', options: [
+          { value: 'independent', label: 'Independent' },
+          { value: 'assisted', label: 'Assisted with aid' },
+          { value: 'bed_bound', label: 'Bed-bound' },
+          { value: 'post_op', label: 'Post-Op — Limited mobility' },
+        ], width: 'half' },
+        { key: 'pain_score', label: 'Pain Score (0-10)', type: 'number', validation: { min: 0, max: 10 }, width: 'third' },
+      ],
+    },
+    {
+      id: 'current_vitals',
+      title: 'Current Vitals',
+      description: 'Latest vital signs from outgoing shift.',
+      fields: [
+        { key: 'vitals_time', label: 'Vitals Last Recorded Time', type: 'time', validation: { required: true }, width: 'half' },
+        { key: 'bp_systolic', label: 'BP (Systolic) mmHg', type: 'number', validation: { required: true, min: 60, max: 220 }, width: 'third' },
+        { key: 'bp_diastolic', label: 'BP (Diastolic) mmHg', type: 'number', validation: { required: true, min: 40, max: 140 }, width: 'third' },
+        { key: 'pulse', label: 'Pulse (bpm)', type: 'number', validation: { required: true, min: 40, max: 150 }, width: 'third' },
+        { key: 'temperature', label: 'Temperature (°C)', type: 'number', validation: { required: true, min: 35, max: 40 }, width: 'third' },
+        { key: 'spo2', label: 'SpO2 (%)', type: 'number', validation: { required: true, min: 70, max: 100 }, width: 'third' },
+        { key: 'resp_rate', label: 'Respiratory Rate (/min)', type: 'number', validation: { required: true, min: 8, max: 40 }, width: 'third' },
+        { key: 'urine_output', label: 'Urine Output (ml/shift)', type: 'number', validation: { min: 0 }, width: 'half' },
+        { key: 'fluid_intake', label: 'Fluid Intake (ml/shift)', type: 'number', validation: { min: 0 }, width: 'half' },
+      ],
+    },
+    {
+      id: 'active_orders',
+      title: 'Active Orders & Medications',
+      description: 'Current treatment plan and pending actions.',
+      fields: [
+        { key: 'current_iv_fluids', label: 'Current IV Fluids', type: 'textarea', placeholder: 'E.g. Normal Saline 500ml/8h', helpText: 'Type, rate, and any special requirements' },
+        { key: 'medications_due', label: 'Medications Due in Next Shift', type: 'textarea', placeholder: 'List medication schedule for incoming shift', helpText: 'Include dosage and times' },
+        { key: 'pending_investigations', label: 'Pending Investigations', type: 'textarea', placeholder: 'Blood tests, imaging, reports awaited' },
+        { key: 'diet_restrictions', label: 'Diet Restrictions / Orders', type: 'select', options: [
+          { value: 'npo', label: 'NPO' },
+          { value: 'liquid', label: 'Clear Liquids' },
+          { value: 'soft', label: 'Soft Diet' },
+          { value: 'full', label: 'Full Diet' },
+        ], width: 'half' },
+      ],
+    },
+    {
+      id: 'concerns_handoff',
+      title: 'Concerns & Handoff Confirmation',
+      description: 'Critical information and handoff acknowledgment.',
+      fields: [
+        { key: 'pending_tasks', label: 'Pending Tasks for Next Shift', type: 'textarea', placeholder: 'Dressing changes, catheter care, drain monitoring, etc.' },
+        { key: 'fall_risk', label: 'Fall Risk Assessment', type: 'select', options: [
+          { value: 'low', label: 'Low Risk' },
+          { value: 'medium', label: 'Medium Risk' },
+          { value: 'high', label: 'High Risk' },
+        ], width: 'half' },
+        { key: 'infection_alerts', label: 'Infection Alerts / Isolation', type: 'textarea', placeholder: 'E.g. MRSA, C.difficile, respiratory precautions' },
+        { key: 'allergy_alerts', label: 'Allergy Alerts', type: 'textarea', placeholder: 'Drug allergies, food allergies, latex allergy' },
+        { key: 'family_communication', label: 'Family Communication Notes', type: 'textarea', placeholder: 'Any family requests, update calls made, concerns raised' },
+        { key: 'handoff_acknowledged', label: 'Incoming Nurse Acknowledges Handoff', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Shift handoff acknowledged', category: 'nursing', responsibleRole: 'nurse', slaHours: 0.25, description: 'Incoming nurse confirms understanding and readiness to care' } },
       ],
     },
   ],
 };
+
+// -------------------------------------------
+// 10. DISCHARGE_READINESS (discharge)
+// Multidisciplinary discharge checklist.
+// -------------------------------------------
 
 export const DISCHARGE_READINESS: FormSchema = {
   formType: 'discharge_readiness',
@@ -740,40 +1123,62 @@ export const DISCHARGE_READINESS: FormSchema = {
     {
       id: 'clinical',
       title: 'Clinical Readiness',
+      description: 'Consultant confirmation of clinical fitness for discharge.',
       fields: [
-        { key: 'clinically_stable', label: 'Patient clinically stable', type: 'checkbox',
-          readinessItem: { itemName: 'Clinically stable', category: 'clearance', responsibleRole: 'clinical_care', slaHours: 4 } },
-        { key: 'discharge_summary_ready', label: 'Discharge summary prepared', type: 'checkbox',
-          readinessItem: { itemName: 'Discharge summary prepared', category: 'investigation', responsibleRole: 'clinical_care', slaHours: 4 } },
-        { key: 'medications_prescribed', label: 'Discharge medications prescribed', type: 'checkbox',
-          readinessItem: { itemName: 'Discharge medications prescribed', category: 'clearance', responsibleRole: 'clinical_care', slaHours: 2 } },
+        { key: 'clinically_stable', label: 'Patient Clinically Stable', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Clinically stable for discharge', category: 'clearance', responsibleRole: 'clinical_care', slaHours: 2, description: 'Vitals stable, no acute complications, wound healing normal' } },
+        { key: 'discharge_summary_signed', label: 'Discharge Summary Prepared & Signed by Consultant', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Discharge summary signed', category: 'investigation', responsibleRole: 'clinical_care', slaHours: 4, description: 'Complete summary of hospital course, findings, and recommendations' } },
+        { key: 'discharge_summary_date', label: 'Discharge Summary Date', type: 'date', visibleWhen: { field: 'discharge_summary_signed', operator: 'truthy' } },
+        { key: 'discharge_medications', label: 'Discharge Medications Prescribed', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Discharge medications prescribed', category: 'clearance', responsibleRole: 'clinical_care', slaHours: 2, description: 'All medications written, doses, and duration specified' } },
+        { key: 'followup_date_set', label: 'Follow-up Appointment Date Set', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Follow-up scheduled', category: 'logistics', responsibleRole: 'clinical_care', slaHours: 4, description: 'Return appointment booked with consultant' } },
+        { key: 'followup_date', label: 'Follow-up Date', type: 'date', visibleWhen: { field: 'followup_date_set', operator: 'truthy' }, width: 'half' },
+        { key: 'wound_care_instructions', label: 'Wound Care Instructions Given', type: 'checkbox',
+          readinessItem: { itemName: 'Wound care instructions given', category: 'nursing', responsibleRole: 'nurse', slaHours: 2 } },
       ],
     },
     {
       id: 'billing',
       title: 'Financial Clearance',
+      description: 'Final billing and payment confirmation.',
       fields: [
-        { key: 'final_bill_prepared', label: 'Final bill prepared', type: 'checkbox',
-          readinessItem: { itemName: 'Final bill prepared', category: 'billing', responsibleRole: 'billing_executive', slaHours: 4 } },
-        { key: 'payment_settled', label: 'Payment settled / insurance claim filed', type: 'checkbox',
-          readinessItem: { itemName: 'Payment settled', category: 'billing', responsibleRole: 'billing_executive', slaHours: 4 } },
+        { key: 'final_bill_prepared', label: 'Final Bill Prepared', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Final bill prepared', category: 'billing', responsibleRole: 'billing_executive', slaHours: 4, description: 'Itemized final bill generated with all charges' } },
+        { key: 'total_charges', label: 'Total Charges (₹)', type: 'number', validation: { min: 0 }, width: 'half' },
+        { key: 'amount_paid', label: 'Amount Paid (₹)', type: 'number', validation: { min: 0 }, width: 'half' },
+        { key: 'payment_settled', label: 'Payment Settled / Insurance Claim Filed', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Payment settled', category: 'billing', responsibleRole: 'billing_executive', slaHours: 4, description: 'Final settlement done or claim submitted' } },
+        { key: 'outstanding_balance', label: 'Outstanding Balance (₹)', type: 'number', validation: { min: 0 }, width: 'half' },
+        { key: 'balance_payment_plan', label: 'Balance Payment Plan (if any)', type: 'text', placeholder: 'E.g. to be paid within 10 days', visibleWhen: { field: 'outstanding_balance', operator: 'truthy' }, width: 'half' },
       ],
     },
     {
       id: 'nursing',
       title: 'Nursing Discharge',
+      description: 'Patient and family education, medications, and transport.',
       fields: [
-        { key: 'patient_education', label: 'Patient / attendant educated on care at home', type: 'checkbox',
-          readinessItem: { itemName: 'Discharge education given', category: 'nursing', responsibleRole: 'nurse', slaHours: 2 } },
-        { key: 'pharmacy_meds_dispensed', label: 'Pharmacy medications dispensed', type: 'checkbox',
-          readinessItem: { itemName: 'Medications dispensed', category: 'logistics', responsibleRole: 'pharmacist', slaHours: 2 } },
-        { key: 'follow_up_scheduled', label: 'Follow-up appointment scheduled', type: 'checkbox',
-          readinessItem: { itemName: 'Follow-up scheduled', category: 'logistics', responsibleRole: 'ip_coordinator', slaHours: 2 } },
-        { key: 'transport_arranged', label: 'Transport arranged', type: 'checkbox' },
+        { key: 'patient_education', label: 'Patient / Attendant Educated on Home Care', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Discharge education given', category: 'nursing', responsibleRole: 'nurse', slaHours: 2, description: 'Verbal and written instructions provided' } },
+        { key: 'education_topics', label: 'Education Topics Covered', type: 'textarea', placeholder: 'E.g. activity restrictions, wound care, medication compliance, diet, when to report symptoms' },
+        { key: 'medications_dispensed', label: 'Discharge Medications Dispensed by Pharmacy', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Discharge medications dispensed', category: 'logistics', responsibleRole: 'pharmacist', slaHours: 2, description: 'All prescribed medications handed to patient with instructions' } },
+        { key: 'belongings_returned', label: 'Patient Belongings Returned', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Belongings returned', category: 'logistics', responsibleRole: 'nurse', slaHours: 1, description: 'All personal items, valuables, and documents returned' } },
+        { key: 'emergency_contact', label: 'Emergency Contact Information Provided', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Emergency contact informed', category: 'logistics', responsibleRole: 'ip_coordinator', slaHours: 1, description: 'Patient has hospital contact number and knows when/where to report' } },
+        { key: 'transport_arranged', label: 'Transport Arranged', type: 'checkbox', validation: { required: true } },
+        { key: 'discharge_notes', label: 'Special Discharge Notes', type: 'textarea', placeholder: 'Any additional instructions or cautions' },
       ],
     },
   ],
 };
+
+// -------------------------------------------
+// 11. POST_DISCHARGE_FOLLOWUP (post_discharge)
+// Follow-up tracking and patient recovery status.
+// -------------------------------------------
 
 export const POST_DISCHARGE_FOLLOWUP: FormSchema = {
   formType: 'post_discharge_followup',
@@ -785,31 +1190,121 @@ export const POST_DISCHARGE_FOLLOWUP: FormSchema = {
   requiresPatient: true,
   sections: [
     {
-      id: 'followup',
-      title: 'Follow-up Details',
+      id: 'contact_details',
+      title: 'Follow-up Contact',
+      description: 'Scheduling and completion of follow-up.',
       fields: [
-        { key: 'followup_date', label: 'Follow-up Date', type: 'date', validation: { required: true }, width: 'half' },
+        { key: 'followup_date', label: 'Scheduled Follow-up Date', type: 'date', validation: { required: true }, width: 'half' },
         { key: 'followup_type', label: 'Follow-up Type', type: 'select', validation: { required: true }, options: [
-          { value: 'phone_call', label: 'Phone Call' }, { value: 'in_person', label: 'In-Person Visit' },
+          { value: 'phone_call', label: 'Phone Call' },
+          { value: 'in_person', label: 'In-Person Visit' },
           { value: 'teleconsult', label: 'Teleconsult' },
+          { value: 'op_clinic', label: 'OP Clinic Appointment' },
         ], width: 'half' },
-        { key: 'patient_status', label: 'Patient Reported Status', type: 'select', options: [
-          { value: 'recovering_well', label: 'Recovering Well' }, { value: 'some_concerns', label: 'Some Concerns' },
-          { value: 'needs_attention', label: 'Needs Medical Attention' }, { value: 'readmission', label: 'Readmission Required' },
-        ] },
-        { key: 'pain_level', label: 'Pain Level (0-10)', type: 'number', validation: { min: 0, max: 10 }, width: 'half' },
-        { key: 'medication_adherence', label: 'Taking medications as prescribed', type: 'radio', options: [
-          { value: 'yes', label: 'Yes' }, { value: 'partial', label: 'Partially' }, { value: 'no', label: 'No' },
+        { key: 'contact_attempted', label: 'Contact Attempted', type: 'checkbox', validation: { required: true } },
+        { key: 'contact_attempted_date', label: 'Contact Attempted Date', type: 'date', visibleWhen: { field: 'contact_attempted', operator: 'truthy' }, width: 'half' },
+        { key: 'contact_successful', label: 'Contact Successful', type: 'checkbox', validation: { required: true } },
+        { key: 'who_responded', label: 'Who Responded?', type: 'select', options: [
+          { value: 'patient', label: 'Patient' },
+          { value: 'family', label: 'Family Member' },
+          { value: 'attendant', label: 'Attendant / Caregiver' },
+          { value: 'unable', label: 'Unable to Reach' },
         ], width: 'half' },
+      ],
+    },
+    {
+      id: 'clinical_status',
+      title: 'Clinical Status',
+      description: 'Patient self-reported recovery progress.',
+      fields: [
+        { key: 'patient_status', label: 'Patient Reported Status', type: 'select', validation: { required: true }, options: [
+          { value: 'recovering_well', label: 'Recovering Well' },
+          { value: 'some_concerns', label: 'Some Concerns' },
+          { value: 'not_well', label: 'Not Recovering Well' },
+          { value: 'needs_attention', label: 'Needs Medical Attention' },
+          { value: 'readmission', label: 'Readmission Required' },
+        ], width: 'half' },
+        { key: 'pain_score', label: 'Pain Level (0-10)', type: 'number', validation: { min: 0, max: 10 }, width: 'third' },
         { key: 'wound_status', label: 'Wound / Incision Status', type: 'select', options: [
-          { value: 'clean_dry', label: 'Clean & Dry' }, { value: 'mild_redness', label: 'Mild Redness' },
-          { value: 'discharge', label: 'Discharge Present' }, { value: 'infection_suspected', label: 'Infection Suspected' },
-        ] },
-        { key: 'notes', label: 'Follow-up Notes', type: 'textarea' },
+          { value: 'clean_dry', label: 'Clean & Dry' },
+          { value: 'mild_redness', label: 'Mild Redness' },
+          { value: 'discharge', label: 'Discharge Present' },
+          { value: 'swelling', label: 'Swelling / Hematoma' },
+          { value: 'infection_suspected', label: 'Infection Suspected' },
+          { value: 'na', label: 'N/A' },
+        ], width: 'third' },
+        { key: 'fever', label: 'Fever Since Discharge?', type: 'radio', options: [
+          { value: 'no', label: 'No' },
+          { value: 'yes', label: 'Yes' },
+          { value: 'not_checked', label: 'Not Checked' },
+        ], width: 'third' },
+        { key: 'fever_details', label: 'Fever Details', type: 'text', placeholder: 'Temperature, duration, other symptoms', visibleWhen: { field: 'fever', operator: 'eq', value: 'yes' } },
+        { key: 'medication_adherence', label: 'Taking Medications as Prescribed', type: 'select', options: [
+          { value: 'yes', label: 'Yes, regularly' },
+          { value: 'partial', label: 'Partially' },
+          { value: 'no', label: 'No / Stopped' },
+          { value: 'na', label: 'N/A' },
+        ], width: 'half' },
+        { key: 'adherence_reasons', label: 'If not taking medications, reasons', type: 'text', visibleWhen: { field: 'medication_adherence', operator: 'in', value: ['partial', 'no'] } },
+      ],
+    },
+    {
+      id: 'complications',
+      title: 'Complications / Adverse Events',
+      description: 'Track any post-discharge complications.',
+      fields: [
+        { key: 'any_complications', label: 'Any Complications Since Discharge?', type: 'radio', validation: { required: true }, options: [
+          { value: 'no', label: 'No' },
+          { value: 'yes', label: 'Yes' },
+        ], width: 'half' },
+        { key: 'complication_details', label: 'Describe Complications', type: 'textarea', placeholder: 'Type, onset, severity', visibleWhen: { field: 'any_complications', operator: 'eq', value: 'yes' } },
+        { key: 'readmission_needed', label: 'Readmission Needed?', type: 'radio', options: [
+          { value: 'no', label: 'No' },
+          { value: 'yes', label: 'Yes' },
+          { value: 'planned', label: 'Planned Readmission' },
+        ], width: 'half' },
+        { key: 'er_visit_since', label: 'ER Visit or Hospitalization Since Discharge?', type: 'radio', options: [
+          { value: 'no', label: 'No' },
+          { value: 'yes', label: 'Yes' },
+        ], width: 'half' },
+        { key: 'er_details', label: 'ER Visit Details', type: 'text', placeholder: 'Where, when, reason', visibleWhen: { field: 'er_visit_since', operator: 'eq', value: 'yes' } },
+      ],
+    },
+    {
+      id: 'followup_plan',
+      title: 'Follow-up Plan',
+      description: 'Next steps in patient care.',
+      fields: [
+        { key: 'next_followup_date', label: 'Next Follow-up Date / Clinic Visit', type: 'date', width: 'half' },
+        { key: 'next_followup_type', label: 'Next Follow-up Type', type: 'select', options: [
+          { value: 'op_clinic', label: 'OP Clinic' },
+          { value: 'phone_call', label: 'Phone Call' },
+          { value: 'teleconsult', label: 'Teleconsult' },
+          { value: 'none_scheduled', label: 'None Scheduled' },
+        ], width: 'half' },
+        { key: 'referral_needed', label: 'Referral Needed to Other Specialist?', type: 'radio', options: [
+          { value: 'no', label: 'No' },
+          { value: 'yes', label: 'Yes' },
+        ], width: 'half' },
+        { key: 'referral_details', label: 'Referral Details', type: 'text', placeholder: 'Specialist, reason, hospital', visibleWhen: { field: 'referral_needed', operator: 'eq', value: 'yes' }, width: 'half' },
+        { key: 'physiotherapy_status', label: 'Physiotherapy Status', type: 'select', options: [
+          { value: 'not_needed', label: 'Not Needed' },
+          { value: 'home_pt', label: 'Home Physiotherapy' },
+          { value: 'clinic_pt', label: 'Clinic Physiotherapy' },
+          { value: 'planned', label: 'Planned to start' },
+        ], width: 'half' },
+        { key: 'followup_completed', label: 'Follow-up Completed', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'Post-discharge follow-up completed', category: 'clearance', responsibleRole: 'nurse', slaHours: 24, description: 'Patient contacted and recovery status documented' } },
+        { key: 'followup_notes', label: 'Follow-up Notes', type: 'textarea', placeholder: 'Summary of conversation, patient counseling provided, action items' },
       ],
     },
   ],
 };
+
+// -------------------------------------------
+// 12. DAILY_DEPARTMENT_UPDATE (any, requiresPatient: false)
+// Morning meeting summary — no patient required.
+// -------------------------------------------
 
 export const DAILY_DEPARTMENT_UPDATE: FormSchema = {
   formType: 'daily_department_update',
@@ -821,23 +1316,60 @@ export const DAILY_DEPARTMENT_UPDATE: FormSchema = {
   requiresPatient: false,
   sections: [
     {
-      id: 'daily_update',
-      title: 'Department Update',
+      id: 'census',
+      title: 'Census',
+      description: 'Patient census and admission/discharge summary.',
       fields: [
         { key: 'date', label: 'Date', type: 'date', validation: { required: true }, width: 'half' },
-        { key: 'total_patients', label: 'Total Patients (current census)', type: 'number', validation: { required: true, min: 0 }, width: 'half' },
-        { key: 'new_admissions', label: 'New Admissions Today', type: 'number', validation: { min: 0 }, width: 'third' },
+        { key: 'department', label: 'Department', type: 'text', validation: { required: true }, width: 'half' },
+        { key: 'total_patients', label: 'Total Patients (Current Census)', type: 'number', validation: { required: true, min: 0 }, width: 'third' },
+        { key: 'new_admissions_today', label: 'New Admissions Today', type: 'number', validation: { min: 0 }, width: 'third' },
         { key: 'discharges_planned', label: 'Discharges Planned', type: 'number', validation: { min: 0 }, width: 'third' },
-        { key: 'surgeries_scheduled', label: 'Surgeries Scheduled', type: 'number', validation: { min: 0 }, width: 'third' },
-        { key: 'critical_patients', label: 'Critical Patients / Alerts', type: 'textarea' },
-        { key: 'pending_issues', label: 'Pending Issues / Escalations', type: 'textarea' },
-        { key: 'staffing_issues', label: 'Staffing Concerns', type: 'textarea' },
-        { key: 'equipment_issues', label: 'Equipment / Facility Issues', type: 'textarea' },
-        { key: 'general_remarks', label: 'General Remarks', type: 'textarea' },
+        { key: 'surgeries_scheduled', label: 'Surgeries Scheduled Today', type: 'number', validation: { min: 0 }, width: 'third' },
+        { key: 'icu_patients', label: 'ICU / Critical Patients', type: 'number', validation: { min: 0 }, width: 'third' },
+        { key: 'bed_availability', label: 'Beds Available', type: 'number', validation: { min: 0 }, width: 'third' },
+      ],
+    },
+    {
+      id: 'operational',
+      title: 'Operational Issues',
+      description: 'Staffing, equipment, and facility concerns.',
+      fields: [
+        { key: 'staffing_concerns', label: 'Staffing Concerns', type: 'textarea', placeholder: 'Shortages, absences, skill gaps', helpText: 'Any staff availability issues affecting today\'s operations' },
+        { key: 'equipment_issues', label: 'Equipment / Facility Issues', type: 'textarea', placeholder: 'Broken equipment, maintenance needs, bed/room issues' },
+        { key: 'pending_discharges', label: 'Pending Discharges', type: 'text', placeholder: 'Any discharges held up for billing/paperwork' },
+        { key: 'bed_pressure', label: 'Bed Pressure / Occupancy Rate', type: 'text', placeholder: 'E.g. 85% full, emergency admissions expected' },
+      ],
+    },
+    {
+      id: 'clinical_alerts',
+      title: 'Clinical Alerts',
+      description: 'Critical patients and safety issues.',
+      fields: [
+        { key: 'critical_patients', label: 'Critical Patients / Alerts', type: 'textarea', placeholder: 'List any patients at risk, unstable, or requiring escalation' },
+        { key: 'infection_alerts', label: 'Infection Control Alerts', type: 'textarea', placeholder: 'E.g. MRSA outbreak, suspected foodborne illness' },
+        { key: 'sentinel_events', label: 'Sentinel Events / Adverse Incidents', type: 'textarea', placeholder: 'Any reportable incidents from yesterday/today' },
+        { key: 'quality_concerns', label: 'Quality / Safety Concerns', type: 'textarea', placeholder: 'Patient safety concerns, quality metrics off target' },
+      ],
+    },
+    {
+      id: 'action_items',
+      title: 'Action Items',
+      description: 'Follow-ups and escalations from the meeting.',
+      fields: [
+        { key: 'pending_escalations', label: 'Pending Escalations', type: 'textarea', placeholder: 'Items needing hospital management attention' },
+        { key: 'previous_meeting_items', label: 'Items from Previous Meeting', type: 'textarea', placeholder: 'Status update on yesterday\'s action items' },
+        { key: 'new_action_items', label: 'New Action Items for Today', type: 'textarea', placeholder: 'Bulleted list of today\'s follow-ups and owners' },
+        { key: 'general_remarks', label: 'General Remarks / Notes', type: 'textarea', placeholder: 'Anything else relevant to department operations' },
       ],
     },
   ],
 };
+
+// -------------------------------------------
+// 13. PAC_CLEARANCE (pre_op)
+// Anesthesiologist clears patient for anesthesia.
+// -------------------------------------------
 
 export const PAC_CLEARANCE: FormSchema = {
   formType: 'pac_clearance',
@@ -849,30 +1381,107 @@ export const PAC_CLEARANCE: FormSchema = {
   requiresPatient: true,
   sections: [
     {
-      id: 'pac',
-      title: 'Pre-Anesthetic Assessment',
+      id: 'medical_history',
+      title: 'Medical History',
+      description: 'Previous surgical and anesthesia history.',
+      fields: [
+        { key: 'previous_surgery', label: 'Previous Surgeries', type: 'textarea', placeholder: 'List surgeries with dates and type of anesthesia used' },
+        { key: 'anesthesia_history', label: 'Anesthesia History', type: 'select', options: [
+          { value: 'ga', label: 'General Anesthesia' },
+          { value: 'regional', label: 'Regional / Spinal' },
+          { value: 'local', label: 'Local Anesthesia' },
+          { value: 'no_previous', label: 'No Previous Anesthesia' },
+        ], width: 'half' },
+        { key: 'anesthesia_complications', label: 'Previous Anesthesia Complications', type: 'textarea', placeholder: 'E.g. nausea, difficulty intubation, malignant hyperthermia, allergic reaction' },
+        { key: 'adverse_reactions', label: 'Known Adverse Reactions', type: 'textarea', placeholder: 'Drug allergies, latex allergy, reactions to anesthetics' },
+        { key: 'current_medications', label: 'Current Medications', type: 'textarea', placeholder: 'All medications patient is taking — include doses' },
+        { key: 'allergies', label: 'Known Allergies', type: 'textarea', placeholder: 'Food, drug, environmental allergies' },
+      ],
+    },
+    {
+      id: 'physical_exam',
+      title: 'Physical Examination',
+      description: 'Pre-operative clinical examination findings.',
+      fields: [
+        { key: 'weight', label: 'Weight (kg)', type: 'number', validation: { required: true, min: 5, max: 200 }, width: 'third' },
+        { key: 'height', label: 'Height (cm)', type: 'number', validation: { required: true, min: 80, max: 250 }, width: 'third' },
+        { key: 'bmi', label: 'BMI (calculated)', type: 'number', validation: { min: 10, max: 60 }, width: 'third' },
+        { key: 'bp_systolic', label: 'BP Systolic (mmHg)', type: 'number', validation: { required: true, min: 60, max: 220 }, width: 'third' },
+        { key: 'bp_diastolic', label: 'BP Diastolic (mmHg)', type: 'number', validation: { required: true, min: 40, max: 140 }, width: 'third' },
+        { key: 'heart_rate', label: 'Heart Rate (bpm)', type: 'number', validation: { required: true, min: 40, max: 150 }, width: 'third' },
+        { key: 'airway_assessment', label: 'Airway Assessment', type: 'select', validation: { required: true }, options: [
+          { value: 'normal', label: 'Normal Airway' },
+          { value: 'anticipated_difficult', label: 'Anticipated Difficult Airway' },
+          { value: 'difficult', label: 'Known Difficult Airway' },
+        ], width: 'half' },
+        { key: 'mallampati_grade', label: 'Mallampati Grade', type: 'select', validation: { required: true }, options: [
+          { value: '1', label: 'Grade I (Soft palate, fauces, uvula visible)' },
+          { value: '2', label: 'Grade II (Uvula partially visible)' },
+          { value: '3', label: 'Grade III (Only base of uvula visible)' },
+          { value: '4', label: 'Grade IV (Soft palate not visible — difficult intubation)' },
+        ], width: 'half' },
+        { key: 'dental_status', label: 'Dental Status', type: 'select', options: [
+          { value: 'normal', label: 'Normal Dentition' },
+          { value: 'caries', label: 'Dental Caries / Poor Oral Hygiene' },
+          { value: 'loose_teeth', label: 'Loose / Missing Teeth' },
+          { value: 'dentures', label: 'Dentures / Crowns' },
+          { value: 'other', label: 'Other (specify)' },
+        ], width: 'half' },
+        { key: 'mouth_opening', label: 'Mouth Opening Limited?', type: 'radio', options: [
+          { value: 'no', label: 'No — Normal' },
+          { value: 'yes', label: 'Yes — Limited' },
+        ], width: 'half' },
+        { key: 'thyromental_distance', label: 'Thyromental Distance (cm)', type: 'number', validation: { min: 2, max: 10 }, helpText: 'Distance from thyroid cartilage to mentum; <6cm suggests difficulty intubating' },
+      ],
+    },
+    {
+      id: 'investigations',
+      title: 'Lab & Investigation Review',
+      description: 'Review of recent investigations.',
+      fields: [
+        { key: 'cbc_reviewed', label: 'CBC Reviewed', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'CBC reviewed', category: 'investigation', responsibleRole: 'anesthesiologist', slaHours: 12 } },
+        { key: 'cbc_abnormal', label: 'CBC Abnormal Findings?', type: 'text', placeholder: 'Hemoglobin, platelets, WBC if abnormal', visibleWhen: { field: 'cbc_reviewed', operator: 'truthy' } },
+        { key: 'coagulation_reviewed', label: 'Coagulation Profile Reviewed', type: 'checkbox',
+          readinessItem: { itemName: 'Coagulation profile reviewed', category: 'investigation', responsibleRole: 'anesthesiologist', slaHours: 12 } },
+        { key: 'coagulation_abnormal', label: 'Coagulation Abnormal Findings?', type: 'text', placeholder: 'PT, INR, aPTT if abnormal', visibleWhen: { field: 'coagulation_reviewed', operator: 'truthy' } },
+        { key: 'ecg_reviewed', label: 'ECG Reviewed (if >40 years or indicated)', type: 'checkbox',
+          readinessItem: { itemName: 'ECG reviewed', category: 'investigation', responsibleRole: 'anesthesiologist', slaHours: 12 } },
+        { key: 'ecg_abnormal', label: 'ECG Abnormal Findings?', type: 'text', placeholder: 'Arrhythmias, ischemic changes, etc.', visibleWhen: { field: 'ecg_reviewed', operator: 'truthy' } },
+        { key: 'chest_xray_reviewed', label: 'Chest X-Ray Reviewed (if indicated)', type: 'checkbox' },
+        { key: 'cxr_abnormal', label: 'CXR Abnormal Findings?', type: 'text', placeholder: 'Consolidation, effusion, cardiomegaly, etc.', visibleWhen: { field: 'chest_xray_reviewed', operator: 'truthy' } },
+        { key: 'other_investigations', label: 'Other Investigations Reviewed', type: 'textarea', placeholder: 'E.g. blood sugar, renal function, liver function' },
+      ],
+    },
+    {
+      id: 'anesthesia_plan',
+      title: 'Anesthesia Plan & Clearance',
+      description: 'Anesthesia strategy and fitness assessment.',
       fields: [
         { key: 'asa_grade', label: 'ASA Physical Status', type: 'select', validation: { required: true }, options: [
-          { value: '1', label: 'ASA I — Healthy' }, { value: '2', label: 'ASA II — Mild systemic disease' },
-          { value: '3', label: 'ASA III — Severe systemic disease' }, { value: '4', label: 'ASA IV — Life-threatening' },
+          { value: '1', label: 'ASA I — Healthy' },
+          { value: '2', label: 'ASA II — Mild systemic disease' },
+          { value: '3', label: 'ASA III — Severe systemic disease' },
+          { value: '4', label: 'ASA IV — Life-threatening disease' },
+          { value: '5', label: 'ASA V — Moribund, not expected to survive 24h' },
         ], width: 'half' },
         { key: 'anesthesia_plan', label: 'Anesthesia Plan', type: 'select', validation: { required: true }, options: [
-          { value: 'general', label: 'General' }, { value: 'spinal', label: 'Spinal' },
-          { value: 'epidural', label: 'Epidural' }, { value: 'regional', label: 'Regional Block' },
-          { value: 'local', label: 'Local' }, { value: 'sedation', label: 'IV Sedation' },
+          { value: 'general', label: 'General Anesthesia (with intubation)' },
+          { value: 'general_lma', label: 'General Anesthesia (with LMA)' },
+          { value: 'spinal', label: 'Spinal Anesthesia' },
+          { value: 'epidural', label: 'Epidural' },
+          { value: 'regional_block', label: 'Regional Block' },
+          { value: 'local', label: 'Local Anesthesia' },
+          { value: 'sedation', label: 'IV Sedation' },
+          { value: 'combined', label: 'Combined (e.g. GA + Regional)' },
         ], width: 'half' },
-        { key: 'airway_assessment', label: 'Airway Assessment', type: 'select', options: [
-          { value: 'normal', label: 'Normal' }, { value: 'anticipated_difficult', label: 'Anticipated Difficult' },
-        ], width: 'half' },
-        { key: 'mallampati', label: 'Mallampati Grade', type: 'select', options: [
-          { value: '1', label: 'Grade I' }, { value: '2', label: 'Grade II' },
-          { value: '3', label: 'Grade III' }, { value: '4', label: 'Grade IV' },
-        ], width: 'half' },
-        { key: 'investigations_reviewed', label: 'All investigations reviewed', type: 'checkbox', validation: { required: true } },
-        { key: 'fit_for_anesthesia', label: 'Patient fit for anesthesia', type: 'checkbox', validation: { required: true },
-          readinessItem: { itemName: 'PAC clearance — fit for anesthesia', category: 'clearance', responsibleRole: 'anesthesiologist', slaHours: 24 } },
-        { key: 'special_precautions', label: 'Special Precautions / Instructions', type: 'textarea' },
-        { key: 'pre_op_orders', label: 'Pre-Op Orders', type: 'textarea', placeholder: 'NPO timing, pre-medication, etc.' },
+        { key: 'special_precautions', label: 'Special Precautions / Considerations', type: 'textarea', placeholder: 'E.g. difficult airway management plan, aspiration precautions, positioning concerns, special monitoring' },
+        { key: 'preop_orders', label: 'Pre-Op Orders', type: 'textarea', placeholder: 'Premedication, NPO timing, specific instructions', validation: { maxLength: 1000 } },
+        { key: 'fit_for_anesthesia', label: 'Patient FIT FOR ANESTHESIA', type: 'checkbox', validation: { required: true },
+          readinessItem: { itemName: 'PAC clearance — fit for anesthesia', category: 'clearance', responsibleRole: 'anesthesiologist', slaHours: 4, description: 'Anesthesiologist has cleared patient for planned anesthesia' } },
+        { key: 'pac_clearance_date', label: 'PAC Clearance Date & Time', type: 'datetime', validation: { required: true }, width: 'half' },
+        { key: 'anesthesiologist_name', label: 'Anesthesiologist Name', type: 'text', validation: { required: true }, width: 'half' },
+        { key: 'pac_notes', label: 'Additional Notes', type: 'textarea', placeholder: 'Any other relevant information for the surgical team' },
       ],
     },
   ],
