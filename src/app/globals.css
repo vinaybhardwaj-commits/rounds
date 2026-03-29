@@ -33,8 +33,30 @@ body {
 .badge-decision { background-color: var(--even-orange); color: white; }
 .badge-lead { background-color: var(--even-purple); color: white; }
 
+/* Mobile-first utilities */
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0); }
+.safe-top { padding-top: env(safe-area-inset-top, 0); }
+
+/* Prevent iOS bounce scrolling on chat containers */
+.chat-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* Message composer auto-resize */
+textarea.composer {
+  field-sizing: content;
+  min-height: 36px;
+  max-height: 128px;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Hide scrollbar on mobile for cleaner look */
+@media (max-width: 640px) {
+  ::-webkit-scrollbar { width: 0; }
+}
