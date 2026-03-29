@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Building2, Upload, Shield, UserCheck, Calendar, AlertTriangle } from 'lucide-react';
+import { Users, Building2, Upload, Shield, UserCheck, Calendar, AlertTriangle, Activity } from 'lucide-react';
 import Link from 'next/link';
 
 interface Stats {
@@ -10,10 +10,11 @@ interface Stats {
   pending: number;
   rosterEntries: number;
   openEscalations: number;
+  activeAdmissions: number;
 }
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState<Stats>({ profiles: 0, departments: 0, pending: 0, rosterEntries: 0, openEscalations: 0 });
+  const [stats, setStats] = useState<Stats>({ profiles: 0, departments: 0, pending: 0, rosterEntries: 0, openEscalations: 0, activeAdmissions: 0 });
 
   useEffect(() => {
     fetch('/api/profiles?limit=1')
@@ -35,6 +36,10 @@ export default function AdminDashboard() {
     fetch('/api/escalation/log?resolved=false')
       .then(r => r.json())
       .then(d => { if (d.success) setStats(s => ({ ...s, openEscalations: d.data?.length || 0 })); })
+      .catch(() => {});
+    fetch('/api/admission-tracker')
+      .then(r => r.json())
+      .then(d => { if (d.success) setStats(s => ({ ...s, activeAdmissions: d.data?.length || 0 })); })
       .catch(() => {});
   }, []);
 
@@ -105,6 +110,16 @@ export default function AdminDashboard() {
             </div>
             {stats.rosterEntries > 0 && (
               <span className="ml-auto bg-teal-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">{stats.rosterEntries}</span>
+            )}
+          </Link>
+          <Link href="/admin/admissions" className="flex items-center gap-3 px-4 py-3 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
+            <Activity size={18} className="text-even-blue" />
+            <div>
+              <div className="text-sm font-medium">Admission Tracker</div>
+              <div className="text-xs text-gray-500">Active admissions, surgery schedule, discharge readiness</div>
+            </div>
+            {stats.activeAdmissions > 0 && (
+              <span className="ml-auto bg-even-blue text-white text-xs font-bold px-2 py-0.5 rounded-full">{stats.activeAdmissions}</span>
             )}
           </Link>
           <Link href="/admin/escalations" className="flex items-center gap-3 px-4 py-3 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">

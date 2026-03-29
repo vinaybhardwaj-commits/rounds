@@ -1,6 +1,6 @@
 # Rounds Build Order — Status Tracker
 
-**Last updated**: 29 March 2026 (Step 5.2 complete)
+**Last updated**: 29 March 2026 (Step 5.3 complete)
 **Repo**: https://github.com/vinaybhardwaj-commits/rounds
 **Live**: https://rounds-sqxh.vercel.app
 **Latest commit**: `19a8f7c` — Step 5.1 Patient Thread + Channel Auto-Creation
@@ -216,11 +216,20 @@
 - Added `SHIFT_TYPE_LABELS`, `DAY_LABELS` constants to `types/index.ts`
 - On-duty resolution (`/api/duty-roster/resolve`) already works — ready for escalation engine (Step 5.3)
 
-### Step 5.3 — Escalation Engine
-- Auto-escalate overdue readiness items
-- Escalation chain: responsible → department head → on-duty → ops broadcast
-- Escalation log entries created automatically
-- Cron job for periodic overdue checks
+### Step 5.3 — Escalation Engine ✅
+**Commit**: `99677d5` Step 5.3
+- `POST /api/escalation/cron`: Automated escalation runner with 4-level chain
+  - Level 1: Notify in patient thread channel (overdue warning)
+  - Level 2: Escalate to department head
+  - Level 3: Escalate to on-duty staff (via duty roster resolve)
+  - Level 4+: Broadcast to emergency-escalation cross-functional channel
+  - 60-minute cooldown between re-escalation of same item
+  - Auth: CRON_SECRET env var or super_admin session
+- `GET/PATCH /api/escalation/log`: List escalations (filter by resolved/source_type), resolve with notes
+- `/admin/escalations` page: card-based list with level badges, "Run Escalation Check" button, resolve modal
+- New DB helpers: `markReadinessItemEscalated()`, `listEscalations()`
+- Admin dashboard: escalation log quick action with open count badge
+- `EscalationLogEntry` type updated with full DB fields (resolved, patient_thread_id, etc.)
 
 ---
 

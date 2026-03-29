@@ -287,34 +287,99 @@ export interface EscalationLogEntry {
 // ADMISSION TRACKER
 // ============================================
 
-export type RoomCategory = 'general' | 'semi_private' | 'private' | 'suite';
+export type RoomCategory = 'general' | 'semi_private' | 'private' | 'suite' | 'icu' | 'nicu';
 export type FinancialCategory = 'cash' | 'insurance' | 'credit';
-export type DepositStatus = 'pending' | 'collected' | 'waived';
-export type PreAuthStatus = 'not_required' | 'pending' | 'approved' | 'denied';
+export type DepositStatus = 'pending' | 'partial' | 'collected' | 'waived';
+export type PreAuthStatus = 'not_required' | 'pending' | 'approved' | 'denied' | 'extension_pending';
 export type SurgeryReadiness = 'not_started' | 'in_progress' | 'ready' | 'blocked';
-export type PatientStatus = 'admitted' | 'pre_op' | 'in_surgery' | 'post_op' | 'discharged';
+export type PatientStatus = 'admitted' | 'pre_op' | 'in_surgery' | 'post_op' | 'discharge_planned' | 'discharged';
+export type DischargeType = 'normal' | 'dama' | 'lama' | 'transfer' | 'death';
+
+export const PATIENT_STATUS_LABELS: Record<PatientStatus, string> = {
+  admitted: 'Admitted',
+  pre_op: 'Pre-Op',
+  in_surgery: 'In Surgery',
+  post_op: 'Post-Op',
+  discharge_planned: 'Discharge Planned',
+  discharged: 'Discharged',
+};
+
+export const PATIENT_STATUS_COLORS: Record<PatientStatus, string> = {
+  admitted: '#0055FF',
+  pre_op: '#F97316',
+  in_surgery: '#EF4444',
+  post_op: '#8B5CF6',
+  discharge_planned: '#22C55E',
+  discharged: '#6B7280',
+};
+
+export const SURGERY_READINESS_LABELS: Record<SurgeryReadiness, string> = {
+  not_started: 'Not Started',
+  in_progress: 'In Progress',
+  ready: 'Ready',
+  blocked: 'Blocked',
+};
+
+export const SURGERY_READINESS_COLORS: Record<SurgeryReadiness, string> = {
+  not_started: '#6B7280',
+  in_progress: '#F97316',
+  ready: '#22C55E',
+  blocked: '#EF4444',
+};
 
 export interface AdmissionTrackerEntry {
   id: string;
-  patient_thread_id: string;
+  patient_thread_id: string | null;
   patient_name: string;
   uhid: string;
   ip_number: string;
+  even_member_id: string | null;
   admission_date: string;
-  planned_surgery_date: string | null;
+  admitted_by: string | null;
+  // Clinical
+  primary_surgeon: string | null;
+  primary_surgeon_id: string | null;
   surgery_name: string | null;
-  primary_surgeon: string;
-  package_name: string | null;
+  planned_surgery_date: string | null;
+  actual_surgery_date: string | null;
+  // Room
   room_number: string | null;
+  bed_number: string | null;
   room_category: RoomCategory;
+  // Financial
   financial_category: FinancialCategory;
+  package_name: string | null;
+  estimated_cost: number | null;
   deposit_status: DepositStatus;
   deposit_amount: number | null;
+  deposit_collected_at: string | null;
+  // Insurance
   pre_auth_status: PreAuthStatus;
+  pre_auth_amount: number | null;
+  tpa_name: string | null;
+  policy_number: string | null;
+  // Clearances
+  financial_counselling_complete: boolean;
+  ot_clearance_complete: boolean;
+  pac_complete: boolean;
+  physician_clearance_required: boolean;
+  physician_clearance_done: boolean;
+  cardiologist_clearance_required: boolean;
+  cardiologist_clearance_done: boolean;
+  // Status
   surgery_readiness: SurgeryReadiness;
   current_status: PatientStatus;
-  discharge_date: string | null;
+  // Discharge
+  discharge_order_at: string | null;
+  discharge_completed_at: string | null;
   discharge_tat_minutes: number | null;
+  discharge_type: DischargeType | null;
+  // Coordination
+  ip_coordinator_id: string | null;
+  ip_coordinator_name?: string;
+  // Joined fields
+  getstream_channel_id?: string;
+  // Metadata
   created_at: string;
   updated_at: string;
 }

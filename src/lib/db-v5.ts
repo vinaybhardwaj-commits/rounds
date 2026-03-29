@@ -443,6 +443,72 @@ export async function listUnresolvedEscalations(limit = 50) {
 // ADMISSION TRACKER
 // ============================================
 
+export interface CreateAdmissionInput {
+  patient_thread_id?: string;
+  patient_name: string;
+  uhid: string;
+  ip_number: string;
+  even_member_id?: string;
+  admission_date: string;
+  admitted_by?: string;
+  primary_surgeon?: string;
+  primary_surgeon_id?: string;
+  surgery_name?: string;
+  planned_surgery_date?: string;
+  room_number?: string;
+  bed_number?: string;
+  room_category?: string;
+  financial_category?: string;
+  package_name?: string;
+  estimated_cost?: number;
+  deposit_status?: string;
+  deposit_amount?: number;
+  pre_auth_status?: string;
+  tpa_name?: string;
+  policy_number?: string;
+  ip_coordinator_id?: string;
+}
+
+export async function createAdmissionTracker(input: CreateAdmissionInput) {
+  const rows = await query<{ id: string }>(
+    `INSERT INTO admission_tracker (
+      patient_thread_id, patient_name, uhid, ip_number, even_member_id,
+      admission_date, admitted_by, primary_surgeon, primary_surgeon_id,
+      surgery_name, planned_surgery_date, room_number, bed_number,
+      room_category, financial_category, package_name, estimated_cost,
+      deposit_status, deposit_amount, pre_auth_status, tpa_name,
+      policy_number, ip_coordinator_id
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+    RETURNING id`,
+    [
+      input.patient_thread_id || null,
+      input.patient_name,
+      input.uhid,
+      input.ip_number,
+      input.even_member_id || null,
+      input.admission_date,
+      input.admitted_by || null,
+      input.primary_surgeon || null,
+      input.primary_surgeon_id || null,
+      input.surgery_name || null,
+      input.planned_surgery_date || null,
+      input.room_number || null,
+      input.bed_number || null,
+      input.room_category || 'general',
+      input.financial_category || 'insurance',
+      input.package_name || null,
+      input.estimated_cost || null,
+      input.deposit_status || 'pending',
+      input.deposit_amount || null,
+      input.pre_auth_status || 'not_required',
+      input.tpa_name || null,
+      input.policy_number || null,
+      input.ip_coordinator_id || null,
+    ]
+  );
+  return rows[0];
+}
+
 export async function listActiveAdmissions() {
   return query(
     `SELECT at2.*,
