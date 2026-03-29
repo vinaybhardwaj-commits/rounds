@@ -116,6 +116,7 @@ export async function updatePatientThread(
     current_stage: PatientStage;
     uhid: string;
     ip_number: string;
+    getstream_channel_id: string;
     admission_date: string;
     discharge_date: string;
     planned_surgery_date: string;
@@ -617,6 +618,47 @@ export async function deleteDutyRosterEntry(id: string) {
 // ============================================
 // OVERDUE READINESS ITEMS (for cron escalation)
 // ============================================
+
+// ============================================
+// STAFF LOOKUP (for patient channel auto-add)
+// ============================================
+
+/**
+ * Find active profile IDs by role, optionally in a specific department.
+ */
+export async function findProfilesByRole(
+  roles: string[],
+  departmentId?: string | null
+): Promise<{ id: string; full_name: string; role: string }[]> {
+  if (roles.length === 0) return [];
+
+  const placeholders = roles.map((_, i) => `$${i + 1}`).join(',');
+  const params: unknown[] = [...roles];
+  let deptClause = '';
+
+  if (departmentId) {
+    deptClause = ` AND department_id = $${params.length + 1}`;
+    params.push(departmentId);
+  }
+
+  return query<{ id: string; full_name: string; role: string }>(
+    `SELECT id, full_name, role FROM profiles
+     WHERE role IN (${placeholders}) AND status = 'active'${deptClause}
+     ORDER BY role, full_name`,
+    params
+  );
+}
+
+/**
+ * Get department head profile ID for a given department.
+ */
+export async function getDepartmentHead(departmentId: string): Promise<string | null> {
+  const row = await queryOne<{ head_profile_id: string | null }>(
+    `SELECT head_profile_id FROM departments WHERE id = $1`,
+    [departmentId]
+  );
+  return row?.head_profile_id || null;
+}
 
 export async function getOverdueReadinessItems() {
   return query(

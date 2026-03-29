@@ -10,7 +10,7 @@ const ADMIN_ROLES = ['super_admin', 'department_head'];
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const user = await getCurrentUser();
@@ -25,7 +25,7 @@ export async function DELETE(
       );
     }
 
-    const { id } = await params;
+    const { id } = params;
     const deleted = await deleteDutyRosterEntry(id);
 
     if (!deleted) {

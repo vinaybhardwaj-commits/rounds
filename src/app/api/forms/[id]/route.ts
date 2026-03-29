@@ -8,7 +8,7 @@ import { getFormSubmission, listReadinessItems, getReadinessAggregate } from '@/
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const user = await getCurrentUser();
@@ -16,7 +16,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = await params;
+    const { id } = params;
     const form = await getFormSubmission(id);
     if (!form) {
       return NextResponse.json({ success: false, error: 'Form submission not found' }, { status: 404 });

@@ -122,6 +122,65 @@ export async function sendSystemMessage(
 }
 
 /**
+ * Create a patient-thread channel in GetStream with custom data.
+ * Returns the channel ID (used to store in DB).
+ */
+export async function createPatientChannel(input: {
+  patientThreadId: string;
+  patientName: string;
+  uhid?: string | null;
+  currentStage: string;
+  departmentId?: string | null;
+  createdById: string;
+  memberIds: string[];
+}): Promise<string> {
+  const client = getStreamServerClient();
+  const channelId = `pt-${input.patientThreadId.slice(0, 8)}`;
+
+  const channel = client.channel('patient-thread', channelId, {
+    name: input.patientName,
+    description: `Patient thread for ${input.patientName}${input.uhid ? ` (UHID: ${input.uhid})` : ''}`,
+    created_by_id: input.createdById,
+    // Custom data for the channel
+    patient_thread_id: input.patientThreadId,
+    patient_name: input.patientName,
+    uhid: input.uhid || null,
+    current_stage: input.currentStage,
+    department_id: input.departmentId || null,
+    members: [input.createdById, ...input.memberIds],
+  });
+
+  await channel.create();
+  return channelId;
+}
+
+/**
+ * Update a patient channel's custom data (e.g., on stage transition).
+ */
+export async function updatePatientChannel(
+  channelId: string,
+  data: Record<string, unknown>
+): Promise<void> {
+  const client = getStreamServerClient();
+  const channel = client.channel('patient-thread', channelId);
+  await channel.updatePartial({ set: data });
+}
+
+/**
+ * Add multiple users to a channel at once.
+ */
+export async function addUsersToChannel(
+  channelType: string,
+  channelId: string,
+  userIds: string[]
+): Promise<void> {
+  if (userIds.length === 0) return;
+  const client = getStreamServerClient();
+  const channel = client.channel(channelType, channelId);
+  await channel.addMembers(userIds);
+}
+
+/**
  * Auto-join a user to their default channels on login:
  * 1. Their department channel (if department_slug provided)
  * 2. The hospital-broadcast channel

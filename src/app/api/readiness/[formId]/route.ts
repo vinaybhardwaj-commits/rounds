@@ -9,7 +9,7 @@ import { listReadinessItems, getReadinessAggregate } from '@/lib/db-v5';
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: Promise<{ formId: string }> }
+  { params }: { params: { formId: string } }
 ) {
   try {
     const user = await getCurrentUser();
@@ -17,7 +17,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { formId } = await params;
+    const { formId } = params;
     const items = await listReadinessItems(formId);
     const aggregate = await getReadinessAggregate(formId);
 

@@ -10,7 +10,7 @@ import type { ReadinessStatus } from '@/types';
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ itemId: string }> }
+  { params }: { params: { itemId: string } }
 ) {
   try {
     const user = await getCurrentUser();
@@ -18,7 +18,7 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { itemId } = await params;
+    const { itemId } = params;
     const body = await request.json();
     const { status, flagged_reason, notes } = body;
 
