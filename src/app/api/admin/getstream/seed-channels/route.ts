@@ -71,6 +71,7 @@ export async function POST() {
 
     const client = getStreamServerClient();
     const results: string[] = [];
+    const callerUserId = user.id; // Add the calling admin to all channels
 
     // 1. Fetch all active departments from our DB
     const departments = await sql`
@@ -88,12 +89,17 @@ export async function POST() {
           department_id: dept.id as string,
         });
         await channel.create();
+        await channel.addMembers([callerUserId]);
         results.push(`Department channel: ${dept.name} (${dept.slug})`);
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        // "already exists" is fine — idempotent
-        if (msg.includes('already exists')) {
-          results.push(`Department channel exists: ${dept.name} (${dept.slug})`);
+        // "already exists" is fine — idempotent. Still add the caller as member.
+        if (msg.includes('already exists') || msg.includes('already_exists')) {
+          try {
+            const existing = client.channel('department', dept.slug as string);
+            await existing.addMembers([callerUserId]);
+          } catch { /* member may already be added */ }
+          results.push(`Department channel exists: ${dept.name} (${dept.slug}) — member added`);
         } else {
           results.push(`Error creating ${dept.slug}: ${msg}`);
         }
@@ -109,11 +115,16 @@ export async function POST() {
           created_by_id: 'rounds-system',
         });
         await channel.create();
+        await channel.addMembers([callerUserId]);
         results.push(`Cross-functional channel: ${cf.name}`);
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        if (msg.includes('already exists')) {
-          results.push(`Cross-functional channel exists: ${cf.name}`);
+        if (msg.includes('already exists') || msg.includes('already_exists')) {
+          try {
+            const existing = client.channel('cross-functional', cf.id);
+            await existing.addMembers([callerUserId]);
+          } catch { /* member may already be added */ }
+          results.push(`Cross-functional channel exists: ${cf.name} — member added`);
         } else {
           results.push(`Error creating ${cf.id}: ${msg}`);
         }
@@ -128,11 +139,16 @@ export async function POST() {
         created_by_id: 'rounds-system',
       });
       await broadcastChannel.create();
+      await broadcastChannel.addMembers([callerUserId]);
       results.push(`Broadcast channel: ${OPS_BROADCAST.name}`);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      if (msg.includes('already exists')) {
-        results.push(`Broadcast channel exists: ${OPS_BROADCAST.name}`);
+      if (msg.includes('already exists') || msg.includes('already_exists')) {
+        try {
+          const existing = client.channel('ops-broadcast', OPS_BROADCAST.id);
+          await existing.addMembers([callerUserId]);
+        } catch { /* member may already be added */ }
+        results.push(`Broadcast channel exists: ${OPS_BROADCAST.name} — member added`);
       } else {
         results.push(`Error creating broadcast: ${msg}`);
       }
