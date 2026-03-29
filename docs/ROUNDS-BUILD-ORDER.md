@@ -225,11 +225,26 @@
 - Surgery schedule view
 - Discharge readiness scoring
 
-### Step 6.2 — 3-Tab Sidebar (Chats / Updates / Patients)
-- Replace single channel list with tabbed navigation
-- Chats: existing channel sidebar
-- Updates: form submissions, escalations, stage transitions
-- Patients: active patient threads with status badges
+### Step 6.2 — UX Redesign (replaces old 6.2 "3-Tab Sidebar")
+**Decided**: 29 March 2026 after V's live testing revealed fundamental usability gaps.
+**Build after**: Step 6.1 (all backend capabilities exist)
+**Build before**: Step 7.1 (PWA/alpha release)
+
+Redesign scope:
+1. **Bottom Tab Bar** — Patients | Chat | Tasks | Me (WhatsApp-like pattern)
+2. **Patients Tab** — Active patient list with stage badges, FAB for creating new threads, Patient Detail View with stage progress bar + "Advance Stage" button + forms section
+3. **Slash Commands** — Type "/" in chat for context-aware form menu, opens as slide-in panel (full-width on mobile)
+4. **Actionable System Messages** — Stage transition cards with "View Patient" / "Fill Form" buttons
+5. **Stage-Aware Nudges** — Banner in patient channels suggesting next required form
+6. **Empty States** — Self-explanatory screens with instructions (no training manual)
+7. **Chat Touch-Ups** — Patient info header on patient channels, channel descriptions, clearer form button
+
+Key constraints:
+- Self-explanatory from first use (no training)
+- Mobile-first (Richa, nurses)
+- Hospital staff are busy — dead-simple UI
+- Any staff member can create patient threads
+- Stage transitions: both form-triggered auto-advance AND manual button
 
 ---
 

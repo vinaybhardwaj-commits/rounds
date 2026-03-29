@@ -181,6 +181,29 @@ export async function addUsersToChannel(
 }
 
 /**
+ * Send a shift handoff notification to a department channel.
+ * Posts a system message with on-duty info for the current shift.
+ */
+export async function sendShiftHandoffMessage(
+  departmentSlug: string,
+  staffName: string,
+  role: string,
+  shiftType: string,
+  shiftStart: string | null,
+  shiftEnd: string | null
+): Promise<void> {
+  const roleLabel = role.replace(/_/g, ' ');
+  const timeStr = shiftStart && shiftEnd ? ` (${shiftStart}–${shiftEnd})` : '';
+  const shiftLabel = shiftType.replace(/_/g, ' ');
+
+  await sendSystemMessage(
+    'department',
+    departmentSlug,
+    `🔔 Shift Handoff: ${staffName} is now on duty as ${roleLabel} — ${shiftLabel} shift${timeStr}`
+  );
+}
+
+/**
  * Auto-join a user to their default channels on login:
  * 1. Their department channel (if department_slug provided)
  * 2. The hospital-broadcast channel

@@ -317,6 +317,18 @@ export interface AdmissionTrackerEntry {
 
 export type ShiftType = 'day' | 'evening' | 'night' | 'on_call' | 'visiting';
 
+export const SHIFT_TYPE_LABELS: Record<ShiftType, string> = {
+  day: 'Day',
+  evening: 'Evening',
+  night: 'Night',
+  on_call: 'On Call',
+  visiting: 'Visiting',
+};
+
+export const DAY_LABELS: Record<number, string> = {
+  0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat',
+};
+
 export interface DutyRosterEntry {
   id: string;
   user_id: string;
@@ -326,10 +338,13 @@ export interface DutyRosterEntry {
   role: string;
   shift_type: ShiftType;
   day_of_week: number[]; // 0=Sunday ... 6=Saturday
+  shift_start_time: string | null; // HH:MM format
+  shift_end_time: string | null;   // HH:MM format
   effective_from: string;
   effective_to: string | null;
   is_override: boolean;
   override_reason: string | null;
+  override_date: string | null;    // specific date for one-off overrides
   created_by: string;
   created_at: string;
 }

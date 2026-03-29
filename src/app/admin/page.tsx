@@ -1,17 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Building2, Upload, Shield, UserCheck } from 'lucide-react';
+import { Users, Building2, Upload, Shield, UserCheck, Calendar } from 'lucide-react';
 import Link from 'next/link';
 
 interface Stats {
   profiles: number;
   departments: number;
   pending: number;
+  rosterEntries: number;
 }
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState<Stats>({ profiles: 0, departments: 0, pending: 0 });
+  const [stats, setStats] = useState<Stats>({ profiles: 0, departments: 0, pending: 0, rosterEntries: 0 });
 
   useEffect(() => {
     fetch('/api/profiles?limit=1')
@@ -26,13 +27,17 @@ export default function AdminDashboard() {
       .then(r => r.json())
       .then(d => { if (d.success) setStats(s => ({ ...s, pending: d.data.length })); })
       .catch(() => {});
+    fetch('/api/duty-roster?active_only=true')
+      .then(r => r.json())
+      .then(d => { if (d.success) setStats(s => ({ ...s, rosterEntries: d.data?.length || 0 })); })
+      .catch(() => {});
   }, []);
 
   const cards = [
     { label: 'Pending Approvals', value: stats.pending, icon: UserCheck, href: '/admin/approvals', color: 'bg-amber-500' },
     { label: 'Total Users', value: stats.profiles, icon: Users, href: '/admin/users', color: 'bg-even-blue' },
     { label: 'Departments', value: stats.departments, icon: Building2, href: '/admin/departments', color: 'bg-even-navy' },
-    { label: 'CSV Import', value: 'Import', icon: Upload, href: '/admin/profiles/import', color: 'bg-green-600' },
+    { label: 'Duty Roster', value: stats.rosterEntries, icon: Calendar, href: '/admin/duty-roster', color: 'bg-teal-600' },
   ];
 
   return (
@@ -86,6 +91,16 @@ export default function AdminDashboard() {
               <div className="text-sm font-medium">Manage Users</div>
               <div className="text-xs text-gray-500">View all users, roles, and account status</div>
             </div>
+          </Link>
+          <Link href="/admin/duty-roster" className="flex items-center gap-3 px-4 py-3 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors">
+            <Calendar size={18} className="text-teal-600" />
+            <div>
+              <div className="text-sm font-medium">Duty Roster</div>
+              <div className="text-xs text-gray-500">Assign staff to shifts, manage overrides, resolve on-duty</div>
+            </div>
+            {stats.rosterEntries > 0 && (
+              <span className="ml-auto bg-teal-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">{stats.rosterEntries}</span>
+            )}
           </Link>
         </div>
       </div>
