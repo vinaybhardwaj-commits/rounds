@@ -28,7 +28,8 @@ import type { Channel, MessageResponse } from 'stream-chat';
 import { useChatContext } from '@/providers/ChatProvider';
 import { MessageTypeBadge } from './MessageTypeBadge';
 import FormCard from '@/components/forms/FormCard';
-import type { MessageType, MessagePriority, FormType } from '@/types';
+import type { MessageType, MessagePriority, FormType, PatientStage } from '@/types';
+import { FORM_TYPE_LABELS, FORMS_BY_STAGE } from '@/lib/form-registry';
 
 // --- Types ---
 
@@ -99,6 +100,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
   const [loading, setLoading] = useState(false);
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [showSlashMenu, setShowSlashMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -396,27 +398,109 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                 hour12: true,
               });
 
-              // System message
+              // System message — enhanced with action buttons
               if (isSystem) {
+                const isStageTransition = msg.text.includes('Stage transition');
+                const isEscalation = msg.text.includes('Escalation') || msg.text.includes('escalation');
+                const isFormMention = msg.text.includes('form') || msg.text.includes('Form');
+                const isShiftHandoff = msg.text.includes('shift') || msg.text.includes('handoff');
+
+                // Extract patient_thread_id from channel for action links
+                const ptId = (channel.data as Record<string, unknown>)?.patient_thread_id as string | undefined;
+
                 return (
                   <div
                     key={msg.id}
-                    className="flex items-start gap-2 px-3 py-2 bg-blue-50 rounded-lg border border-blue-100"
+                    className={`px-3 py-2.5 rounded-lg border ${
+                      isEscalation
+                        ? 'bg-red-50 border-red-100'
+                        : isStageTransition
+                        ? 'bg-purple-50 border-purple-100'
+                        : 'bg-blue-50 border-blue-100'
+                    }`}
                   >
-                    <div className="w-6 h-6 bg-even-blue rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <span className="text-[10px] font-bold text-white">R</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-even-blue">
-                          Rounds System
-                        </span>
-                        {msg.message_type !== 'chat' && (
-                          <MessageTypeBadge type={msg.message_type} />
-                        )}
-                        <span className="text-[10px] text-gray-400">{time}</span>
+                    <div className="flex items-start gap-2">
+                      <div
+                        className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                          isEscalation
+                            ? 'bg-red-500'
+                            : isStageTransition
+                            ? 'bg-purple-500'
+                            : 'bg-even-blue'
+                        }`}
+                      >
+                        <span className="text-[10px] font-bold text-white">R</span>
                       </div>
-                      <p className="text-sm text-gray-700 mt-0.5">{msg.text}</p>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-xs font-semibold ${
+                              isEscalation
+                                ? 'text-red-600'
+                                : isStageTransition
+                                ? 'text-purple-600'
+                                : 'text-even-blue'
+                            }`}
+                          >
+                            Rounds System
+                          </span>
+                          {msg.message_type !== 'chat' && (
+                            <MessageTypeBadge type={msg.message_type} />
+                          )}
+                          <span className="text-[10px] text-gray-400">{time}</span>
+                        </div>
+                        <p className="text-sm text-gray-700 mt-0.5">{msg.text}</p>
+
+                        {/* Action buttons */}
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {isStageTransition && ptId && (
+                            <button
+                              onClick={() => {
+                                // Navigate to forms page with patient context
+                                const params = new URLSearchParams();
+                                if (channel.type) params.set('channel_type', channel.type);
+                                if (channel.id) params.set('channel_id', channel.id);
+                                params.set('patient_id', ptId);
+                                router.push(`/forms?${params.toString()}`);
+                              }}
+                              className="text-[11px] px-2.5 py-1 bg-white rounded-full border border-purple-200 text-purple-600 font-medium hover:bg-purple-50 transition-colors"
+                            >
+                              Fill Stage Form
+                            </button>
+                          )}
+                          {isEscalation && (
+                            <button
+                              onClick={() => {
+                                // Navigate to escalation log
+                                router.push('/admin/escalations');
+                              }}
+                              className="text-[11px] px-2.5 py-1 bg-white rounded-full border border-red-200 text-red-600 font-medium hover:bg-red-50 transition-colors"
+                            >
+                              View Escalations
+                            </button>
+                          )}
+                          {(isFormMention || isStageTransition) && ptId && (
+                            <button
+                              onClick={() => {
+                                router.push(`/forms?patient_id=${ptId}`);
+                              }}
+                              className="text-[11px] px-2.5 py-1 bg-white rounded-full border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 transition-colors"
+                            >
+                              View Forms
+                            </button>
+                          )}
+                          {isShiftHandoff && (
+                            <button
+                              onClick={() => {
+                                router.push('/admin/duty-roster');
+                              }}
+                              className="text-[11px] px-2.5 py-1 bg-white rounded-full border border-blue-200 text-blue-600 font-medium hover:bg-blue-50 transition-colors"
+                            >
+                              Duty Roster
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
@@ -604,16 +688,55 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
           >
             <Paperclip size={18} />
           </button>
-          <textarea
-            ref={inputRef}
-            value={messageText}
-            onChange={(e) => setMessageText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={`Message #${channelName.toLowerCase()}`}
-            rows={1}
-            className="flex-1 resize-none bg-gray-100 rounded-lg px-3 py-2 text-sm outline-none focus:bg-gray-50 focus:ring-1 focus:ring-even-blue/30 transition-colors max-h-32"
-            style={{ minHeight: '36px' }}
-          />
+          <div className="flex-1 relative">
+            {/* Slash command menu */}
+            {showSlashMenu && channel && (
+              <SlashCommandMenu
+                channel={channel}
+                onSelect={(formType, patientId) => {
+                  setShowSlashMenu(false);
+                  setMessageText('');
+                  const params = new URLSearchParams();
+                  params.set('type', formType);
+                  if (patientId) params.set('patient', patientId);
+                  if (channel.type) params.set('channel_type', channel.type);
+                  if (channel.id) params.set('channel_id', channel.id);
+                  router.push(`/forms/new?${params.toString()}`);
+                }}
+                onClose={() => {
+                  setShowSlashMenu(false);
+                  setMessageText('');
+                }}
+              />
+            )}
+            <textarea
+              ref={inputRef}
+              value={messageText}
+              onChange={(e) => {
+                const val = e.target.value;
+                setMessageText(val);
+                // Show slash menu when user types "/"
+                if (val === '/') {
+                  setShowSlashMenu(true);
+                } else if (!val.startsWith('/')) {
+                  setShowSlashMenu(false);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (showSlashMenu && e.key === 'Escape') {
+                  setShowSlashMenu(false);
+                  setMessageText('');
+                  e.preventDefault();
+                  return;
+                }
+                handleKeyDown(e);
+              }}
+              placeholder={`Message #${channelName.toLowerCase()} — type / for forms`}
+              rows={1}
+              className="w-full resize-none bg-gray-100 rounded-lg px-3 py-2 text-sm outline-none focus:bg-gray-50 focus:ring-1 focus:ring-even-blue/30 transition-colors max-h-32"
+              style={{ minHeight: '36px' }}
+            />
+          </div>
           <button
             onClick={sendMessage}
             disabled={!messageText.trim() || sending}
@@ -626,6 +749,100 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
             <Send size={18} />
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Slash Command Menu ──
+function SlashCommandMenu({
+  channel,
+  onSelect,
+  onClose,
+}: {
+  channel: Channel;
+  onSelect: (formType: FormType, patientId?: string) => void;
+  onClose: () => void;
+}) {
+  const channelData = channel.data as Record<string, unknown> | undefined;
+  const currentStage = (channelData?.current_stage as PatientStage) || null;
+  const patientId = (channelData?.patient_thread_id as string) || undefined;
+  const isPatientThread = channel.type === 'patient-thread';
+
+  // Build form list: stage-specific + any-stage
+  const forms: FormType[] = [];
+  if (isPatientThread && currentStage) {
+    const stageForms = FORMS_BY_STAGE[currentStage] || [];
+    const anyForms = FORMS_BY_STAGE['any'] || [];
+    forms.push(...stageForms, ...anyForms);
+  } else {
+    // Not a patient thread — show the general forms
+    const anyForms = FORMS_BY_STAGE['any'] || [];
+    forms.push(...anyForms);
+  }
+
+  // Also show all forms if this is a patient channel (user might need any form)
+  const allForms = Object.keys(FORM_TYPE_LABELS) as FormType[];
+  const extraForms = allForms.filter((f) => !forms.includes(f));
+
+  return (
+    <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto z-20">
+      <div className="px-3 py-2 border-b border-gray-100">
+        <p className="text-xs font-semibold text-gray-500">
+          {isPatientThread && currentStage
+            ? `Forms for ${currentStage.replace('_', ' ').toUpperCase()} stage`
+            : 'Available Forms'}
+        </p>
+      </div>
+      {forms.length > 0 && (
+        <div className="py-1">
+          {forms.map((formType) => (
+            <button
+              key={formType}
+              onClick={() => onSelect(formType, patientId)}
+              className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-left transition-colors"
+            >
+              <ClipboardList size={14} className="text-even-blue shrink-0" />
+              <span className="text-sm text-even-navy">
+                {FORM_TYPE_LABELS[formType]}
+              </span>
+              <span className="ml-auto text-[10px] text-purple-500 font-medium">
+                Stage
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      {isPatientThread && extraForms.length > 0 && (
+        <>
+          <div className="px-3 py-1.5 border-t border-gray-100">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wider">
+              Other Forms
+            </p>
+          </div>
+          <div className="py-1">
+            {extraForms.map((formType) => (
+              <button
+                key={formType}
+                onClick={() => onSelect(formType, patientId)}
+                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-left transition-colors"
+              >
+                <ClipboardList size={14} className="text-gray-400 shrink-0" />
+                <span className="text-sm text-gray-600">
+                  {FORM_TYPE_LABELS[formType]}
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      <div className="px-3 py-2 border-t border-gray-100">
+        <button
+          onClick={onClose}
+          className="text-xs text-gray-400 hover:text-gray-600"
+        >
+          Press Esc to close
+        </button>
       </div>
     </div>
   );

@@ -7,10 +7,11 @@
 // Step 6.2: UX Redesign
 // ============================================
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { ChatProvider } from '@/providers/ChatProvider';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { ChatProvider, useChatContext } from '@/providers/ChatProvider';
 import { ChatShell } from './chat/ChatShell';
 import { PatientsView } from './patients/PatientsView';
+import { PatientDetailView } from './patients/PatientDetailView';
 import { TasksView } from './tasks/TasksView';
 import { ProfileView } from './profile/ProfileView';
 import { BottomTabBar, type TabId } from './layout/BottomTabBar';
@@ -22,14 +23,75 @@ interface AppShellProps {
 }
 
 export function AppShell({ userId, userRole, streamToken }: AppShellProps) {
+  return (
+    <ChatProvider userId={userId} initialStreamToken={streamToken}>
+      <AppShellInner userRole={userRole} />
+    </ChatProvider>
+  );
+}
+
+// ── Inner component (inside ChatProvider so it can use useChatContext) ──
+function AppShellInner({ userRole }: { userRole: string }) {
+  const { client } = useChatContext();
   const [activeTab, setActiveTab] = useState<TabId>('patients');
   const isAdmin = userRole === 'super_admin' || userRole === 'department_head';
 
   // Channel to auto-navigate to in Chat tab
   const [pendingChannelId, setPendingChannelId] = useState<string | null>(null);
 
+  // Patient detail view state
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+
+  // Unread message count for Chat badge
+  const [unreadCount, setUnreadCount] = useState(0);
+
   // Track tab history for back button handling (non-default tabs only)
   const tabHistoryRef = useRef<TabId[]>(['patients']);
+
+  // ── Unread count from GetStream ──
+  useEffect(() => {
+    if (!client) return;
+
+    // Get initial unread count
+    const updateUnread = () => {
+      const user = client.user;
+      if (user) {
+        const total = (user.total_unread_count as number) || 0;
+        setUnreadCount(total);
+      }
+    };
+
+    updateUnread();
+
+    // Listen for unread count changes
+    const handleEvent = (event: { total_unread_count?: number }) => {
+      if (typeof event.total_unread_count === 'number') {
+        setUnreadCount(event.total_unread_count);
+      }
+    };
+
+    client.on('notification.message_new', handleEvent);
+    client.on('notification.mark_read', handleEvent);
+
+    return () => {
+      client.off('notification.message_new', handleEvent);
+      client.off('notification.mark_read', handleEvent);
+    };
+  }, [client]);
+
+  // Clear unread badge when switching to chat tab
+  useEffect(() => {
+    if (activeTab === 'chat' && client) {
+      // GetStream will auto-mark as read when channel is watched
+      // The badge will update via the event listener above
+    }
+  }, [activeTab, client]);
+
+  const badges = useMemo(() => {
+    const b: Partial<Record<TabId, number>> = {};
+    if (unreadCount > 0) b.chat = unreadCount;
+    return b;
+  }, [unreadCount]);
 
   // Handle browser back button: navigate through tab history instead of leaving the app
   useEffect(() => {
@@ -57,49 +119,77 @@ export function AppShell({ userId, userRole, streamToken }: AppShellProps) {
     setPendingChannelId(null);
   }, []);
 
-  // When patient is tapped, switch to chat tab and navigate to their channel
+  // When patient is tapped, open the detail view
+  const handleOpenPatient = useCallback((patient: { id: string }) => {
+    setSelectedPatientId(patient.id);
+  }, []);
+
+  // Close patient detail view
+  const handleBackFromDetail = useCallback(() => {
+    setSelectedPatientId(null);
+  }, []);
+
+  // From detail view: open a channel in Chat tab
+  const handleOpenChannelFromDetail = useCallback((channelId: string) => {
+    if (!channelId) return;
+    setSelectedPatientId(null); // close detail view
+    setPendingChannelId(channelId);
+    setActiveTab('chat');
+  }, []);
+
+  // When patient is tapped in list (fallback: navigate directly to channel)
   const handleNavigateToChannel = useCallback((channelId: string) => {
-    if (!channelId) return; // skip if no channel (old patients without GetStream channel)
+    if (!channelId) return;
     setPendingChannelId(channelId);
     setActiveTab('chat');
   }, []);
 
   return (
-    <ChatProvider userId={userId} initialStreamToken={streamToken}>
-      <div className="h-screen flex flex-col overflow-hidden bg-even-white">
-        {/* Tab content — takes full height minus tab bar */}
-        <div className="flex-1 overflow-hidden">
-          {/* Patients Tab */}
-          <div className={activeTab === 'patients' ? 'h-full' : 'hidden'}>
-            <PatientsView onNavigateToChannel={handleNavigateToChannel} />
-          </div>
-
-          {/* Chat Tab — keep mounted so GetStream stays connected */}
-          <div className={activeTab === 'chat' ? 'h-full' : 'hidden'}>
-            <ChatShell
-              isAdmin={isAdmin}
-              pendingChannelId={pendingChannelId}
-              onChannelNavigated={handleChannelNavigated}
+    <div className="h-screen flex flex-col overflow-hidden bg-even-white">
+      {/* Tab content — takes full height minus tab bar */}
+      <div className="flex-1 overflow-hidden">
+        {/* Patients Tab */}
+        <div className={activeTab === 'patients' ? 'h-full' : 'hidden'}>
+          {selectedPatientId ? (
+            <PatientDetailView
+              patientId={selectedPatientId}
+              onBack={handleBackFromDetail}
+              onOpenChannel={handleOpenChannelFromDetail}
             />
-          </div>
-
-          {/* Tasks Tab */}
-          <div className={activeTab === 'tasks' ? 'h-full' : 'hidden'}>
-            <TasksView />
-          </div>
-
-          {/* Me Tab */}
-          <div className={activeTab === 'me' ? 'h-full' : 'hidden'}>
-            <ProfileView isAdmin={isAdmin} />
-          </div>
+          ) : (
+            <PatientsView
+              onOpenPatient={handleOpenPatient}
+              onNavigateToChannel={handleNavigateToChannel}
+            />
+          )}
         </div>
 
-        {/* Bottom Tab Bar */}
-        <BottomTabBar
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-        />
+        {/* Chat Tab — keep mounted so GetStream stays connected */}
+        <div className={activeTab === 'chat' ? 'h-full' : 'hidden'}>
+          <ChatShell
+            isAdmin={isAdmin}
+            pendingChannelId={pendingChannelId}
+            onChannelNavigated={handleChannelNavigated}
+          />
+        </div>
+
+        {/* Tasks Tab */}
+        <div className={activeTab === 'tasks' ? 'h-full' : 'hidden'}>
+          <TasksView />
+        </div>
+
+        {/* Me Tab */}
+        <div className={activeTab === 'me' ? 'h-full' : 'hidden'}>
+          <ProfileView isAdmin={isAdmin} />
+        </div>
       </div>
-    </ChatProvider>
+
+      {/* Bottom Tab Bar */}
+      <BottomTabBar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        badges={badges}
+      />
+    </div>
   );
 }
