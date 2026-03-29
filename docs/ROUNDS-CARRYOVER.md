@@ -3,7 +3,7 @@
 **Purpose**: Paste this at the start of a new thread to restore full build context for continuing Rounds development. This captures everything a new session needs to pick up where we left off.
 
 **Last updated**: 29 March 2026
-**Current step**: Step 4.2 COMPLETE → Step 4.3 (Remaining Form Enrichment) is NEXT
+**Current step**: Phase 4 COMPLETE (Steps 4.1–4.3) → Step 5.1 (Patient Thread + Channel Auto-Creation) is NEXT
 
 ---
 
@@ -160,7 +160,8 @@ marketing_cc_handoff, admission_advice, financial_counseling, ot_billing_clearan
 | 3.2 | API routes (10 files, 5 resource types) | ✅ Done | `3f34bc8` |
 | 4.1 | Form Engine Core (registry, renderer, validation, readiness auto-gen) | ✅ Done | `66efcff` |
 | 4.2 | Form-in-Chat + View Page | ✅ Done | `ab637f4` + `de24c0a` |
-| **4.3** | **Remaining form field enrichment** | **🔜 Next** | — |
+| 4.3 | Remaining form field enrichment (310 fields, 83 readiness) | ✅ Done | `8ca94f3` |
+| **5.1** | **Patient Thread + Channel Auto-Creation** | **🔜 Next** | — |
 | 5.1 | Patient thread + channel auto-creation | Pending | — |
 | 5.2 | Duty roster UI + integration | Pending | — |
 | 5.3 | Escalation engine | Pending | — |
@@ -173,10 +174,10 @@ marketing_cc_handoff, admission_advice, financial_counseling, ot_billing_clearan
 
 ---
 
-## 9. What Step 4.3 (Next Step) Should Build
+## 9. What Step 5.1 (Next Step) Should Build
 
-Steps 4.1 + 4.2 (Form Engine + Chat Integration) are COMPLETE. The full form stack is live:
-- `src/lib/form-registry.ts` (~750 lines): All 13 form schemas with validation + readiness markers
+Phase 4 (Form Engine) is COMPLETE. The full form stack is live:
+- `src/lib/form-registry.ts` (~1,541 lines): All 13 form schemas (310 fields, 83 readiness items)
 - `src/components/forms/FormRenderer.tsx` (~350 lines): Dynamic renderer with completion bar
 - `src/components/forms/FormCard.tsx` (~115 lines): Compact card for inline chat display
 - `src/app/forms/[id]/page.tsx` (~335 lines): Read-only view with readiness tracker
@@ -185,11 +186,12 @@ Steps 4.1 + 4.2 (Form Engine + Chat Integration) are COMPLETE. The full form sta
 - `/api/forms` POST: server validation, auto readiness items, completion scoring, GetStream form card posting
 - MessageArea: "New Form" button in header + FormCard rendering for form_submission attachments
 
-**Step 4.3 should**:
-1. Flesh out the 11 skeleton form schemas with full field definitions per Patient Journey v2
-2. Add any missing readiness items, SLA hours, and responsible roles
-3. Validate field names match what ops staff expect (use EHRC-OPS-SUITE-DOCUMENTATION.md as reference)
-4. Test each form's submit → view → readiness cycle
+**Step 5.1 should**:
+1. When a patient thread is created (via API), auto-create a GetStream `patient-thread` channel
+2. Auto-add relevant staff to the channel: primary consultant, IP coordinator, department head
+3. Set channel custom data: patient_thread_id, patient_name, current_stage, uhid
+4. Stage transitions trigger channel membership changes (e.g., add OT coordinator when pre_op)
+5. Create `/api/patients/[id]/stage` PATCH route for stage transitions
 
 **Key design constraint**: Forms must work on mobile (Richa, V's boss, uses the dashboard on mobile). No truncated labels. All items must be tappable/clickable to source data.
 

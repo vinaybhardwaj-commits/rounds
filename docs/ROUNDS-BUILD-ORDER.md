@@ -1,9 +1,9 @@
 # Rounds Build Order — Status Tracker
 
-**Last updated**: 29 March 2026 (Step 4.2 complete)
+**Last updated**: 29 March 2026 (Step 4.3 complete — Phase 4 DONE)
 **Repo**: https://github.com/vinaybhardwaj-commits/rounds
 **Live**: https://rounds-sqxh.vercel.app
-**Latest commit**: `de24c0a` — Step 4.2 Form-in-Chat + View Page
+**Latest commit**: `8ca94f3` — Step 4.3 Form Field Enrichment
 
 ---
 
@@ -172,9 +172,14 @@
 - **Fix**: Next.js 14 uses `params: { id: string }` not `params: Promise<{ id: string }>` (the `use()` pattern is Next.js 15+)
 - **Verified live**: `/forms/[id]` returns 200 with full readiness tracker and schema-driven display
 
-### Step 4.3 — Remaining Form Field Enrichment
-- Flesh out skeleton schemas for remaining 11 forms with full field definitions
-- Add any missing readiness items per Patient Journey v2 requirements
+### Step 4.3 — Remaining Form Field Enrichment ✅
+**Commit**: `8ca94f3` Step 4.3
+- All 11 skeleton schemas enriched to full multi-section forms
+- `src/lib/form-registry.ts` grew from ~933 to ~1,541 lines
+- **Totals**: 310 fields, 83 readiness items, 13 fully specified forms
+- Each form now has 2–5 sections with proper validation, readiness items, and Indian hospital workflow fields
+- Forms enriched: admission_advice (4 sections, 3 readiness), financial_counseling (4 sections, 3 readiness), ot_billing_clearance (3 sections, 1 readiness), admission_checklist (4 sections, 8 readiness), pre_op_nursing_checklist (4 sections with actual vitals fields, 9 readiness), who_safety_checklist (3 WHO phases, compliance readiness), nursing_shift_handoff (5 sections with vitals, 1 readiness), discharge_readiness (3 sections enhanced, 9 readiness), post_discharge_followup (4 sections, 1 readiness), daily_department_update (4 sections, 0 readiness — report form), pac_clearance (4 sections, 4 readiness)
+- **Verified live**: Admission Advice → 3 readiness items. PAC Clearance → 4 readiness items. Server validation catches missing required fields.
 
 ---
 
