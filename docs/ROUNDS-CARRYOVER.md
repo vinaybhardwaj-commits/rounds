@@ -3,7 +3,7 @@
 **Purpose**: Paste this at the start of a new thread to restore full build context for continuing Rounds development. This captures everything a new session needs to pick up where we left off.
 
 **Last updated**: 29 March 2026
-**Current step**: Phase 4 COMPLETE (Steps 4.1–4.3) → Step 5.1 (Patient Thread + Channel Auto-Creation) is NEXT
+**Current step**: Step 5.1 COMPLETE → Step 5.2 (Duty Roster Integration) is NEXT
 
 ---
 
@@ -161,7 +161,8 @@ marketing_cc_handoff, admission_advice, financial_counseling, ot_billing_clearan
 | 4.1 | Form Engine Core (registry, renderer, validation, readiness auto-gen) | ✅ Done | `66efcff` |
 | 4.2 | Form-in-Chat + View Page | ✅ Done | `ab637f4` + `de24c0a` |
 | 4.3 | Remaining form field enrichment (310 fields, 83 readiness) | ✅ Done | `8ca94f3` |
-| **5.1** | **Patient Thread + Channel Auto-Creation** | **🔜 Next** | — |
+| 5.1 | Patient Thread + Channel Auto-Creation | ✅ Done | `19a8f7c` |
+| **5.2** | **Duty Roster Integration** | **🔜 Next** | — |
 | 5.1 | Patient thread + channel auto-creation | Pending | — |
 | 5.2 | Duty roster UI + integration | Pending | — |
 | 5.3 | Escalation engine | Pending | — |

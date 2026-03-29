@@ -1,9 +1,9 @@
 # Rounds Build Order — Status Tracker
 
-**Last updated**: 29 March 2026 (Step 4.3 complete — Phase 4 DONE)
+**Last updated**: 29 March 2026 (Step 5.1 complete)
 **Repo**: https://github.com/vinaybhardwaj-commits/rounds
 **Live**: https://rounds-sqxh.vercel.app
-**Latest commit**: `8ca94f3` — Step 4.3 Form Field Enrichment
+**Latest commit**: `19a8f7c` — Step 5.1 Patient Thread + Channel Auto-Creation
 
 ---
 
@@ -185,10 +185,25 @@
 
 ## Phase 5: Workflow Orchestration (Steps 5.1–5.3)
 
-### Step 5.1 — Patient Thread + Channel Auto-Creation
-- When a patient thread is created, auto-create a GetStream `patient-thread` channel
-- Auto-add relevant staff (consultant, IP coordinator, department head)
-- Stage transitions trigger channel membership changes
+### Step 5.1 — Patient Thread + Channel Auto-Creation ✅
+**Commit**: `19a8f7c` Step 5.1
+- `POST /api/patients` upgraded: auto-creates GetStream `patient-thread` channel on patient creation
+  - Channel ID pattern: `pt-{first8chars-of-uuid}` (e.g., `pt-07d6d98d`)
+  - Custom data: patient_thread_id, patient_name, uhid, current_stage, department_id
+  - Auto-adds members: creator, primary consultant, all IP coordinators, department head, stage-specific roles
+  - Posts welcome system message to new channel
+  - Stores getstream_channel_id back to patient_threads DB row
+- New `PATCH /api/patients/[id]/stage` route for stage transitions:
+  - Validates transition path with VALID_TRANSITIONS map (forward + correction)
+  - Auto-sets admission_date (→ admitted) and discharge_date (→ discharge)
+  - Updates GetStream channel custom data
+  - Auto-adds stage-specific roles (e.g., pre_op → anesthesiologist, ot_coordinator, nurse)
+  - Posts stage transition system message
+  - Rejects invalid transitions with helpful error
+- New getstream helpers: `createPatientChannel`, `updatePatientChannel`, `addUsersToChannel`
+- New DB helpers: `findProfilesByRole`, `getDepartmentHead`
+- Fixed Next.js 14 params pattern across ALL API routes (5 files had Promise<> style)
+- **Verified live**: Created patient → channel auto-created. Full journey traversal: pre_admission → admitted → pre_op → surgery → post_op → discharge. Each transition updates DB + channel + posts system message. Invalid transitions correctly rejected.
 
 ### Step 5.2 — Duty Roster Integration
 - Duty roster UI in admin panel
