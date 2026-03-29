@@ -9,10 +9,12 @@ import { getCurrentUser } from '@/lib/auth';
 import { createFormSubmission, listFormSubmissions, createReadinessItem } from '@/lib/db-v5';
 import {
   FORM_REGISTRY,
+  FORM_TYPE_LABELS,
   getReadinessItemDefs,
   validateFormData,
   computeCompletionScore,
 } from '@/lib/form-registry';
+import { sendSystemMessage } from '@/lib/getstream';
 import type { FormType, FormStatus } from '@/types';
 
 export async function GET(request: NextRequest) {
@@ -151,6 +153,39 @@ export async function POST(request: NextRequest) {
           console.error(`Failed to create readiness item "${def.itemName}":`, err);
           // Don't fail the whole submission for a readiness item error
         }
+      }
+    }
+
+    // Post form card to GetStream channel (if channel context provided)
+    if (
+      status !== 'draft' &&
+      body.getstream_channel_id &&
+      body.getstream_channel_type
+    ) {
+      try {
+        const formLabel = FORM_TYPE_LABELS[form_type as FormType] || form_type;
+        await sendSystemMessage(
+          body.getstream_channel_type,
+          body.getstream_channel_id,
+          `📋 ${formLabel} submitted by ${user.email}`,
+          {
+            attachments: [
+              {
+                type: 'form_submission',
+                form_id: formId,
+                form_type: form_type,
+                form_label: formLabel,
+                status: 'submitted',
+                submitted_by_name: user.email,
+                completion_score: completionScore,
+                readiness_items_created: readinessItemsCreated,
+              },
+            ],
+          }
+        );
+      } catch (err) {
+        // Don't fail the form submission if the message fails
+        console.error('Failed to post form card to channel:', err);
       }
     }
 

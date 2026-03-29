@@ -34,6 +34,8 @@ function NewFormPage() {
 
   const formType = searchParams.get('type') as FormType | null;
   const patientId = searchParams.get('patient_id');
+  const channelType = searchParams.get('channel_type');
+  const channelId = searchParams.get('channel_id');
 
   const [schema, setSchema] = useState<FormSchema | null>(null);
   const [patient, setPatient] = useState<{ id: string; patient_name: string; uhid: string | null } | null>(null);
@@ -76,6 +78,8 @@ function NewFormPage() {
             form_type: formType,
             form_data: formData,
             patient_thread_id: patientId || undefined,
+            getstream_channel_type: channelType || undefined,
+            getstream_channel_id: channelId || undefined,
             completion_score: completionScore,
             status: 'submitted',
           }),
@@ -93,7 +97,7 @@ function NewFormPage() {
         setSubmitState('error');
       }
     },
-    [formType, patientId]
+    [formType, patientId, channelType, channelId]
   );
 
   // Save draft handler
@@ -169,12 +173,12 @@ function NewFormPage() {
             >
               Back to Chat
             </button>
-            {patientId && (
+            {createdFormId && (
               <button
-                onClick={() => router.push(`/forms/new?type=${formType}&patient_id=${patientId}`)}
+                onClick={() => router.push(`/forms/${createdFormId}`)}
                 className="px-4 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200"
               >
-                Submit Another
+                View Form
               </button>
             )}
           </div>

@@ -36,6 +36,8 @@ function FormsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const patientId = searchParams.get('patient_id');
+  const channelType = searchParams.get('channel_type');
+  const channelId = searchParams.get('channel_id');
 
   const [recentForms, setRecentForms] = useState<RecentForm[]>([]);
 
@@ -101,9 +103,11 @@ function FormsPage() {
                 <div className="space-y-1">
                   {formTypes.map((ft) => {
                     const schema = FORM_REGISTRY[ft];
-                    const url = patientId
-                      ? `/forms/new?type=${ft}&patient_id=${patientId}`
-                      : `/forms/new?type=${ft}`;
+                    const urlParams = new URLSearchParams({ type: ft });
+                    if (patientId) urlParams.set('patient_id', patientId);
+                    if (channelType) urlParams.set('channel_type', channelType);
+                    if (channelId) urlParams.set('channel_id', channelId);
+                    const url = `/forms/new?${urlParams}`;
 
                     return (
                       <button

@@ -8,6 +8,7 @@
 // ============================================
 
 import React, { useState, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   MessageSquare,
   Send,
@@ -21,11 +22,13 @@ import {
   Image as ImageIcon,
   File as FileIcon,
   Download,
+  ClipboardList,
 } from 'lucide-react';
 import type { Channel, MessageResponse } from 'stream-chat';
 import { useChatContext } from '@/providers/ChatProvider';
 import { MessageTypeBadge } from './MessageTypeBadge';
-import type { MessageType, MessagePriority } from '@/types';
+import FormCard from '@/components/forms/FormCard';
+import type { MessageType, MessagePriority, FormType } from '@/types';
 
 // --- Types ---
 
@@ -59,6 +62,12 @@ interface AttachmentData {
   image_url?: string;
   asset_url?: string;
   thumb_url?: string;
+  // Form submission card fields
+  form_id?: string;
+  form_type?: string;
+  form_status?: string;
+  submitted_by_name?: string;
+  completion_score?: number | null;
 }
 
 // --- Constants ---
@@ -83,6 +92,7 @@ const REACTION_EMOJIS = [
 
 export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAreaProps) {
   const { client } = useChatContext();
+  const router = useRouter();
   const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -116,15 +126,24 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
         });
       }
 
-      const attachments: AttachmentData[] = (msg.attachments || []).map((a) => ({
-        type: a.type || 'file',
-        title: a.title || a.fallback || 'Attachment',
-        file_size: a.file_size,
-        mime_type: a.mime_type,
-        image_url: a.image_url || a.thumb_url,
-        asset_url: a.asset_url,
-        thumb_url: a.thumb_url,
-      }));
+      const attachments: AttachmentData[] = (msg.attachments || []).map((a) => {
+        const extra = a as Record<string, unknown>;
+        return {
+          type: a.type || 'file',
+          title: a.title || a.fallback || 'Attachment',
+          file_size: a.file_size,
+          mime_type: a.mime_type,
+          image_url: a.image_url || a.thumb_url,
+          asset_url: a.asset_url,
+          thumb_url: a.thumb_url,
+          // Form submission card fields (custom attachment)
+          form_id: extra.form_id as string | undefined,
+          form_type: extra.form_type as string | undefined,
+          form_status: (extra.status as string) || undefined,
+          submitted_by_name: extra.submitted_by_name as string | undefined,
+          completion_score: extra.completion_score != null ? Number(extra.completion_score) : null,
+        };
+      });
 
       return {
         id: msg.id,
@@ -325,6 +344,23 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
             <p className="text-[11px] text-gray-400 truncate">{channelDesc}</p>
           )}
         </div>
+        <button
+          onClick={() => {
+            // Build URL with channel context for form-in-chat integration
+            const params = new URLSearchParams();
+            if (channel.type) params.set('channel_type', channel.type);
+            if (channel.id) params.set('channel_id', channel.id);
+            // Extract patient_thread_id from channel custom data if available
+            const ptId = (channel.data as Record<string, unknown>)?.patient_thread_id;
+            if (ptId && typeof ptId === 'string') params.set('patient_id', ptId);
+            const qs = params.toString();
+            router.push(`/forms${qs ? `?${qs}` : ''}`);
+          }}
+          className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-even-blue transition-colors"
+          title="New Form"
+        >
+          <ClipboardList size={16} />
+        </button>
         <div className="flex items-center gap-1 text-xs text-gray-400">
           <Users size={13} />
           <span>{memberCount}</span>
@@ -450,6 +486,21 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                     {msg.attachments.length > 0 && (
                       <div className="mt-1 space-y-1">
                         {msg.attachments.map((att, i) => {
+                          // Form submission card
+                          if (att.type === 'form_submission' && att.form_id) {
+                            return (
+                              <FormCard
+                                key={i}
+                                formId={att.form_id}
+                                formType={att.form_type as FormType}
+                                status={att.form_status || 'submitted'}
+                                submittedByName={att.submitted_by_name || 'Unknown'}
+                                createdAt={msg.created_at}
+                                completionScore={att.completion_score ?? null}
+                                compact
+                              />
+                            );
+                          }
                           if (att.type === 'image' && att.image_url) {
                             return (
                               <div key={i} className="max-w-xs">
