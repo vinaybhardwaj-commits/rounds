@@ -1,9 +1,9 @@
 # Rounds Build Order — Status Tracker
 
-**Last updated**: 29 March 2026
+**Last updated**: 29 March 2026 (Step 4.1 complete)
 **Repo**: https://github.com/vinaybhardwaj-commits/rounds
 **Live**: https://rounds-sqxh.vercel.app
-**Latest commit**: `3f34bc8` — Step 3.2 API routes
+**Latest commit**: `66efcff` — Step 4.1 Form Engine Core
 
 ---
 
@@ -119,25 +119,45 @@
 
 ---
 
-## Phase 4: Form Engine (Steps 4.1–4.3) — NEXT
+## Phase 4: Form Engine (Steps 4.1–4.3)
 
-### Step 4.1 — Form Engine Core 🔜
-- Form type registry: declarative schema definitions for each of the 13 form types
-- Dynamic form renderer component (reads schema, renders fields)
-- Validation layer (required fields, conditional logic, cross-field validation)
-- Form submission flow: render → validate → POST to `/api/forms` → store JSONB
-- Readiness item auto-generation from form schema
+### Step 4.1 — Form Engine Core ✅
+**Commit**: `66efcff` Step 4.1
+- `src/lib/form-registry.ts` (~750 lines): Declarative schemas for all 13 form types
+  - Field types: text, textarea, number, date, datetime, time, select, multiselect, checkbox, radio, phone, email
+  - Validation: required, min/max, minLength/maxLength, pattern/regex, requiredIf (conditional), visibleWhen (conditional visibility)
+  - Readiness item markers on checkbox fields: itemName, category, responsibleRole, slaHours
+  - Completion scoring: counts required + readiness fields filled vs total
+  - Helpers: `getAllFields()`, `getReadinessItemDefs()`, `validateFormData()`, `computeCompletionScore()`
+- `src/components/forms/FormRenderer.tsx` (~350 lines): Dynamic renderer
+  - Reads schema, renders sections with grid layout (full/half/third width)
+  - Conditional field visibility
+  - Client-side validation with field-level errors (on blur + on submit)
+  - Completion progress bar
+  - Draft save + submit actions
+  - Readiness badge on checkpoint fields
+- `src/app/forms/page.tsx`: Form type picker grouped by patient journey stage + recent submissions
+- `src/app/forms/new/page.tsx`: Full submission flow (schema load → render → validate → POST → success screen)
+- **`/api/forms` POST upgraded**:
+  - Server-side validation against schema (returns 422 with field errors)
+  - Auto-generates readiness_items from checked readiness checkboxes
+  - Computes completion_score from schema
+  - Drafts skip validation and readiness generation
+- **Two priority forms fully specified** (4.2 merged into 4.1):
+  - Marketing → CC Handoff: 5 sections, 20 fields, 4 readiness items
+  - Surgery Posting: 5 sections, 30+ fields, 16 readiness items
+- **11 remaining forms have working skeleton schemas** (4.3 partially done):
+  - All have correct sections, required fields, and readiness items where applicable
+- **Verified live**: Surgery Posting submitted → 13 readiness items auto-created (3 unchecked skipped). Server validation rejects missing required fields with specific messages.
 
-### Step 4.2 — Priority Forms (Marketing→CC Handoff, Surgery Posting)
-- Marketing → Customer Care Handoff form (33 fields, 5 categories)
-- Surgery Posting + Readiness Checklist (16 confirmation items)
-- These two cover the two highest-traffic handoff points
+### Step 4.2 — Priority Form Field Enrichment 🔜
+- Flesh out Marketing → CC Handoff and Surgery Posting with any missing workflow-specific fields
+- Add form-in-chat integration: submit form as GetStream message card
+- These two forms are functionally complete in 4.1 — this step is for polish
 
-### Step 4.3 — Remaining Forms
-- Admission Advice, Admission Checklist, Discharge Readiness
-- Financial Counseling, OT Billing Clearance
-- Nursing Shift Handoff, Pre-Op Nursing Checklist, WHO Safety Checklist
-- PAC Clearance, Daily Department Update, Post-Discharge Follow-up
+### Step 4.3 — Remaining Form Field Enrichment
+- Flesh out skeleton schemas for remaining 11 forms with full field definitions
+- Add any missing readiness items per Patient Journey v2 requirements
 
 ---
 

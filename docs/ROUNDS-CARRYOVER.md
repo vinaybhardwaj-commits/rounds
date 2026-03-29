@@ -3,7 +3,7 @@
 **Purpose**: Paste this at the start of a new thread to restore full build context for continuing Rounds development. This captures everything a new session needs to pick up where we left off.
 
 **Last updated**: 29 March 2026
-**Current step**: Step 3.2 COMPLETE → Step 4.1 (Form Engine Core) is NEXT
+**Current step**: Step 4.1 COMPLETE → Step 4.2 (Form-in-Chat + View Page) is NEXT
 
 ---
 
@@ -158,9 +158,9 @@ marketing_cc_handoff, admission_advice, financial_counseling, ot_billing_clearan
 | 2.4 | DMs, search, threading, reactions, files | ✅ Done | `1ada67c` |
 | 3.1 | v5 database tables (6 tables, 30+ indexes) | ✅ Done | `f6f1d68` + `7b34efd` |
 | 3.2 | API routes (10 files, 5 resource types) | ✅ Done | `3f34bc8` |
-| **4.1** | **Form Engine Core** | **🔜 Next** | — |
-| 4.2 | Priority forms (Marketing→CC, Surgery Posting) | Pending | — |
-| 4.3 | Remaining 11 forms | Pending | — |
+| 4.1 | Form Engine Core (registry, renderer, validation, readiness auto-gen) | ✅ Done | `66efcff` |
+| **4.2** | **Priority form field enrichment + chat integration** | **🔜 Next** | — |
+| 4.3 | Remaining form field enrichment | Pending | — |
 | 5.1 | Patient thread + channel auto-creation | Pending | — |
 | 5.2 | Duty roster UI + integration | Pending | — |
 | 5.3 | Escalation engine | Pending | — |
@@ -173,19 +173,20 @@ marketing_cc_handoff, admission_advice, financial_counseling, ot_billing_clearan
 
 ---
 
-## 9. What Step 4.1 (Form Engine Core) Should Build
+## 9. What Step 4.2 (Next Step) Should Build
 
-The form engine is the heart of the "structured handoff" value prop. It must:
+Step 4.1 (Form Engine Core) is COMPLETE. The form engine is live with:
+- `src/lib/form-registry.ts` (~750 lines): All 13 form schemas with validation + readiness markers
+- `src/components/forms/FormRenderer.tsx` (~350 lines): Dynamic renderer with completion bar
+- `/forms` page: form type picker grouped by stage
+- `/forms/new` page: full submission + draft flow
+- `/api/forms` POST: server validation (422), auto readiness items, completion scoring
 
-1. **Form Type Registry** (`src/lib/form-registry.ts`): A map of all 13 form types, each defined as a declarative JSON schema specifying fields, types, validation rules, conditional visibility, and which fields generate readiness items.
-
-2. **Dynamic Form Renderer** (`src/components/forms/FormRenderer.tsx`): A React component that takes a form type string, fetches its schema from the registry, and renders the appropriate fields (text, number, select, checkbox, date, textarea, section headers, etc.).
-
-3. **Validation Layer**: Required-field enforcement, conditional required (e.g., "if surgery type is X, then Y is required"), cross-field validation, and user-friendly error messages.
-
-4. **Submission Flow**: Render → fill → validate client-side → POST to `/api/forms` with `form_data` JSONB → auto-generate `readiness_items` from schema → return success + form ID.
-
-5. **Readiness Auto-Generation**: When a form schema marks certain fields as "readiness items" (e.g., "blood work done," "consent signed"), submitting the form should auto-create corresponding rows in the `readiness_items` table.
+**Step 4.2 should**:
+1. Add form-in-chat integration: submit a form as a GetStream message card in the patient thread channel
+2. Add a form view page (`/forms/[id]`) that renders submitted form data as read-only with readiness status
+3. Enrich the two priority forms (Marketing→CC, Surgery Posting) with any missing workflow-specific fields
+4. Connect the "New Form" action in chat to the `/forms/new` page with patient context
 
 **Key design constraint**: Forms must work on mobile (Richa, V's boss, uses the dashboard on mobile). No truncated labels. All items must be tappable/clickable to source data.
 
