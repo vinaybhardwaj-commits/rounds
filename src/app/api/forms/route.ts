@@ -1,11 +1,18 @@
 // ============================================
 // GET  /api/forms — list form submissions
-// POST /api/forms — submit a form
+// POST /api/forms — submit a form + auto-create
+//   readiness items from schema definitions
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { createFormSubmission, listFormSubmissions } from '@/lib/db-v5';
+import { createFormSubmission, listFormSubmissions, createReadinessItem } from '@/lib/db-v5';
+import {
+  FORM_REGISTRY,
+  getReadinessItemDefs,
+  validateFormData,
+  computeCompletionScore,
+} from '@/lib/form-registry';
 import type { FormType, FormStatus } from '@/types';
 
 export async function GET(request: NextRequest) {
@@ -63,20 +70,101 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Look up schema (optional — form engine may not define all types yet)
+    const schema = FORM_REGISTRY[form_type as FormType];
+
+    // Server-side validation (only if schema exists and status is not 'draft')
+    const status = body.status || 'submitted';
+    if (schema && status !== 'draft') {
+      const validationErrors = validateFormData(schema, form_data);
+      if (validationErrors.length > 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Validation failed',
+            validationErrors,
+          },
+          { status: 422 }
+        );
+      }
+    }
+
+    // Compute completion score from schema
+    const completionScore = schema
+      ? computeCompletionScore(schema, form_data)
+      : body.completion_score || null;
+
+    // Create the form submission
     const result = await createFormSubmission({
       form_type,
+      form_version: schema?.version || body.form_version || 1,
       form_data,
       submitted_by: user.profileId,
       patient_thread_id: body.patient_thread_id || undefined,
       getstream_message_id: body.getstream_message_id || undefined,
       getstream_channel_id: body.getstream_channel_id || undefined,
       department_id: body.department_id || undefined,
-      completion_score: body.completion_score || undefined,
-      status: body.status || 'submitted',
+      completion_score: completionScore,
+      status,
     });
 
+    const formId = result.id;
+
+    // Auto-generate readiness items from schema (only for submitted, not draft)
+    let readinessItemsCreated = 0;
+    if (schema && status !== 'draft') {
+      const readinessDefs = getReadinessItemDefs(schema);
+
+      for (const def of readinessDefs) {
+        // Only create readiness item if the checkbox was checked (truthy)
+        // or if the field doesn't exist in form_data (create all for non-checkbox schemas)
+        const fieldValue = form_data[def.fieldKey];
+        const fieldDef = schema.sections
+          .flatMap((s) => s.fields)
+          .find((f) => f.key === def.fieldKey);
+
+        // For checkbox fields: create item only if checked
+        // For non-checkbox fields: always create
+        const isCheckbox = fieldDef?.type === 'checkbox';
+        if (isCheckbox && !fieldValue) continue;
+
+        // Calculate due_by from SLA hours
+        let dueBy: string | undefined;
+        if (def.slaHours) {
+          const due = new Date();
+          due.setHours(due.getHours() + def.slaHours);
+          dueBy = due.toISOString();
+        }
+
+        try {
+          await createReadinessItem({
+            form_submission_id: formId,
+            patient_thread_id: body.patient_thread_id || undefined,
+            item_name: def.itemName,
+            item_category: def.category,
+            item_description: def.description,
+            responsible_role: def.responsibleRole,
+            due_by: dueBy,
+          });
+          readinessItemsCreated++;
+        } catch (err) {
+          console.error(`Failed to create readiness item "${def.itemName}":`, err);
+          // Don't fail the whole submission for a readiness item error
+        }
+      }
+    }
+
     return NextResponse.json(
-      { success: true, data: result, message: 'Form submitted' },
+      {
+        success: true,
+        data: {
+          id: formId,
+          readiness_items_created: readinessItemsCreated,
+        },
+        message: status === 'draft'
+          ? 'Draft saved'
+          : `Form submitted with ${readinessItemsCreated} readiness item${readinessItemsCreated !== 1 ? 's' : ''}`,
+      },
       { status: 201 }
     );
   } catch (error) {
