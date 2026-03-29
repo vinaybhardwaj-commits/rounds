@@ -1,9 +1,9 @@
 # Rounds Build Order — Status Tracker
 
-**Last updated**: 29 March 2026 (Step 4.1 complete)
+**Last updated**: 29 March 2026 (Step 4.2 complete)
 **Repo**: https://github.com/vinaybhardwaj-commits/rounds
 **Live**: https://rounds-sqxh.vercel.app
-**Latest commit**: `66efcff` — Step 4.1 Form Engine Core
+**Latest commit**: `de24c0a` — Step 4.2 Form-in-Chat + View Page
 
 ---
 
@@ -150,10 +150,27 @@
   - All have correct sections, required fields, and readiness items where applicable
 - **Verified live**: Surgery Posting submitted → 13 readiness items auto-created (3 unchecked skipped). Server validation rejects missing required fields with specific messages.
 
-### Step 4.2 — Priority Form Field Enrichment 🔜
-- Flesh out Marketing → CC Handoff and Surgery Posting with any missing workflow-specific fields
-- Add form-in-chat integration: submit form as GetStream message card
-- These two forms are functionally complete in 4.1 — this step is for polish
+### Step 4.2 — Form-in-Chat + View Page ✅
+**Commit**: `ab637f4` + `de24c0a` (fix)
+- `src/app/forms/[id]/page.tsx` (~335 lines): Read-only form view
+  - Fetches form + readiness items from API
+  - Meta card: submitter, date, version, completion progress bar
+  - Readiness tracker: items grouped by category, stacked color bar, status icons
+  - Schema-driven field display: select labels, formatted dates, checkmarks for booleans
+  - Fallback to raw JSON if no schema match
+- `src/components/forms/FormCard.tsx` (~115 lines): Compact clickable card
+  - Inline display in chat messages or sidebar
+  - Shows form type label, status icon, submitter, date, completion %, readiness bar
+  - Compact mode for message bubbles, full mode for sidebars
+  - Navigates to `/forms/[id]` on click
+- **Chat integration wiring**:
+  - "New Form" (ClipboardList) button in MessageArea channel header
+  - Navigates to `/forms` with channel context params (channel_type, channel_id, patient_id)
+  - Form type picker and `/forms/new` pass channel context through to API
+  - `POST /api/forms` now sends a GetStream system message with form_submission attachment to the channel after submission (non-blocking)
+  - MessageArea detects `form_submission` type attachments and renders FormCard inline
+- **Fix**: Next.js 14 uses `params: { id: string }` not `params: Promise<{ id: string }>` (the `use()` pattern is Next.js 15+)
+- **Verified live**: `/forms/[id]` returns 200 with full readiness tracker and schema-driven display
 
 ### Step 4.3 — Remaining Form Field Enrichment
 - Flesh out skeleton schemas for remaining 11 forms with full field definitions

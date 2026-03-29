@@ -3,7 +3,7 @@
 **Purpose**: Paste this at the start of a new thread to restore full build context for continuing Rounds development. This captures everything a new session needs to pick up where we left off.
 
 **Last updated**: 29 March 2026
-**Current step**: Step 4.1 COMPLETE → Step 4.2 (Form-in-Chat + View Page) is NEXT
+**Current step**: Step 4.2 COMPLETE → Step 4.3 (Remaining Form Enrichment) is NEXT
 
 ---
 
@@ -159,8 +159,8 @@ marketing_cc_handoff, admission_advice, financial_counseling, ot_billing_clearan
 | 3.1 | v5 database tables (6 tables, 30+ indexes) | ✅ Done | `f6f1d68` + `7b34efd` |
 | 3.2 | API routes (10 files, 5 resource types) | ✅ Done | `3f34bc8` |
 | 4.1 | Form Engine Core (registry, renderer, validation, readiness auto-gen) | ✅ Done | `66efcff` |
-| **4.2** | **Priority form field enrichment + chat integration** | **🔜 Next** | — |
-| 4.3 | Remaining form field enrichment | Pending | — |
+| 4.2 | Form-in-Chat + View Page | ✅ Done | `ab637f4` + `de24c0a` |
+| **4.3** | **Remaining form field enrichment** | **🔜 Next** | — |
 | 5.1 | Patient thread + channel auto-creation | Pending | — |
 | 5.2 | Duty roster UI + integration | Pending | — |
 | 5.3 | Escalation engine | Pending | — |
@@ -173,20 +173,23 @@ marketing_cc_handoff, admission_advice, financial_counseling, ot_billing_clearan
 
 ---
 
-## 9. What Step 4.2 (Next Step) Should Build
+## 9. What Step 4.3 (Next Step) Should Build
 
-Step 4.1 (Form Engine Core) is COMPLETE. The form engine is live with:
+Steps 4.1 + 4.2 (Form Engine + Chat Integration) are COMPLETE. The full form stack is live:
 - `src/lib/form-registry.ts` (~750 lines): All 13 form schemas with validation + readiness markers
 - `src/components/forms/FormRenderer.tsx` (~350 lines): Dynamic renderer with completion bar
-- `/forms` page: form type picker grouped by stage
-- `/forms/new` page: full submission + draft flow
-- `/api/forms` POST: server validation (422), auto readiness items, completion scoring
+- `src/components/forms/FormCard.tsx` (~115 lines): Compact card for inline chat display
+- `src/app/forms/[id]/page.tsx` (~335 lines): Read-only view with readiness tracker
+- `/forms` page: form type picker grouped by stage (passes channel context)
+- `/forms/new` page: full submission + draft flow (passes channel context to API)
+- `/api/forms` POST: server validation, auto readiness items, completion scoring, GetStream form card posting
+- MessageArea: "New Form" button in header + FormCard rendering for form_submission attachments
 
-**Step 4.2 should**:
-1. Add form-in-chat integration: submit a form as a GetStream message card in the patient thread channel
-2. Add a form view page (`/forms/[id]`) that renders submitted form data as read-only with readiness status
-3. Enrich the two priority forms (Marketing→CC, Surgery Posting) with any missing workflow-specific fields
-4. Connect the "New Form" action in chat to the `/forms/new` page with patient context
+**Step 4.3 should**:
+1. Flesh out the 11 skeleton form schemas with full field definitions per Patient Journey v2
+2. Add any missing readiness items, SLA hours, and responsible roles
+3. Validate field names match what ops staff expect (use EHRC-OPS-SUITE-DOCUMENTATION.md as reference)
+4. Test each form's submit → view → readiness cycle
 
 **Key design constraint**: Forms must work on mobile (Richa, V's boss, uses the dashboard on mobile). No truncated labels. All items must be tappable/clickable to source data.
 
