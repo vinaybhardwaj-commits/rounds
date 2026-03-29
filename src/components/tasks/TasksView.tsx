@@ -34,10 +34,12 @@ interface EscalationEntry {
   created_at: string;
 }
 
-type TaskTab = 'overdue' | 'escalations';
+import { DailyBriefing } from '@/components/ai/DailyBriefing';
+
+type TaskTab = 'briefing' | 'overdue' | 'escalations';
 
 export function TasksView() {
-  const [tab, setTab] = useState<TaskTab>('overdue');
+  const [tab, setTab] = useState<TaskTab>('briefing');
   const [overdueItems, setOverdueItems] = useState<ReadinessItem[]>([]);
   const [escalations, setEscalations] = useState<EscalationEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,6 +96,16 @@ export function TasksView() {
         {/* Tab pills */}
         <div className="flex gap-2">
           <button
+            onClick={() => setTab('briefing')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              tab === 'briefing'
+                ? 'bg-purple-100 text-purple-700'
+                : 'bg-gray-100 text-gray-500'
+            }`}
+          >
+            Briefing
+          </button>
+          <button
             onClick={() => setTab('overdue')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
               tab === 'overdue'
@@ -101,7 +113,7 @@ export function TasksView() {
                 : 'bg-gray-100 text-gray-500'
             }`}
           >
-            <Clock size={12} /> Overdue Items
+            <Clock size={12} /> Overdue
             {overdueCount > 0 && (
               <span className="bg-amber-500 text-white text-[9px] px-1.5 rounded-full">{overdueCount}</span>
             )}
@@ -124,7 +136,9 @@ export function TasksView() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 pb-20">
-        {loading ? (
+        {tab === 'briefing' ? (
+          <DailyBriefing />
+        ) : loading ? (
           <div className="text-center py-12 text-gray-400 text-sm">Loading tasks...</div>
         ) : tab === 'overdue' ? (
           overdueItems.length === 0 ? (

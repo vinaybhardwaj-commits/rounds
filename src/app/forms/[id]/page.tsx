@@ -23,6 +23,7 @@ import {
   FORM_TYPE_LABELS,
   type FormSchema,
 } from '@/lib/form-registry';
+import { GapAnalysisCard } from '@/components/ai/GapAnalysisCard';
 import type {
   FormType,
   ReadinessStatus,
@@ -165,6 +166,12 @@ export default function FormViewPage({ params }: { params: { id: string } }) {
             </div>
           )}
         </div>
+
+        {/* AI Gap Analysis */}
+        <GapAnalysisCard
+          formSubmissionId={data.id}
+          existingReport={data.ai_gap_report}
+        />
 
         {/* Readiness tracker */}
         {data.readiness_items.length > 0 && data.readiness_aggregate && (

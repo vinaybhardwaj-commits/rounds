@@ -259,6 +259,37 @@ export async function POST() {
     `);
     await run('migration_record', `INSERT INTO _migrations (name) VALUES ('v5-tables-initial') ON CONFLICT (name) DO NOTHING`);
 
+    // ── Step 7.1: Push subscriptions table ──
+    await run('push_subscriptions_table', `
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        endpoint TEXT NOT NULL,
+        subscription_json JSONB NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (profile_id, endpoint)
+      )
+    `);
+    await run('push_subscriptions_idx', `CREATE INDEX IF NOT EXISTS idx_push_subs_profile ON push_subscriptions(profile_id)`);
+    await run('push_migration_record', `INSERT INTO _migrations (name) VALUES ('v7-push-subscriptions') ON CONFLICT (name) DO NOTHING`);
+
+    // ── Step 8.1: AI analysis cache table ──
+    await run('ai_analysis_table', `
+      CREATE TABLE IF NOT EXISTS ai_analysis (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        analysis_type TEXT NOT NULL,
+        source_id UUID,
+        source_type TEXT,
+        result JSONB NOT NULL,
+        model TEXT DEFAULT 'claude-sonnet-4-5-20250514',
+        token_count INTEGER DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await run('ai_analysis_idx', `CREATE INDEX IF NOT EXISTS idx_ai_analysis_source ON ai_analysis(source_type, source_id)`);
+    await run('ai_migration_record', `INSERT INTO _migrations (name) VALUES ('v8-ai-analysis') ON CONFLICT (name) DO NOTHING`);
+
     // 9. Verify
     const tables = await sql`
       SELECT table_name FROM information_schema.tables

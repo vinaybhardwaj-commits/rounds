@@ -27,6 +27,7 @@ import {
   PATIENT_STAGE_COLORS,
 } from '@/types';
 import { FORM_TYPE_LABELS, FORMS_BY_STAGE } from '@/lib/form-registry';
+import { PredictionCard } from '@/components/ai/PredictionCard';
 
 // ── Ordered stages for the progress bar ──
 const STAGES_ORDERED: PatientStage[] = [
@@ -517,6 +518,11 @@ export function PatientDetailView({
             </div>
           </div>
         )}
+
+        {/* ── AI Predictions ── */}
+        <div className="mx-4 mb-4">
+          <PredictionCard patientThreadId={patient.id} />
+        </div>
       </div>
     </div>
   );

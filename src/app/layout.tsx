@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/components/layout/AuthProvider';
+import { ServiceWorkerRegistration } from '@/components/pwa/ServiceWorkerRegistration';
+import { InstallPrompt } from '@/components/pwa/InstallPrompt';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -30,6 +32,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
+        <ServiceWorkerRegistration />
+        <InstallPrompt />
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
