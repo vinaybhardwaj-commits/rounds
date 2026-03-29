@@ -1,6 +1,6 @@
 # Rounds Build Order — Status Tracker
 
-**Last updated**: 29 March 2026 (Step 5.1 complete)
+**Last updated**: 29 March 2026 (Step 5.2 complete)
 **Repo**: https://github.com/vinaybhardwaj-commits/rounds
 **Live**: https://rounds-sqxh.vercel.app
 **Latest commit**: `19a8f7c` — Step 5.1 Patient Thread + Channel Auto-Creation
@@ -205,10 +205,16 @@
 - Fixed Next.js 14 params pattern across ALL API routes (5 files had Promise<> style)
 - **Verified live**: Created patient → channel auto-created. Full journey traversal: pre_admission → admitted → pre_op → surgery → post_op → discharge. Each transition updates DB + channel + posts system message. Invalid transitions correctly rejected.
 
-### Step 5.2 — Duty Roster Integration
-- Duty roster UI in admin panel
-- On-duty resolution used by escalation engine
-- Shift handoff notifications via GetStream
+### Step 5.2 — Duty Roster Integration ✅
+**Commit**: `3161581` Step 5.2
+- `/admin/duty-roster` page: full CRUD with table, create modal, delete, filters (department, role, active_only)
+- Create modal: staff dropdown, department, role, shift type selector (day/evening/night/on_call/visiting), day-of-week toggles, time pickers, effective date range, override toggle with reason + date
+- Handoff notification: Bell icon on each entry → `POST /api/duty-roster/handoff` → posts system message to department GetStream channel
+- `sendShiftHandoffMessage()` helper in `getstream.ts`
+- Admin dashboard: added Duty Roster card (count + Calendar icon) + quick action link
+- Fixed `DutyRosterEntry` type: added `shift_start_time`, `shift_end_time`, `override_date`
+- Added `SHIFT_TYPE_LABELS`, `DAY_LABELS` constants to `types/index.ts`
+- On-duty resolution (`/api/duty-roster/resolve`) already works — ready for escalation engine (Step 5.3)
 
 ### Step 5.3 — Escalation Engine
 - Auto-escalate overdue readiness items

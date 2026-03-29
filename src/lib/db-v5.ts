@@ -661,8 +661,26 @@ export async function getDepartmentHead(departmentId: string): Promise<string | 
 }
 
 export async function getOverdueReadinessItems() {
-  return query(
-    `SELECT ri.*, fs.form_type, fs.patient_thread_id, pt.patient_name
+  return query<{
+    id: string;
+    item_name: string;
+    item_category: string;
+    responsible_role: string;
+    responsible_user_id: string | null;
+    responsible_department_id: string | null;
+    status: string;
+    due_by: string;
+    escalated: boolean;
+    escalation_level: number;
+    last_escalated_at: string | null;
+    patient_thread_id: string | null;
+    form_submission_id: string;
+    form_type: string;
+    patient_name: string | null;
+    department_id: string | null;
+  }>(
+    `SELECT ri.*, fs.form_type, fs.patient_thread_id,
+            pt.patient_name, pt.department_id
      FROM readiness_items ri
      JOIN form_submissions fs ON ri.form_submission_id = fs.id
      LEFT JOIN patient_threads pt ON ri.patient_thread_id = pt.id
@@ -671,5 +689,63 @@ export async function getOverdueReadinessItems() {
        AND ri.due_by < NOW()
      ORDER BY ri.due_by ASC`,
     []
+  );
+}
+
+/**
+ * Mark a readiness item as escalated, incrementing level.
+ */
+export async function markReadinessItemEscalated(
+  itemId: string,
+  newLevel: number
+) {
+  return queryOne(
+    `UPDATE readiness_items SET
+      escalated = true,
+      escalation_level = $1,
+      last_escalated_at = NOW()
+     WHERE id = $2 RETURNING id`,
+    [newLevel, itemId]
+  );
+}
+
+/**
+ * List all escalation log entries with optional filters.
+ */
+export async function listEscalations(filters?: {
+  resolved?: boolean;
+  source_type?: string;
+  limit?: number;
+}) {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  let paramIndex = 1;
+
+  if (filters?.resolved !== undefined) {
+    conditions.push(`el.resolved = $${paramIndex++}`);
+    params.push(filters.resolved);
+  }
+  if (filters?.source_type) {
+    conditions.push(`el.source_type = $${paramIndex++}`);
+    params.push(filters.source_type);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const limit = filters?.limit || 100;
+
+  params.push(limit);
+  return query(
+    `SELECT el.*,
+       pf.full_name as escalated_from_name,
+       pt2.full_name as escalated_to_name,
+       pt3.patient_name
+     FROM escalation_log el
+     LEFT JOIN profiles pf ON el.escalated_from = pf.id
+     LEFT JOIN profiles pt2 ON el.escalated_to = pt2.id
+     LEFT JOIN patient_threads pt3 ON el.patient_thread_id = pt3.id
+     ${where}
+     ORDER BY el.created_at DESC
+     LIMIT $${paramIndex}`,
+    params
   );
 }

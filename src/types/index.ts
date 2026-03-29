@@ -264,14 +264,22 @@ export type EscalationSourceType = 'message' | 'readiness_item' | 'form_gap' | '
 
 export interface EscalationLogEntry {
   id: string;
-  source_type: EscalationSourceType;
+  source_type: EscalationSourceType | 'manual';
   source_id: string;
-  escalated_from: string;
+  escalated_from: string | null;
   escalated_from_name?: string;
-  escalated_to: string;
+  escalated_to: string | null;
   escalated_to_name?: string;
+  patient_thread_id: string | null;
+  patient_name?: string;
+  getstream_channel_id: string | null;
+  getstream_message_id: string | null;
   reason: string;
   level: number;
+  resolved: boolean;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  resolution_notes: string | null;
   created_at: string;
 }
 
