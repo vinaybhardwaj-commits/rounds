@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
+import { AdminLayout } from '@/components/admin/AdminLayout';
 
 interface PendingUser {
   id: string;
@@ -54,7 +55,8 @@ export default function ApprovalsPage() {
   };
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <AdminLayout breadcrumbs={[{label:'Admin', href:'/admin'}, {label:'Pending Approvals'}]}>
+      <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-even-navy">Pending Approvals</h1>
@@ -127,6 +129,7 @@ export default function ApprovalsPage() {
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </AdminLayout>
   );
 }

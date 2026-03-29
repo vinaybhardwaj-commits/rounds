@@ -7,7 +7,7 @@
 // Step 6.2: UX Redesign
 // ============================================
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ChatProvider } from '@/providers/ChatProvider';
 import { ChatShell } from './chat/ChatShell';
 import { PatientsView } from './patients/PatientsView';
@@ -25,11 +25,37 @@ export function AppShell({ userId, userRole, streamToken }: AppShellProps) {
   const [activeTab, setActiveTab] = useState<TabId>('patients');
   const isAdmin = userRole === 'super_admin' || userRole === 'department_head';
 
+  // Channel to auto-navigate to in Chat tab
+  const [pendingChannelId, setPendingChannelId] = useState<string | null>(null);
+
+  // Track tab history for back button handling (non-default tabs only)
+  const tabHistoryRef = useRef<TabId[]>(['patients']);
+
+  // Handle browser back button: navigate through tab history instead of leaving the app
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      const previousTab = event.state?.tab;
+      if (previousTab && previousTab !== activeTab) {
+        setActiveTab(previousTab);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [activeTab]);
+
+  // Push browser history state when tab changes (but only for non-default tabs)
+  useEffect(() => {
+    // Only push history for non-default tabs to prevent navigating away from SPA on back
+    if (activeTab !== 'patients') {
+      window.history.pushState({ tab: activeTab }, '', window.location.href);
+    }
+  }, [activeTab]);
+
   // When patient is tapped, switch to chat tab and navigate to their channel
-  // (for now just switch tabs — full channel navigation comes with ChatShell integration)
-  const handleNavigateToChannel = useCallback((_channelId: string) => {
+  const handleNavigateToChannel = useCallback((channelId: string) => {
+    setPendingChannelId(channelId);
     setActiveTab('chat');
-    // TODO: pass channelId to ChatShell to auto-select that channel
   }, []);
 
   return (
@@ -44,7 +70,11 @@ export function AppShell({ userId, userRole, streamToken }: AppShellProps) {
 
           {/* Chat Tab — keep mounted so GetStream stays connected */}
           <div className={activeTab === 'chat' ? 'h-full' : 'hidden'}>
-            <ChatShell isAdmin={isAdmin} />
+            <ChatShell
+              isAdmin={isAdmin}
+              pendingChannelId={pendingChannelId}
+              onChannelNavigated={() => setPendingChannelId(null)}
+            />
           </div>
 
           {/* Tasks Tab */}

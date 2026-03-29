@@ -11,6 +11,7 @@ import {
   AlertCircle,
   Filter,
 } from 'lucide-react';
+import { AdminLayout } from '@/components/admin/AdminLayout';
 
 interface EscalationEntry {
   id: string;
@@ -136,7 +137,8 @@ export default function EscalationsPage() {
     LEVEL_COLORS[Math.min(level, 4)] || LEVEL_COLORS[4];
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <AdminLayout breadcrumbs={[{label:'Admin', href:'/admin'}, {label:'Escalation Log'}]}>
+      <div className="p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -312,6 +314,7 @@ export default function EscalationsPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </AdminLayout>
   );
 }

@@ -8,7 +8,7 @@
 // Step 2.4: Added thread, DM, search panels.
 // ============================================
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import type { Channel, MessageResponse } from 'stream-chat';
 import { useChatContext } from '@/providers/ChatProvider';
 import { ChannelSidebar } from './ChannelSidebar';
@@ -19,9 +19,15 @@ import { SearchOverlay } from './SearchOverlay';
 
 interface ChatShellProps {
   isAdmin?: boolean;
+  pendingChannelId?: string | null;
+  onChannelNavigated?: () => void;
 }
 
-export function ChatShell({ isAdmin = false }: ChatShellProps) {
+export function ChatShell({
+  isAdmin = false,
+  pendingChannelId,
+  onChannelNavigated,
+}: ChatShellProps) {
   const { client, connecting, error } = useChatContext();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
@@ -38,6 +44,33 @@ export function ChatShell({ isAdmin = false }: ChatShellProps) {
     setThreadMessage(null); // Close thread when switching channels
     setSidebarOpen(false);
   }, []);
+
+  // Handle navigation to a specific channel from patient card
+  useEffect(() => {
+    if (!pendingChannelId || !client) return;
+
+    const queryAndSelectChannel = async () => {
+      try {
+        // Query for the patient-thread channel by ID
+        const channels = await client.queryChannels({ id: pendingChannelId });
+
+        if (channels && channels.length > 0) {
+          handleSelectChannel(channels[0]);
+        } else {
+          // Try accessing it directly as a fallback
+          const channel = client.channel('patient-thread', pendingChannelId);
+          await channel.watch();
+          handleSelectChannel(channel);
+        }
+      } catch (err) {
+        console.error(`Failed to navigate to channel ${pendingChannelId}:`, err);
+      } finally {
+        onChannelNavigated?.();
+      }
+    };
+
+    queryAndSelectChannel();
+  }, [pendingChannelId, client, handleSelectChannel, onChannelNavigated]);
 
   const handleOpenThread = useCallback((message: MessageResponse) => {
     setThreadMessage(message);

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Users, Search, RefreshCw, Shield, Clock, Ban, CheckCircle } from 'lucide-react';
+import { AdminLayout } from '@/components/admin/AdminLayout';
 
 interface UserProfile {
   id: string;
@@ -72,7 +73,8 @@ export default function UsersPage() {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <AdminLayout breadcrumbs={[{label:'Admin', href:'/admin'}, {label:'All Users'}]}>
+      <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-even-navy flex items-center gap-2">
@@ -175,6 +177,7 @@ export default function UsersPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </AdminLayout>
   );
 }

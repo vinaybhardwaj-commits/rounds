@@ -16,6 +16,7 @@ import {
   CalendarClock,
   CircleDot,
 } from 'lucide-react';
+import { AdminLayout } from '@/components/admin/AdminLayout';
 import type {
   PatientStatus,
   SurgeryReadiness,
@@ -182,7 +183,8 @@ export default function AdmissionsPage() {
     .sort((a, b) => b.readiness_pct - a.readiness_pct);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <AdminLayout breadcrumbs={[{label:'Admin', href:'/admin'}, {label:'Admission Tracker'}]}>
+      <div className="p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -617,7 +619,8 @@ export default function AdmissionsPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </AdminLayout>
   );
 }
 

@@ -16,6 +16,7 @@ import {
   CheckCircle,
   Bell,
 } from 'lucide-react';
+import { AdminLayout } from '@/components/admin/AdminLayout';
 import type { DutyRosterEntry, ShiftType } from '@/types';
 import { SHIFT_TYPE_LABELS, DAY_LABELS } from '@/types';
 
@@ -217,7 +218,8 @@ export default function DutyRosterPage() {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <AdminLayout breadcrumbs={[{label:'Admin', href:'/admin'}, {label:'Duty Roster'}]}>
+      <div className="p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -609,6 +611,7 @@ export default function DutyRosterPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </AdminLayout>
   );
 }
