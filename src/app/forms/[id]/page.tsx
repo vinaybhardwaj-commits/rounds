@@ -6,7 +6,7 @@
 // readiness item status, and completion score.
 // ============================================
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -55,8 +55,8 @@ const STATUS_ICONS: Record<ReadinessStatus, React.ReactNode> = {
   not_applicable: <Minus className="h-4 w-4 text-gray-400" />,
 };
 
-export default function FormViewPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function FormViewPage({ params }: { params: { id: string } }) {
+  const { id } = params;
   const router = useRouter();
   const [data, setData] = useState<FormViewData | null>(null);
   const [loading, setLoading] = useState(true);
