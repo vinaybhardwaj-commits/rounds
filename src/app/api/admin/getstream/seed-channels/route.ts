@@ -52,6 +52,45 @@ const OPS_BROADCAST = {
   description: 'Hospital-wide operational announcements (read-only)',
 };
 
+/**
+ * Ensure a channel exists and add a user as member.
+ * Idempotent: works whether channel is new or already exists.
+ */
+async function ensureChannelWithMember(
+  client: ReturnType<typeof getStreamServerClient>,
+  type: string,
+  id: string,
+  data: Record<string, unknown>,
+  memberId: string
+): Promise<string> {
+  let created = false;
+
+  // Step 1: Ensure channel exists
+  try {
+    const channel = client.channel(type, id, {
+      ...data,
+      created_by_id: 'rounds-system',
+    });
+    await channel.create();
+    created = true;
+  } catch {
+    // Channel likely already exists — that's fine
+  }
+
+  // Step 2: Always add member (separate call, works for both new and existing)
+  try {
+    const channel = client.channel(type, id);
+    await channel.addMembers([memberId]);
+  } catch {
+    // Member may already be added — that's fine
+  }
+
+  const label = (data.name as string) || id;
+  return created
+    ? `Created: ${label}`
+    : `Exists: ${label} — member added`;
+}
+
 export async function POST() {
   try {
     // Auth check — super_admin only
@@ -71,88 +110,50 @@ export async function POST() {
 
     const client = getStreamServerClient();
     const results: string[] = [];
-    const callerUserId = user.id; // Add the calling admin to all channels
+    const callerUserId = user.id;
 
     // 1. Fetch all active departments from our DB
     const departments = await sql`
       SELECT id, name, slug FROM departments WHERE is_active = true ORDER BY name
     `;
 
-    // 2. Create a department channel for each
+    // 2. Create/ensure department channels
     for (const dept of departments) {
-      try {
-        const channel = client.channel('department', dept.slug as string, {
+      const result = await ensureChannelWithMember(
+        client,
+        'department',
+        dept.slug as string,
+        {
           name: dept.name as string,
           description: `${dept.name} department channel`,
-          created_by_id: 'rounds-system',
-          // Custom data linking back to our DB
           department_id: dept.id as string,
-        });
-        await channel.create();
-        await channel.addMembers([callerUserId]);
-        results.push(`Department channel: ${dept.name} (${dept.slug})`);
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        // "already exists" is fine — idempotent. Still add the caller as member.
-        if (msg.includes('already exists') || msg.includes('already_exists')) {
-          try {
-            const existing = client.channel('department', dept.slug as string);
-            await existing.addMembers([callerUserId]);
-          } catch { /* member may already be added */ }
-          results.push(`Department channel exists: ${dept.name} (${dept.slug}) — member added`);
-        } else {
-          results.push(`Error creating ${dept.slug}: ${msg}`);
-        }
-      }
+        },
+        callerUserId
+      );
+      results.push(`[dept] ${result}`);
     }
 
-    // 3. Create cross-functional channels
+    // 3. Create/ensure cross-functional channels
     for (const cf of CROSS_FUNCTIONAL_CHANNELS) {
-      try {
-        const channel = client.channel('cross-functional', cf.id, {
-          name: cf.name,
-          description: cf.description,
-          created_by_id: 'rounds-system',
-        });
-        await channel.create();
-        await channel.addMembers([callerUserId]);
-        results.push(`Cross-functional channel: ${cf.name}`);
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        if (msg.includes('already exists') || msg.includes('already_exists')) {
-          try {
-            const existing = client.channel('cross-functional', cf.id);
-            await existing.addMembers([callerUserId]);
-          } catch { /* member may already be added */ }
-          results.push(`Cross-functional channel exists: ${cf.name} — member added`);
-        } else {
-          results.push(`Error creating ${cf.id}: ${msg}`);
-        }
-      }
+      const result = await ensureChannelWithMember(
+        client,
+        'cross-functional',
+        cf.id,
+        { name: cf.name, description: cf.description },
+        callerUserId
+      );
+      results.push(`[cross] ${result}`);
     }
 
-    // 4. Create ops broadcast channel
-    try {
-      const broadcastChannel = client.channel('ops-broadcast', OPS_BROADCAST.id, {
-        name: OPS_BROADCAST.name,
-        description: OPS_BROADCAST.description,
-        created_by_id: 'rounds-system',
-      });
-      await broadcastChannel.create();
-      await broadcastChannel.addMembers([callerUserId]);
-      results.push(`Broadcast channel: ${OPS_BROADCAST.name}`);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      if (msg.includes('already exists') || msg.includes('already_exists')) {
-        try {
-          const existing = client.channel('ops-broadcast', OPS_BROADCAST.id);
-          await existing.addMembers([callerUserId]);
-        } catch { /* member may already be added */ }
-        results.push(`Broadcast channel exists: ${OPS_BROADCAST.name} — member added`);
-      } else {
-        results.push(`Error creating broadcast: ${msg}`);
-      }
-    }
+    // 4. Create/ensure ops broadcast channel
+    const broadcastResult = await ensureChannelWithMember(
+      client,
+      'ops-broadcast',
+      OPS_BROADCAST.id,
+      { name: OPS_BROADCAST.name, description: OPS_BROADCAST.description },
+      callerUserId
+    );
+    results.push(`[broadcast] ${broadcastResult}`);
 
     return NextResponse.json({
       success: true,
