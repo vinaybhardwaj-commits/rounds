@@ -1,6 +1,6 @@
 # Rounds Build Order — Status Tracker
 
-**Last updated**: 29 March 2026 (Step 5.3 complete)
+**Last updated**: 29 March 2026 (Step 6.1 complete)
 **Repo**: https://github.com/vinaybhardwaj-commits/rounds
 **Live**: https://rounds-sqxh.vercel.app
 **Latest commit**: `19a8f7c` — Step 5.1 Patient Thread + Channel Auto-Creation
@@ -235,10 +235,20 @@
 
 ## Phase 6: Dashboard & Tracking (Steps 6.1–6.2)
 
-### Step 6.1 — Admission Tracker Dashboard
-- Active admissions board with stage visualization
-- Surgery schedule view
-- Discharge readiness scoring
+### Step 6.1 — Admission Tracker Dashboard ✅
+**Commit**: `0ab86ce` Step 6.1
+- `/admin/admissions` page with 3-tab interface:
+  1. **Stage Board**: Kanban columns (Admitted → Pre-Op → In Surgery → Post-Op → Discharge Planned)
+     with patient cards showing surgery, room, readiness badge, financial category
+  2. **Surgery Schedule**: Table sorted by planned date, TODAY/OVERDUE indicators, readiness + status badges
+  3. **Discharge Readiness**: Scored checklist per patient (7 items: counselling, deposit, pre-auth,
+     OT clearance, PAC, physician, cardiology) with progress bar and percentage
+- `POST /api/admission-tracker`: Create admission (admin/dept_head/ip_coordinator)
+- `createAdmissionTracker()` DB helper (23 input fields)
+- `AdmissionTrackerEntry` type expanded to 42 fields matching full DB schema
+- Added `PATIENT_STATUS_LABELS/COLORS`, `SURGERY_READINESS_LABELS/COLORS`, `DischargeType`
+- Admin dashboard: admission tracker quick action with count badge
+- "New Admission" modal: patient info, clinical, room & financial, IP coordinator
 
 ### Step 6.2 — UX Redesign (replaces old 6.2 "3-Tab Sidebar")
 **Decided**: 29 March 2026 after V's live testing revealed fundamental usability gaps.

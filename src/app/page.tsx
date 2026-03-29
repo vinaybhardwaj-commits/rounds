@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import { generateStreamToken, syncUserToGetStream } from '@/lib/getstream';
-import { ChatPage } from '@/components/chat/ChatPage';
+import { AppShell } from '@/components/AppShell';
 
 export default async function HomePage() {
   const user = await getCurrentUser();
@@ -31,7 +31,7 @@ export default async function HomePage() {
   }
 
   return (
-    <ChatPage
+    <AppShell
       userId={user.profileId}
       userRole={user.role}
       streamToken={streamToken}

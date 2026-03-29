@@ -66,7 +66,7 @@ export function ChatShell({ isAdmin = false }: ChatShellProps) {
   // Loading state
   if (connecting) {
     return (
-      <div className="flex items-center justify-center h-screen bg-even-white">
+      <div className="flex items-center justify-center h-full bg-even-white">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-even-blue/20 border-t-even-blue rounded-full animate-spin mx-auto mb-3" />
           <p className="text-sm text-gray-500">Connecting to Rounds...</p>
@@ -78,7 +78,7 @@ export function ChatShell({ isAdmin = false }: ChatShellProps) {
   // Error state
   if (error && !client) {
     return (
-      <div className="flex items-center justify-center h-screen bg-even-white">
+      <div className="flex items-center justify-center h-full bg-even-white">
         <div className="text-center max-w-sm p-6">
           <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-3">
             <span className="text-red-500 text-xl">!</span>
@@ -100,7 +100,7 @@ export function ChatShell({ isAdmin = false }: ChatShellProps) {
 
   return (
     <>
-      <div className="flex h-screen overflow-hidden bg-even-white">
+      <div className="flex h-full overflow-hidden bg-even-white">
         {/* Sidebar */}
         <ChannelSidebar
           isOpen={sidebarOpen}
