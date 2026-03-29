@@ -3,14 +3,19 @@
 // ============================================
 // ChatShell — the main chat interface wrapper.
 // Manages: sidebar open/close state, active
-// channel selection, mobile responsive layout.
+// channel selection, thread panel, DM dialog,
+// global search overlay, mobile responsive.
+// Step 2.4: Added thread, DM, search panels.
 // ============================================
 
 import React, { useState, useCallback } from 'react';
-import type { Channel } from 'stream-chat';
+import type { Channel, MessageResponse } from 'stream-chat';
 import { useChatContext } from '@/providers/ChatProvider';
 import { ChannelSidebar } from './ChannelSidebar';
 import { MessageArea } from './MessageArea';
+import { ThreadPanel } from './ThreadPanel';
+import { NewMessageDialog } from './NewMessageDialog';
+import { SearchOverlay } from './SearchOverlay';
 
 interface ChatShellProps {
   isAdmin?: boolean;
@@ -21,10 +26,39 @@ export function ChatShell({ isAdmin = false }: ChatShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
 
-  const handleSelectChannel = useCallback(
-    (channel: Channel) => {
+  // Thread state
+  const [threadMessage, setThreadMessage] = useState<MessageResponse | null>(null);
+
+  // Dialog state
+  const [newMessageOpen, setNewMessageOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  const handleSelectChannel = useCallback((channel: Channel) => {
+    setActiveChannel(channel);
+    setThreadMessage(null); // Close thread when switching channels
+    setSidebarOpen(false);
+  }, []);
+
+  const handleOpenThread = useCallback((message: MessageResponse) => {
+    setThreadMessage(message);
+  }, []);
+
+  const handleCloseThread = useCallback(() => {
+    setThreadMessage(null);
+  }, []);
+
+  const handleDMCreated = useCallback((channel: Channel) => {
+    setActiveChannel(channel);
+    setThreadMessage(null);
+    setSidebarOpen(false);
+  }, []);
+
+  const handleSearchNavigate = useCallback(
+    (channel: Channel, _messageId?: string) => {
       setActiveChannel(channel);
-      setSidebarOpen(false); // Close sidebar on mobile after selection
+      setThreadMessage(null);
+      setSidebarOpen(false);
+      // TODO: Scroll to specific message by messageId
     },
     []
   );
@@ -65,21 +99,48 @@ export function ChatShell({ isAdmin = false }: ChatShellProps) {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-even-white">
-      {/* Sidebar */}
-      <ChannelSidebar
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        activeChannelId={activeChannel?.cid ?? null}
-        onSelectChannel={handleSelectChannel}
-        isAdmin={isAdmin}
+    <>
+      <div className="flex h-screen overflow-hidden bg-even-white">
+        {/* Sidebar */}
+        <ChannelSidebar
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          activeChannelId={activeChannel?.cid ?? null}
+          onSelectChannel={handleSelectChannel}
+          isAdmin={isAdmin}
+          onNewMessage={() => setNewMessageOpen(true)}
+          onGlobalSearch={() => setSearchOpen(true)}
+        />
+
+        {/* Main content */}
+        <MessageArea
+          channel={activeChannel}
+          onOpenSidebar={() => setSidebarOpen(true)}
+          onOpenThread={handleOpenThread}
+        />
+
+        {/* Thread panel (desktop: side panel, mobile: overlay) */}
+        {threadMessage && activeChannel && (
+          <ThreadPanel
+            channel={activeChannel}
+            parentMessage={threadMessage}
+            onClose={handleCloseThread}
+          />
+        )}
+      </div>
+
+      {/* Dialogs (rendered outside the flex container) */}
+      <NewMessageDialog
+        isOpen={newMessageOpen}
+        onClose={() => setNewMessageOpen(false)}
+        onChannelCreated={handleDMCreated}
       />
 
-      {/* Main content */}
-      <MessageArea
-        channel={activeChannel}
-        onOpenSidebar={() => setSidebarOpen(true)}
+      <SearchOverlay
+        isOpen={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onNavigateToChannel={handleSearchNavigate}
       />
-    </div>
+    </>
   );
 }

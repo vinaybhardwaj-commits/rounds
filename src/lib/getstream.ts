@@ -120,3 +120,35 @@ export async function sendSystemMessage(
     ...extraData,
   });
 }
+
+/**
+ * Auto-join a user to their default channels on login:
+ * 1. Their department channel (if department_slug provided)
+ * 2. The hospital-broadcast channel
+ *
+ * Idempotent: silently succeeds if user is already a member.
+ */
+export async function autoJoinDefaultChannels(
+  userId: string,
+  departmentSlug?: string | null
+): Promise<void> {
+  const client = getStreamServerClient();
+
+  // Always join hospital broadcast
+  try {
+    const broadcast = client.channel('ops-broadcast', 'hospital-broadcast');
+    await broadcast.addMembers([userId]);
+  } catch {
+    // Channel may not exist yet or user already a member — fine
+  }
+
+  // Join department channel if department is known
+  if (departmentSlug) {
+    try {
+      const deptChannel = client.channel('department', departmentSlug);
+      await deptChannel.addMembers([userId]);
+    } catch {
+      // Channel may not exist yet or user already a member — fine
+    }
+  }
+}

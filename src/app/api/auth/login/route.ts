@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { verifyPin, createToken, setSessionCookie } from '@/lib/auth';
-import { generateStreamToken, syncUserToGetStream } from '@/lib/getstream';
+import { generateStreamToken, syncUserToGetStream, autoJoinDefaultChannels } from '@/lib/getstream';
 
 let _sql: ReturnType<typeof neon> | null = null;
 function sql(strings: TemplateStringsArray, ...values: unknown[]) {
@@ -50,11 +50,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find the profile
+    // Find the profile (with department slug for auto-join)
     const result = await sql`
-      SELECT id, email, full_name, role, status, password_hash, account_type, department_id
-      FROM profiles
-      WHERE email = ${email.toLowerCase()}
+      SELECT p.id, p.email, p.full_name, p.role, p.status, p.password_hash, p.account_type, p.department_id,
+             d.slug as department_slug
+      FROM profiles p
+      LEFT JOIN departments d ON p.department_id = d.id
+      WHERE p.email = ${email.toLowerCase()}
     `;
 
     if (result.length === 0) {
@@ -131,6 +133,12 @@ export async function POST(request: NextRequest) {
         department_id: profile.department_id as string | null,
       });
       streamToken = generateStreamToken(profile.id as string);
+
+      // Auto-join default channels (department + broadcast)
+      await autoJoinDefaultChannels(
+        profile.id as string,
+        profile.department_slug as string | null
+      );
     } catch (streamError) {
       // Log but don't fail login — chat is degraded, not broken
       console.error('GetStream sync failed during login:', streamError);

@@ -4,6 +4,8 @@
 // ChannelSidebar — left panel showing channels
 // grouped by type: Department, Cross-Functional,
 // Direct Messages, Patient Threads
+// Step 2.4: Added last message preview, "New
+// Message" button, global search trigger.
 // ============================================
 
 import React, { useState, useCallback, useEffect } from 'react';
@@ -19,6 +21,7 @@ import {
   X,
   UserCircle,
   Activity,
+  PenSquare,
 } from 'lucide-react';
 import type { Channel } from 'stream-chat';
 import { useChatContext } from '@/providers/ChatProvider';
@@ -39,6 +42,8 @@ interface ChannelSidebarProps {
   activeChannelId: string | null;
   onSelectChannel: (channel: Channel) => void;
   isAdmin?: boolean;
+  onNewMessage: () => void;
+  onGlobalSearch: () => void;
 }
 
 // --- Channel type → icon mapping ---
@@ -50,6 +55,39 @@ const CHANNEL_ICONS: Record<string, React.ElementType> = {
   'ops-broadcast': Megaphone,
 };
 
+// --- Helpers ---
+
+function formatRelativeTime(dateStr: string | undefined): string {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+
+  if (diffMin < 1) return 'now';
+  if (diffMin < 60) return `${diffMin}m`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}d`;
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
+function getLastMessagePreview(channel: Channel): { text: string; time: string } {
+  const msgs = channel.state?.messages;
+  if (!msgs || msgs.length === 0) return { text: '', time: '' };
+  const last = msgs[msgs.length - 1];
+  const senderName = last.user?.name || last.user?.id || '';
+  const text = last.text
+    ? `${senderName ? senderName.split(' ')[0] + ': ' : ''}${last.text}`
+    : last.attachments?.length
+    ? `${senderName ? senderName.split(' ')[0] + ': ' : ''}[Attachment]`
+    : '';
+  const truncated = text.length > 40 ? text.substring(0, 40) + '...' : text;
+  const time = formatRelativeTime(last.created_at as string);
+  return { text: truncated, time };
+}
+
 // --- Component ---
 
 export function ChannelSidebar({
@@ -58,6 +96,8 @@ export function ChannelSidebar({
   activeChannelId,
   onSelectChannel,
   isAdmin = false,
+  onNewMessage,
+  onGlobalSearch,
 }: ChannelSidebarProps) {
   const { client } = useChatContext();
   const [channelGroups, setChannelGroups] = useState<ChannelGroup[]>([]);
@@ -71,7 +111,6 @@ export function ChannelSidebar({
 
     setLoading(true);
     try {
-      // Query channels the user is a member of
       const filter = { members: { $in: [client.userID!] } };
       const sort = [{ last_message_at: -1 as const }];
       const channels = await client.queryChannels(filter, sort, {
@@ -80,7 +119,6 @@ export function ChannelSidebar({
         limit: 50,
       });
 
-      // Group by channel type
       const groups: Record<string, Channel[]> = {};
       for (const ch of channels) {
         const type = ch.type || 'messaging';
@@ -88,7 +126,6 @@ export function ChannelSidebar({
         groups[type].push(ch);
       }
 
-      // Build ordered groups
       const orderedTypes = [
         { type: 'department', label: 'Departments', icon: Hash, defaultOpen: true },
         { type: 'cross-functional', label: 'Cross-Functional', icon: Users, defaultOpen: true },
@@ -119,23 +156,24 @@ export function ChannelSidebar({
     loadChannels();
   }, [loadChannels]);
 
-  // Listen for new channels / channel updates
+  // Listen for new channels / channel updates / new messages
   useEffect(() => {
     if (!client) return;
 
     const handleEvent = () => {
-      // Reload channels on relevant events
       loadChannels();
     };
 
     client.on('channel.updated', handleEvent);
     client.on('notification.added_to_channel', handleEvent);
     client.on('notification.removed_from_channel', handleEvent);
+    client.on('message.new', handleEvent);
 
     return () => {
       client.off('channel.updated', handleEvent);
       client.off('notification.added_to_channel', handleEvent);
       client.off('notification.removed_from_channel', handleEvent);
+      client.off('message.new', handleEvent);
     };
   }, [client, loadChannels]);
 
@@ -192,6 +230,13 @@ export function ChannelSidebar({
             <span className="font-semibold text-sm">Rounds</span>
           </div>
           <div className="flex items-center gap-1">
+            <button
+              onClick={onNewMessage}
+              className="p-1.5 rounded-md hover:bg-white/10 transition-colors"
+              title="New message"
+            >
+              <PenSquare size={15} className="text-white/60" />
+            </button>
             {isAdmin && (
               <a
                 href="/admin"
@@ -210,22 +255,29 @@ export function ChannelSidebar({
           </div>
         </div>
 
-        {/* Search */}
+        {/* Search — now triggers global search overlay */}
         <div className="px-3 py-2">
-          <div className="relative">
-            <Search
-              size={14}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40"
-            />
+          <button
+            onClick={onGlobalSearch}
+            className="w-full flex items-center gap-2 bg-white/10 text-sm text-white/40 rounded-md px-3 py-1.5 hover:bg-white/15 transition-colors text-left"
+          >
+            <Search size={14} />
+            <span>Search messages...</span>
+          </button>
+        </div>
+
+        {/* Local channel filter */}
+        {channelGroups.length > 10 && (
+          <div className="px-3 pb-1">
             <input
               type="text"
-              placeholder="Search channels..."
+              placeholder="Filter channels..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white/10 text-sm text-white placeholder:text-white/40 rounded-md pl-8 pr-3 py-1.5 outline-none focus:bg-white/15 transition-colors"
+              className="w-full bg-white/5 text-xs text-white placeholder:text-white/30 rounded-md px-2.5 py-1 outline-none focus:bg-white/10 transition-colors"
             />
           </div>
-        </div>
+        )}
 
         {/* Channel Groups */}
         <div className="flex-1 overflow-y-auto px-2 pb-4">
@@ -268,15 +320,16 @@ export function ChannelSidebar({
                         const isActive = channel.cid === activeChannelId;
                         const ChannelIcon =
                           CHANNEL_ICONS[channel.type] || Hash;
-                        const unreadCount =
-                          channel.countUnread?.() || 0;
+                        const unreadCount = channel.countUnread?.() || 0;
+                        const { text: lastMsg, time: lastTime } =
+                          getLastMessagePreview(channel);
 
                         return (
                           <button
                             key={channel.cid}
                             onClick={() => onSelectChannel(channel)}
                             className={`
-                              flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-sm transition-colors
+                              flex items-start gap-2 w-full px-2.5 py-1.5 rounded-md text-sm transition-colors
                               ${
                                 isActive
                                   ? 'bg-even-blue text-white'
@@ -284,12 +337,45 @@ export function ChannelSidebar({
                               }
                             `}
                           >
-                            <ChannelIcon size={15} className="flex-shrink-0" />
-                            <span className="truncate flex-1 text-left">
-                              {channelName}
-                            </span>
+                            <ChannelIcon
+                              size={15}
+                              className="flex-shrink-0 mt-0.5"
+                            />
+                            <div className="flex-1 min-w-0 text-left">
+                              <div className="flex items-center gap-1">
+                                <span
+                                  className={`truncate flex-1 ${
+                                    unreadCount > 0 ? 'font-semibold' : ''
+                                  }`}
+                                >
+                                  {channelName}
+                                </span>
+                                {lastTime && (
+                                  <span
+                                    className={`text-[10px] flex-shrink-0 ${
+                                      isActive ? 'text-white/60' : 'text-white/30'
+                                    }`}
+                                  >
+                                    {lastTime}
+                                  </span>
+                                )}
+                              </div>
+                              {lastMsg && (
+                                <p
+                                  className={`text-[11px] truncate mt-0.5 ${
+                                    isActive
+                                      ? 'text-white/60'
+                                      : unreadCount > 0
+                                      ? 'text-white/50'
+                                      : 'text-white/25'
+                                  }`}
+                                >
+                                  {lastMsg}
+                                </p>
+                              )}
+                            </div>
                             {unreadCount > 0 && (
-                              <span className="flex-shrink-0 min-w-[18px] h-[18px] flex items-center justify-center bg-even-pink text-white text-[10px] font-bold rounded-full px-1">
+                              <span className="flex-shrink-0 min-w-[18px] h-[18px] flex items-center justify-center bg-even-pink text-white text-[10px] font-bold rounded-full px-1 mt-0.5">
                                 {unreadCount > 99 ? '99+' : unreadCount}
                               </span>
                             )}
