@@ -52,8 +52,14 @@ export function AppShell({ userId, userRole, streamToken }: AppShellProps) {
     }
   }, [activeTab]);
 
+  // Clear pending channel after ChatShell picks it up
+  const handleChannelNavigated = useCallback(() => {
+    setPendingChannelId(null);
+  }, []);
+
   // When patient is tapped, switch to chat tab and navigate to their channel
   const handleNavigateToChannel = useCallback((channelId: string) => {
+    if (!channelId) return; // skip if no channel (old patients without GetStream channel)
     setPendingChannelId(channelId);
     setActiveTab('chat');
   }, []);
@@ -73,7 +79,7 @@ export function AppShell({ userId, userRole, streamToken }: AppShellProps) {
             <ChatShell
               isAdmin={isAdmin}
               pendingChannelId={pendingChannelId}
-              onChannelNavigated={() => setPendingChannelId(null)}
+              onChannelNavigated={handleChannelNavigated}
             />
           </div>
 

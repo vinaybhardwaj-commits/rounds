@@ -188,8 +188,13 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
                 <button
                   key={patient.id}
                   onClick={() => {
-                    if (onOpenPatient) onOpenPatient(patient);
-                    else if (onNavigateToChannel) onNavigateToChannel(patient.getstream_channel_id);
+                    if (onOpenPatient) {
+                      onOpenPatient(patient);
+                    } else if (onNavigateToChannel && patient.getstream_channel_id) {
+                      onNavigateToChannel(patient.getstream_channel_id);
+                    } else if (!patient.getstream_channel_id) {
+                      setMsg({ type: 'error', text: `No chat channel for ${patient.patient_name}. This patient was created before channel auto-creation was added.` });
+                    }
                   }}
                   className="w-full flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 hover:shadow-sm transition-shadow text-left"
                 >

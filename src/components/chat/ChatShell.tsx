@@ -49,27 +49,41 @@ export function ChatShell({
   useEffect(() => {
     if (!pendingChannelId || !client) return;
 
-    const queryAndSelectChannel = async () => {
-      try {
-        // Query for the patient-thread channel by ID
-        const channels = await client.queryChannels({ id: pendingChannelId });
+    let cancelled = false;
 
-        if (channels && channels.length > 0) {
-          handleSelectChannel(channels[0]);
-        } else {
-          // Try accessing it directly as a fallback
-          const channel = client.channel('patient-thread', pendingChannelId);
-          await channel.watch();
+    const navigateToChannel = async () => {
+      try {
+        // Initialize the channel directly by type + id and watch it
+        const channel = client.channel('patient-thread', pendingChannelId);
+        await channel.watch();
+        if (!cancelled) {
           handleSelectChannel(channel);
         }
       } catch (err) {
         console.error(`Failed to navigate to channel ${pendingChannelId}:`, err);
+        // Fallback: try querying across all channel types
+        try {
+          const channels = await client.queryChannels(
+            { type: 'patient-thread', id: { $eq: pendingChannelId } },
+            {},
+            { limit: 1 }
+          );
+          if (!cancelled && channels.length > 0) {
+            handleSelectChannel(channels[0]);
+          }
+        } catch (err2) {
+          console.error('Fallback query also failed:', err2);
+        }
       } finally {
-        onChannelNavigated?.();
+        if (!cancelled) {
+          onChannelNavigated?.();
+        }
       }
     };
 
-    queryAndSelectChannel();
+    navigateToChannel();
+
+    return () => { cancelled = true; };
   }, [pendingChannelId, client, handleSelectChannel, onChannelNavigated]);
 
   const handleOpenThread = useCallback((message: MessageResponse) => {
