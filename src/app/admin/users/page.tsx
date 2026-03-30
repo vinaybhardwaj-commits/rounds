@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Users, Search, RefreshCw, Shield, Clock, Ban, CheckCircle } from 'lucide-react';
+import { Users, Search, RefreshCw, Shield, Clock, Ban, CheckCircle, Pencil } from 'lucide-react';
 import { AdminLayout } from '@/components/admin/AdminLayout';
+import { ProfileEditModal } from '@/components/admin/ProfileEditModal';
 
 interface UserProfile {
   id: string;
@@ -40,6 +41,7 @@ export default function UsersPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [totalCount, setTotalCount] = useState(0);
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -145,9 +147,16 @@ export default function UsersPage() {
                   const badge = STATUS_BADGE[user.status] || STATUS_BADGE.active;
                   const roleBg = ROLE_BADGE[user.role] || ROLE_BADGE.staff;
                   return (
-                    <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                    <tr
+                      key={user.id}
+                      onClick={() => setEditingProfileId(user.id)}
+                      className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                    >
                       <td className="px-4 py-3">
-                        <div className="font-medium text-even-navy">{user.full_name}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium text-even-navy">{user.full_name}</div>
+                          <Pencil size={12} className="text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
                         {user.designation && (
                           <div className="text-xs text-gray-400">{user.designation}</div>
                         )}
@@ -178,6 +187,15 @@ export default function UsersPage() {
         </div>
       )}
       </div>
+
+      {/* Profile Edit Modal */}
+      {editingProfileId && (
+        <ProfileEditModal
+          profileId={editingProfileId}
+          onClose={() => setEditingProfileId(null)}
+          onSaved={() => fetchUsers()}
+        />
+      )}
     </AdminLayout>
   );
 }
