@@ -255,8 +255,8 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
       try {
         await channel.watch();
         const state = channel.state;
-        // Only show top-level messages (not thread replies)
-        const topLevel = state.messages.filter((m) => !m.parent_id);
+        // Only show top-level messages (not thread replies), exclude deleted tombstones
+        const topLevel = state.messages.filter((m) => !m.parent_id && !m.deleted_at);
         setMessages(topLevel.map(toDisplayMessage));
         setTimeout(scrollToBottom, 100);
       } catch (error) {
@@ -292,13 +292,13 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
 
     const handleReactionNew = () => {
       // Refresh messages to get updated reaction counts
-      const topLevel = channel.state.messages.filter((m) => !m.parent_id);
+      const topLevel = channel.state.messages.filter((m) => !m.parent_id && !m.deleted_at);
       setMessages(topLevel.map(toDisplayMessage));
     };
 
     const handleMessageDeleted = () => {
-      // Message was hard-deleted — refresh from channel state
-      const topLevel = channel.state.messages.filter((m) => !m.parent_id);
+      // Message was deleted — refresh from channel state, exclude tombstones
+      const topLevel = channel.state.messages.filter((m) => !m.parent_id && !m.deleted_at);
       setMessages(topLevel.map(toDisplayMessage));
     };
 
@@ -858,8 +858,8 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
           onClose={() => setDeleteTarget(null)}
           onDeleted={async () => {
             setDeleteTarget(null);
-            // Refresh messages from channel state (deleted message is now gone)
-            const topLevel = channel.state.messages.filter((m) => !m.parent_id);
+            // Refresh messages from channel state, exclude tombstones
+            const topLevel = channel.state.messages.filter((m) => !m.parent_id && !m.deleted_at);
             setMessages(topLevel.map(toDisplayMessage));
             // Refresh deleted records from our DB for the accordion
             try {

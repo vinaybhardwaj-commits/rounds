@@ -122,12 +122,23 @@ export async function POST(request: NextRequest) {
     // 2. Hard-delete the message from GetStream
     //    This properly adjusts unread counts and removes it from channel state.
     //    We already have the full audit trail in our DB.
+    //    Use explicit { hardDelete: true } options object for clarity.
     try {
-      await client.deleteMessage(message_id, true); // true = hard delete
+      await client.deleteMessage(message_id, { hardDelete: true });
     } catch (err) {
-      console.error('Failed to delete message from GetStream:', err);
-      // DB record exists but GetStream failed — still return success
-      // The audit is saved; the message may still appear but can be retried
+      console.error('Failed to hard-delete message from GetStream:', err);
+      // Audit trail is saved in our DB, but GetStream delete failed.
+      // Return error so the client knows to show a tombstone filter.
+      return NextResponse.json({
+        success: true,
+        message: 'Message recorded as deleted (audit saved) but GetStream hard-delete may have failed. Tombstone will be hidden.',
+        data: {
+          message_id,
+          deleted_by: deleterName,
+          reason,
+          getstream_hard_delete_failed: true,
+        },
+      });
     }
 
     return NextResponse.json({

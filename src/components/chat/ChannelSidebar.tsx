@@ -76,7 +76,16 @@ function formatRelativeTime(dateStr: string | undefined): string {
 function getLastMessagePreview(channel: Channel): { text: string; time: string } {
   const msgs = channel.state?.messages;
   if (!msgs || msgs.length === 0) return { text: '', time: '' };
-  const last = msgs[msgs.length - 1];
+  // Skip deleted tombstones — find the most recent non-deleted message
+  let last = msgs[msgs.length - 1];
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (!msgs[i].deleted_at) {
+      last = msgs[i];
+      break;
+    }
+    // If all messages are deleted, fall back to empty
+    if (i === 0) return { text: '', time: '' };
+  }
   const senderName = last.user?.name || last.user?.id || '';
   const text = last.text
     ? `${senderName ? senderName.split(' ')[0] + ': ' : ''}${last.text}`
