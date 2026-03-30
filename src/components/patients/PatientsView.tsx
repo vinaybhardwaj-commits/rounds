@@ -370,7 +370,7 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
                           <span className="text-gray-200">·</span>
                           <span className="font-medium text-even-navy">
                             Bed {bedDisplay}
-                            {floorDisplay ? ` · ${floorDisplay}F` : ''}
+                            {floorDisplay ? ` · ${floorDisplay}` : ''}
                           </span>
                         </>
                       )}
