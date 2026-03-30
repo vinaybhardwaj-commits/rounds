@@ -85,7 +85,7 @@ export async function PATCH(
     }
   }
 
-  // Handle PIN reset separately
+  // Handle PIN reset separately — also force user to change it on next login
   if (body.new_pin) {
     if (!isValidPin(body.new_pin)) {
       return NextResponse.json({ success: false, error: 'PIN must be exactly 4 digits' }, { status: 400 });
@@ -93,6 +93,9 @@ export async function PATCH(
     const hash = await hashPin(body.new_pin);
     updates.push(`password_hash = $${paramIdx}`);
     values.push(hash);
+    paramIdx++;
+    updates.push(`must_change_pin = $${paramIdx}`);
+    values.push(true);
     paramIdx++;
   }
 

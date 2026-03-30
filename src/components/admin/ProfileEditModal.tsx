@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { X, Save, Key, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { X, Save, Key, Loader2, AlertCircle, CheckCircle, ShieldAlert } from 'lucide-react';
 
 interface Department {
   id: string;
@@ -308,6 +308,11 @@ export function ProfileEditModal({ profileId, onClose, onSaved }: Props) {
                   />
                   {newPin.length > 0 && newPin.length < 4 && (
                     <p className="text-xs text-amber-600 mt-1">{4 - newPin.length} more digit{4 - newPin.length > 1 ? 's' : ''} needed</p>
+                  )}
+                  {newPin.length === 4 && (
+                    <p className="text-xs text-amber-700 mt-2 flex items-center gap-1">
+                      <ShieldAlert size={11} /> User will be required to change this PIN on next login.
+                    </p>
                   )}
                 </div>
               )}

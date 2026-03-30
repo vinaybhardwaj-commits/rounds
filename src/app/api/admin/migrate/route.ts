@@ -290,6 +290,10 @@ export async function POST() {
     await run('ai_analysis_idx', `CREATE INDEX IF NOT EXISTS idx_ai_analysis_source ON ai_analysis(source_type, source_id)`);
     await run('ai_migration_record', `INSERT INTO _migrations (name) VALUES ('v8-ai-analysis') ON CONFLICT (name) DO NOTHING`);
 
+    // ── Step 9.1: must_change_pin column on profiles ──
+    await run('profiles_must_change_pin', `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS must_change_pin BOOLEAN NOT NULL DEFAULT false`);
+    await run('must_change_pin_migration', `INSERT INTO _migrations (name) VALUES ('v9-must-change-pin') ON CONFLICT (name) DO NOTHING`);
+
     // 9. Verify
     const tables = await sql`
       SELECT table_name FROM information_schema.tables

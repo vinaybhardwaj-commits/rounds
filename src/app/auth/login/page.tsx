@@ -38,8 +38,12 @@ export default function LoginPage() {
         return;
       }
 
-      // Redirect to home on success
-      router.push('/');
+      // Redirect: force PIN change if flagged, otherwise go home
+      if (data.data?.must_change_pin) {
+        router.push('/auth/change-pin');
+      } else {
+        router.push('/');
+      }
       router.refresh();
     } catch {
       setError('Something went wrong. Please try again.');
