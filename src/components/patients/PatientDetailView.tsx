@@ -5,6 +5,10 @@
 // Shows: stage progress bar, patient info, advance
 // stage button, form history, open channel link.
 // Step 6.2b: Deferred UX items
+//   - Confirmation modal for stage advance
+//   - Bed/floor/financial category display
+//   - "Day X" admission counter
+//   - "Fill" button instead of "New" for unfilled forms
 // ============================================
 
 import { useState, useEffect, useCallback } from 'react';
@@ -20,6 +24,8 @@ import {
   Building2,
   Hash,
   Calendar,
+  BedDouble,
+  CreditCard,
 } from 'lucide-react';
 import type { PatientStage, FormType, FormStatus } from '@/types';
 import {
@@ -77,6 +83,13 @@ interface PatientDetail {
   discharge_date: string | null;
   created_at: string;
   forms: FormEntry[];
+  // From admission_tracker JOIN
+  bed_number: string | null;
+  room_number: string | null;
+  room_category: string | null;
+  financial_category: string | null;
+  // Fallback from primary_diagnosis
+  primary_diagnosis: string | null;
 }
 
 interface PatientDetailViewProps {
@@ -93,6 +106,25 @@ const STATUS_COLORS: Record<FormStatus, { bg: string; text: string }> = {
   flagged: { bg: 'bg-red-50', text: 'text-red-700' },
 };
 
+// ── Financial category badge ──
+function getFinancialBadge(category: string | null): { label: string; className: string } | null {
+  if (!category) return null;
+  switch (category) {
+    case 'cash': return { label: 'Cash', className: 'bg-green-100 text-green-700' };
+    case 'insurance': return { label: 'TPA', className: 'bg-blue-100 text-blue-700' };
+    case 'credit': return { label: 'Credit', className: 'bg-amber-100 text-amber-700' };
+    default: return null;
+  }
+}
+
+// ── Days since admission ──
+function daysSince(dateStr: string): number {
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diff = now.getTime() - d.getTime();
+  return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+}
+
 export function PatientDetailView({
   patientId,
   onBack,
@@ -102,6 +134,9 @@ export function PatientDetailView({
   const [loading, setLoading] = useState(true);
   const [advancing, setAdvancing] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Confirmation modal state
+  const [confirmStage, setConfirmStage] = useState<PatientStage | null>(null);
 
   const fetchPatient = useCallback(async () => {
     setLoading(true);
@@ -126,6 +161,7 @@ export function PatientDetailView({
     if (!patient) return;
     setAdvancing(true);
     setMsg(null);
+    setConfirmStage(null);
     try {
       const res = await fetch(`/api/patients/${patient.id}/stage`, {
         method: 'PATCH',
@@ -199,6 +235,18 @@ export function PatientDetailView({
   const completedFormTypes = new Set(
     (patient.forms || []).map((f) => f.form_type)
   );
+
+  // Bed/floor info — from admission_tracker or fallback from primary_diagnosis
+  let bedDisplay = patient.bed_number;
+  let floorDisplay: string | null = null;
+  if (!bedDisplay && patient.primary_diagnosis) {
+    const bedMatch = patient.primary_diagnosis.match(/Bed:\s*([^|]+)/);
+    const floorMatch = patient.primary_diagnosis.match(/Floor:\s*([^|]+)/);
+    if (bedMatch) bedDisplay = bedMatch[1].trim();
+    if (floorMatch) floorDisplay = floorMatch[1].trim();
+  }
+
+  const financialBadge = getFinancialBadge(patient.financial_category);
 
   return (
     <div className="flex flex-col h-full bg-even-white">
@@ -303,6 +351,30 @@ export function PatientDetailView({
                 </span>
               </div>
             )}
+            {/* Bed & Floor */}
+            {bedDisplay && (
+              <div className="flex items-center gap-2.5 text-sm">
+                <BedDouble size={14} className="text-gray-400 shrink-0" />
+                <span className="text-gray-500">Bed:</span>
+                <span className="text-even-navy font-medium">
+                  {bedDisplay}
+                  {floorDisplay ? ` · ${floorDisplay}` : ''}
+                  {patient.room_category && patient.room_category !== 'general' ? (
+                    <span className="text-gray-400 font-normal"> ({patient.room_category})</span>
+                  ) : null}
+                </span>
+              </div>
+            )}
+            {/* Financial Category */}
+            {financialBadge && (
+              <div className="flex items-center gap-2.5 text-sm">
+                <CreditCard size={14} className="text-gray-400 shrink-0" />
+                <span className="text-gray-500">Payment:</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${financialBadge.className}`}>
+                  {financialBadge.label}
+                </span>
+              </div>
+            )}
             {patient.admission_date && (
               <div className="flex items-center gap-2.5 text-sm">
                 <Calendar size={14} className="text-gray-400 shrink-0" />
@@ -313,6 +385,12 @@ export function PatientDetailView({
                     month: 'short',
                     year: 'numeric',
                   })}
+                  {/* Day X counter */}
+                  {!patient.discharge_date && (
+                    <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 font-semibold">
+                      Day {daysSince(patient.admission_date)}
+                    </span>
+                  )}
                 </span>
               </div>
             )}
@@ -371,7 +449,7 @@ export function PatientDetailView({
               {forwardStages.map((stage) => (
                 <button
                   key={stage}
-                  onClick={() => handleAdvanceStage(stage as PatientStage)}
+                  onClick={() => setConfirmStage(stage as PatientStage)}
                   disabled={advancing}
                   className="w-full flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100 hover:border-even-blue/30 hover:shadow-sm transition-all disabled:opacity-50"
                 >
@@ -395,7 +473,7 @@ export function PatientDetailView({
                   {backwardStages.map((stage) => (
                     <button
                       key={stage}
-                      onClick={() => handleAdvanceStage(stage as PatientStage)}
+                      onClick={() => setConfirmStage(stage as PatientStage)}
                       disabled={advancing}
                       className="w-full flex items-center justify-between p-2.5 bg-gray-50 rounded-lg text-left hover:bg-gray-100 transition-colors disabled:opacity-50"
                     >
@@ -446,7 +524,9 @@ export function PatientDetailView({
                     {done ? (
                       <CheckCircle size={14} className="text-green-500 shrink-0" />
                     ) : (
-                      <span className="text-[10px] text-gray-400 shrink-0">New</span>
+                      <span className="text-[11px] font-medium text-white bg-even-blue px-2.5 py-1 rounded-full shrink-0">
+                        Fill
+                      </span>
                     )}
                   </a>
                 );
@@ -524,6 +604,51 @@ export function PatientDetailView({
           <PredictionCard patientThreadId={patient.id} />
         </div>
       </div>
+
+      {/* ── Stage Advance Confirmation Modal ── */}
+      {confirmStage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl w-[90%] max-w-sm mx-4 shadow-xl overflow-hidden">
+            <div className="px-5 pt-5 pb-3">
+              <h3 className="text-base font-semibold text-even-navy mb-1">
+                {STAGES_ORDERED.indexOf(confirmStage) > currentStageIdx
+                  ? 'Advance Stage'
+                  : 'Move Stage Back'}
+              </h3>
+              <p className="text-sm text-gray-500">
+                {STAGES_ORDERED.indexOf(confirmStage) > currentStageIdx ? (
+                  <>
+                    Move <strong>{patient.patient_name}</strong> from{' '}
+                    <strong>{PATIENT_STAGE_LABELS[patient.current_stage]}</strong> to{' '}
+                    <strong>{PATIENT_STAGE_LABELS[confirmStage]}</strong>?
+                  </>
+                ) : (
+                  <>
+                    Move <strong>{patient.patient_name}</strong> back to{' '}
+                    <strong>{PATIENT_STAGE_LABELS[confirmStage]}</strong>? This is a correction — the patient will return to an earlier stage.
+                  </>
+                )}
+              </p>
+            </div>
+            <div className="flex border-t border-gray-100">
+              <button
+                onClick={() => setConfirmStage(null)}
+                className="flex-1 py-3.5 text-sm font-medium text-gray-500 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <div className="w-px bg-gray-100" />
+              <button
+                onClick={() => handleAdvanceStage(confirmStage)}
+                disabled={advancing}
+                className="flex-1 py-3.5 text-sm font-semibold text-even-blue hover:bg-blue-50 transition-colors disabled:opacity-50"
+              >
+                {advancing ? 'Moving...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

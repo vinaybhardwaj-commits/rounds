@@ -45,6 +45,9 @@ function AppShellInner({ userRole }: { userRole: string }) {
   // Unread message count for Chat badge
   const [unreadCount, setUnreadCount] = useState(0);
 
+  // Overdue count for Tasks badge
+  const [overdueCount, setOverdueCount] = useState(0);
+
   // Track tab history for back button handling (non-default tabs only)
   const tabHistoryRef = useRef<TabId[]>(['patients']);
 
@@ -87,11 +90,32 @@ function AppShellInner({ userRole }: { userRole: string }) {
     }
   }, [activeTab, client]);
 
+  // ── Overdue count for Tasks badge ──
+  useEffect(() => {
+    const fetchOverdue = async () => {
+      try {
+        const res = await fetch('/api/readiness/overdue');
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data)) {
+          setOverdueCount(data.data.length);
+        }
+      } catch {
+        // Non-fatal — badge just won't show
+      }
+    };
+
+    fetchOverdue();
+    // Refresh overdue count every 2 minutes
+    const interval = setInterval(fetchOverdue, 120_000);
+    return () => clearInterval(interval);
+  }, []);
+
   const badges = useMemo(() => {
     const b: Partial<Record<TabId, number>> = {};
     if (unreadCount > 0) b.chat = unreadCount;
+    if (overdueCount > 0) b.tasks = overdueCount;
     return b;
-  }, [unreadCount]);
+  }, [unreadCount, overdueCount]);
 
   // Handle browser back button: navigate through tab history instead of leaving the app
   useEffect(() => {
@@ -130,9 +154,9 @@ function AppShellInner({ userRole }: { userRole: string }) {
   }, []);
 
   // From detail view: open a channel in Chat tab
+  // Keep selectedPatientId so user returns to detail view when switching back to Patients tab
   const handleOpenChannelFromDetail = useCallback((channelId: string) => {
     if (!channelId) return;
-    setSelectedPatientId(null); // close detail view
     setPendingChannelId(channelId);
     setActiveTab('chat');
   }, []);
