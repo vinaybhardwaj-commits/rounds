@@ -1,9 +1,9 @@
 # Rounds Build Order — Status Tracker
 
-**Last updated**: 29 March 2026 (Step 6.2 complete)
+**Last updated**: 30 March 2026 (Step 8.3 complete — development paused for testing & UX)
 **Repo**: https://github.com/vinaybhardwaj-commits/rounds
 **Live**: https://rounds-sqxh.vercel.app
-**Latest commit**: `f9044b1` — Step 6.2 UX Redesign with bottom tab bar navigation
+**Latest commit**: `244d584` — AI refactor to local Ollama (pending: OpenAI SDK refactor)
 
 ---
 
@@ -206,43 +206,75 @@
 
 ---
 
-## Phase 6b: UX Completion (Step 6.2b) — NEXT
+## Phase 6b: UX Completion (Step 6.2b) ✅
 
-### Step 6.2b — Deferred UX Items 🔜
-**Priority order**:
-1. **Patient Detail View**: Tap a patient card → dedicated view with stage progress bar, "Advance Stage" button, forms list, channel link. This is the most critical missing piece — the Patients tab creates threads but you can't do anything with them yet.
-2. **Tab badge wiring**: Unread count on Chat tab (from GetStream), overdue count on Tasks tab (from API). Without badges, users don't know when to check each tab.
-3. **Slash commands**: Type "/" in chat input → context-aware form menu. In a patient channel, shows only forms relevant to that patient's current stage.
-4. **Actionable system messages**: Stage transition and form submission messages should have "View Patient" / "Fill Form" buttons.
-5. **Stage-aware nudges**: Banner in patient channels suggesting next required form based on current stage.
-6. **Clean up orphaned ChatPage.tsx**: Still in codebase but no longer imported.
-
----
-
-## Phase 7: PWA & Mobile (Step 7.1)
-
-### Step 7.1 — Progressive Web App
-- Service worker for offline shell
-- Push notifications via GetStream + web push
-- Install prompt for mobile home screen
-- Mobile-optimized layouts (already responsive via Tailwind)
+### Step 6.2b — Deferred UX Items ✅
+**Commit**: `558e49e` Step 6.2b — Patient Detail View, actionable system messages, slash commands, tab badges
+1. **Patient Detail View** (`src/components/patients/PatientDetailView.tsx`): Stage progress bar, "Advance Stage" button, form history, channel link, AI predictions card
+2. **AppShell refactor**: Split into `AppShell` (outer, wraps ChatProvider) + `AppShellInner` (inner, uses useChatContext for unread badges). Added `selectedPatientId` state for patient detail navigation.
+3. **Tab badge wiring**: Unread count from GetStream `total_unread_count` + event listeners (`notification.message_new`, `notification.mark_read`)
+4. **Slash commands**: Type "/" in chat composer → context-aware form menu showing stage-relevant forms via `FORMS_BY_STAGE`
+5. **Actionable system messages**: Color-coded cards (purple for stage transitions, red for escalations) with action buttons (Fill Stage Form, View Escalations, Duty Roster, View Forms)
+6. **Cleaned up ChatPage.tsx**: Deleted orphaned file
 
 ---
 
-## Phase 8: AI Integration (Steps 8.1–8.3) — Phase 3 per PRD
+## Phase 7: PWA & Mobile (Step 7.1) ✅
 
-### Step 8.1 — AI Gap Analysis
-- Claude API integration for form completeness analysis
-- "Gap report" on form submissions: what's missing, what's concerning
+### Step 7.1 — Progressive Web App ✅
+**Commit**: `3992add` feat: Steps 7.1 + 8.1-8.3
+- `public/sw.js`: Service worker with precache, network-first strategy, offline fallback, push notification handler
+- `src/app/offline/page.tsx`: Offline fallback page with retry button
+- `src/components/pwa/InstallPrompt.tsx`: "Add to Home Screen" banner via `beforeinstallprompt`
+- `src/components/pwa/ServiceWorkerRegistration.tsx`: SW registration + `subscribeToPush()` helper with VAPID
+- `src/app/api/push/vapid-key/route.ts`, `subscribe/route.ts`, `send/route.ts`: Push notification API routes
+- `src/lib/push.ts`: web-push library — `sendPushToUser`, `sendPushToUsers`, `sendPushBroadcast`
+- DB migration adds `push_subscriptions` table (profile_id, endpoint, subscription_json)
+- Updated `public/manifest.json` with scope, categories, maskable icons
+- PWA icons: `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`, `favicon.ico`
 
-### Step 8.2 — AI Daily Briefing
-- Auto-generated morning briefing for ops team
-- Summarizes: admissions, pending surgeries, overdue items, escalations
+---
 
-### Step 8.3 — Predictive Intelligence
-- Length-of-stay predictions
-- Discharge readiness scoring
-- Escalation risk flagging
+## Phase 8: AI Integration (Steps 8.1–8.3) ✅
+
+### AI Infrastructure
+**Decision (30 March 2026)**: Local LLM inference via Ollama + Cloudflare Tunnel instead of cloud API.
+- **Hardware**: Mac Mini M4 Pro, 24GB unified memory (V's local machine)
+- **Inference**: Ollama serving two models:
+  - `qwen2.5:14b` — complex analysis, reasoning, structured JSON output (MODEL_PRIMARY)
+  - `llama3.1:8b` — tool use, classification, quick tasks (MODEL_FAST)
+- **Network**: Cloudflare Tunnel provides public HTTPS URL (e.g., `https://llm.yourdomain.com`) → forwards to `localhost:11434`
+- **Client**: `openai` npm SDK pointed at Ollama's OpenAI-compatible endpoint via `LLM_BASE_URL` env var
+- **Why not Tailscale?**: Vercel serverless functions can't reach Tailscale private IPs. Cloudflare Tunnel provides a public URL.
+- **Implementation**: `src/lib/llm.ts` — shared OpenAI client; `src/lib/ai.ts` — all AI functions use `llm.chat.completions.create()`
+
+### Step 8.1 — AI Gap Analysis ✅
+**Commit**: `3992add` (initial) + `244d584` (Ollama refactor) + uncommitted (OpenAI SDK refactor)
+- `src/lib/ai.ts` → `analyzeFormGaps()`: Scores form completeness (0-100), identifies critical gaps, flags concerning patterns
+- `src/components/ai/GapAnalysisCard.tsx`: "Analyze" button on form view pages, renders score, gaps, recommendations
+- `src/app/api/ai/gap-analysis/route.ts`: API route
+- DB migration adds `ai_analysis` table (analysis_type, source_id, source_type, result JSONB, model, token_count)
+
+### Step 8.2 — AI Daily Briefing ✅
+- `src/lib/ai.ts` → `generateDailyBriefing()`: Queries active patients, overdue items, escalations, duty roster → LLM generates structured morning briefing
+- `src/components/ai/DailyBriefing.tsx`: Expandable sections (admissions, surgeries, discharges, overdue, escalations, staff alerts), action items with priority colors
+- `src/app/api/ai/briefing/route.ts`: API route
+- `TasksView.tsx` updated: "Briefing" tab added as default tab
+
+### Step 8.3 — Predictive Intelligence ✅
+- `src/lib/ai.ts` → `predictPatientOutcomes()`: LOS estimate, discharge readiness %, escalation risk, risk factors
+- `src/components/ai/PredictionCard.tsx`: Visual card showing predictions per patient
+- `src/app/api/ai/predict/route.ts`: API route
+- `PatientDetailView.tsx` updated: Shows PredictionCard
+
+---
+
+## Current Status: DEVELOPMENT PAUSED — Testing & UX Phase
+
+All core features (Steps 0 through 8.3) are implemented. Development is paused to focus on:
+1. **Testing**: End-to-end workflow testing on Vercel with real staff accounts
+2. **UI/UX polish**: Mobile usability, edge cases, visual refinements
+3. **Infrastructure**: Set up Cloudflare Tunnel on Mac Mini, configure Vercel env vars for LLM
 
 ---
 
@@ -258,47 +290,62 @@
 | Channel seeding | One-shot idempotent | Multiple fix commits | Existing channels, missing members, profileId bug |
 | Step 6.2 | 3-Tab Sidebar (Chats/Updates/Patients) | Bottom Tab Bar (Patients/Chat/Tasks/Me) | V's live testing: chat-first was wrong; staff think in patients |
 | App entry | ChatPage as root | AppShell with tab management | UX redesign required new wrapper architecture |
+| AI provider | Claude API (Anthropic) | Local Ollama via Cloudflare Tunnel | Cost control, data privacy, V has Mac Mini M4 Pro |
+| AI SDK | `@anthropic-ai/sdk` | `openai` npm (Ollama-compatible) | Ollama exposes OpenAI-compatible `/v1` endpoint |
 | `NEXTAUTH_URL` env var | Removed from code | Still referenced in `process.env` | Legacy; harmless but should clean up |
 
 ---
 
-## Current File Tree (74 source files)
+## Current File Tree (~90 source files)
 
 ```
 middleware.ts                              — Edge auth middleware
+public/
+├── sw.js                                  — Service worker (precache, offline, push)
+├── manifest.json                          — PWA manifest
+├── icon-192.png, icon-512.png             — PWA icons
+├── apple-touch-icon.png, favicon.ico      — Apple/browser icons
 src/
 ├── app/
-│   ├── layout.tsx, page.tsx               — Root layout + AppShell entry
+│   ├── layout.tsx, page.tsx               — Root layout (+ SW registration, InstallPrompt) + AppShell entry
+│   ├── offline/page.tsx                   — PWA offline fallback
 │   ├── admin/                             — Admin dashboard (6 pages)
 │   │   ├── page.tsx, admissions/, duty-roster/, escalations/, approvals/, profiles/, users/, departments/
 │   ├── auth/                              — Login, signup, pending (3 pages)
 │   ├── forms/                             — Form picker, new, [id] view (3 pages)
-│   └── api/                               — 30 API routes
+│   └── api/                               — 36 API routes
 │       ├── admin/{approvals, getstream/setup, getstream/seed-channels, migrate}
 │       ├── auth/{login, logout, me, signup, stream-token}
-│       ├── {departments, profiles, profiles/import, webhooks/getstream}
+│       ├── {departments, profiles, profiles/import, profiles/me, webhooks/getstream}
 │       ├── patients/, patients/[id]/, patients/[id]/stage/
 │       ├── forms/, forms/[id]/
 │       ├── readiness/[formId]/, readiness/items/[itemId]/, readiness/overdue/
 │       ├── admission-tracker/
 │       ├── duty-roster/, duty-roster/[id]/, duty-roster/resolve/, duty-roster/handoff/
-│       └── escalation/cron/, escalation/log/
+│       ├── escalation/cron/, escalation/log/
+│       ├── push/vapid-key/, push/subscribe/, push/send/
+│       └── ai/gap-analysis/, ai/briefing/, ai/predict/
 ├── components/
-│   ├── AppShell.tsx                       — Main app wrapper (tab management)
+│   ├── AppShell.tsx                       — Main app wrapper (outer + inner split for GetStream badges)
 │   ├── admin/                             — CSVImport, DepartmentList, ProfilesTable
-│   ├── chat/                              — ChatShell, ChannelSidebar, MessageArea, ThreadPanel, SearchOverlay, NewMessageDialog, MessageTypeBadge, ChatPage (orphaned)
+│   ├── ai/                                — GapAnalysisCard, DailyBriefing, PredictionCard
+│   ├── chat/                              — ChatShell, ChannelSidebar, MessageArea (+ SlashCommandMenu), ThreadPanel, SearchOverlay, NewMessageDialog, MessageTypeBadge
 │   ├── forms/                             — FormRenderer, FormCard
 │   ├── layout/                            — AuthProvider, Header, Sidebar, BottomTabBar
-│   ├── patients/                          — PatientsView
+│   ├── patients/                          — PatientsView, PatientDetailView
 │   ├── profile/                           — ProfileView
-│   └── tasks/                             — TasksView
+│   ├── pwa/                               — InstallPrompt, ServiceWorkerRegistration
+│   └── tasks/                             — TasksView (with Briefing tab)
 ├── lib/
 │   ├── auth.ts                            — JWT create/verify, getCurrentUser
 │   ├── db.ts                              — Neon SQL helpers (original)
 │   ├── db-v5.ts                           — v5 CRUD helpers (817 lines)
 │   ├── form-registry.ts                   — 13 form schemas (1,541 lines)
 │   ├── getstream.ts                       — Server client + helpers (236 lines)
-│   └── getstream-setup.ts                 — Channel type definitions
+│   ├── getstream-setup.ts                 — Channel type definitions
+│   ├── llm.ts                             — OpenAI SDK client → Ollama via Cloudflare Tunnel
+│   ├── ai.ts                              — AI functions (gap analysis, briefing, predictions)
+│   └── push.ts                            — web-push helpers (sendPushToUser, broadcast)
 ├── providers/
 │   └── ChatProvider.tsx                   — GetStream StreamChat client wrapper
 └── types/
@@ -315,19 +362,25 @@ src/
   "jose": "^6.2.2",
   "lucide-react": "^0.460.0",
   "next": "14.2.35",
+  "openai": "^4.x",
   "react": "^18.3.1",
   "react-dom": "^18.3.1",
-  "stream-chat": "^9.38.0"
+  "stream-chat": "^9.38.0",
+  "web-push": "^3.x"
 }
 ```
 
 ## Env Vars (Vercel)
 
-| Variable | Purpose |
-|----------|---------|
-| `POSTGRES_URL` | Neon connection string |
-| `JWT_SECRET` | HMAC key for JWT signing |
-| `NEXT_PUBLIC_GETSTREAM_API_KEY` | GetStream client-side key (`ekbhy4vctj9g`) |
-| `GETSTREAM_API_SECRET` | GetStream server-side secret |
-| `CRON_SECRET` | Auth for escalation cron endpoint |
-| `NEXTAUTH_URL` | **Legacy** — still in code, not used. Should clean up. |
+| Variable | Purpose | Status |
+|----------|---------|--------|
+| `POSTGRES_URL` | Neon connection string | ✅ Set |
+| `JWT_SECRET` | HMAC key for JWT signing | ✅ Set |
+| `NEXT_PUBLIC_GETSTREAM_API_KEY` | GetStream client-side key (`ekbhy4vctj9g`) | ✅ Set |
+| `GETSTREAM_API_SECRET` | GetStream server-side secret | ✅ Set |
+| `CRON_SECRET` | Auth for escalation cron endpoint | ✅ Set |
+| `LLM_BASE_URL` | Cloudflare Tunnel URL for Ollama (e.g., `https://llm.yourdomain.com/v1`) | ⏳ Needs Cloudflare Tunnel setup |
+| `LLM_API_KEY` | Placeholder for Ollama (`ollama`) | ⏳ Needs setting |
+| `VAPID_PUBLIC_KEY` | Web Push VAPID public key | ⏳ Needs setting |
+| `VAPID_PRIVATE_KEY` | Web Push VAPID private key | ⏳ Needs setting |
+| `NEXTAUTH_URL` | **Legacy** — still in code, not used. Should clean up. | 🧹 Cleanup |

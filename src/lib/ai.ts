@@ -1,101 +1,11 @@
 // ============================================
-// AI Integration — Local LLM via Ollama
-// Connects to Ollama's OpenAI-compatible API
-// tunneled via Tailscale.
+// AI Integration — Local LLM via Ollama + Cloudflare Tunnel
+// Uses OpenAI SDK pointed at Ollama's compatible API.
 // Step 8.1–8.3: Gap Analysis, Briefing, Predictions
 // ============================================
 
+import llm, { MODEL_PRIMARY } from './llm';
 import { sql } from '@/lib/db';
-
-// ── LLM Client ──
-// Ollama exposes OpenAI-compatible API at /v1/chat/completions
-// LOCAL_LLM_URL should be like: http://your-tailscale-host:11434
-const LLM_BASE_URL = process.env.LOCAL_LLM_URL || 'http://localhost:11434';
-const LLM_MODEL = process.env.LOCAL_LLM_MODEL || 'qwen2.5';
-
-interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-}
-
-interface LLMResponse {
-  text: string;
-  model: string;
-  prompt_tokens: number;
-  completion_tokens: number;
-}
-
-/**
- * Call the local LLM via Ollama's OpenAI-compatible endpoint.
- * Falls back to Ollama native /api/chat if /v1 isn't available.
- */
-async function callLLM(
-  system: string,
-  userMessage: string,
-  maxTokens = 1024
-): Promise<LLMResponse> {
-  const messages: ChatMessage[] = [
-    { role: 'system', content: system },
-    { role: 'user', content: userMessage },
-  ];
-
-  // Try OpenAI-compatible endpoint first (Ollama supports this)
-  try {
-    const res = await fetch(`${LLM_BASE_URL}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: LLM_MODEL,
-        messages,
-        max_tokens: maxTokens,
-        temperature: 0.3, // Low temp for structured JSON output
-        stream: false,
-      }),
-      signal: AbortSignal.timeout(120000), // 2 min timeout for local inference
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        text: data.choices?.[0]?.message?.content || '',
-        model: data.model || LLM_MODEL,
-        prompt_tokens: data.usage?.prompt_tokens || 0,
-        completion_tokens: data.usage?.completion_tokens || 0,
-      };
-    }
-  } catch {
-    // Fall through to native Ollama API
-  }
-
-  // Fallback: Ollama native /api/chat
-  const res = await fetch(`${LLM_BASE_URL}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: LLM_MODEL,
-      messages,
-      stream: false,
-      options: {
-        num_predict: maxTokens,
-        temperature: 0.3,
-      },
-    }),
-    signal: AbortSignal.timeout(120000),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => 'Unknown error');
-    throw new Error(`LLM request failed (${res.status}): ${errText}`);
-  }
-
-  const data = await res.json();
-  return {
-    text: data.message?.content || '',
-    model: data.model || LLM_MODEL,
-    prompt_tokens: data.prompt_eval_count || 0,
-    completion_tokens: data.eval_count || 0,
-  };
-}
 
 /**
  * Extract JSON from LLM response text.
@@ -105,7 +15,6 @@ function extractJSON(text: string): string | null {
   // Try markdown code block first
   const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
   if (codeBlockMatch) return codeBlockMatch[1].trim();
-
   // Try raw JSON object
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   return jsonMatch ? jsonMatch[0] : null;
@@ -165,9 +74,18 @@ export async function analyzeFormGaps(
       }`
     : 'No patient context';
 
-  const response = await callLLM(
-    `You are a hospital operations analyst at Even Hospital, Indore. Analyze medical forms for completeness, gaps, and risks. Respond ONLY with valid JSON. No markdown, no explanation — just the JSON object.`,
-    `Analyze this ${formType} form submission for gaps and risks.
+  const response = await llm.chat.completions.create({
+    model: MODEL_PRIMARY,
+    temperature: 0.3,
+    max_tokens: 1024,
+    messages: [
+      {
+        role: 'system',
+        content: 'You are a hospital operations analyst at Even Hospital, Indore. Analyze medical forms for completeness, gaps, and risks. Respond ONLY with valid JSON. No markdown, no explanation — just the JSON object.',
+      },
+      {
+        role: 'user',
+        content: `Analyze this ${formType} form submission for gaps and risks.
 
 Context: ${contextStr}
 
@@ -182,10 +100,13 @@ Return ONLY this JSON (no other text):
   "recommendations": ["..."],
   "flags": ["<any concerning patterns or values>"]
 }`,
-    1024
-  );
+      },
+    ],
+  });
 
-  const jsonStr = extractJSON(response.text);
+  const text = response.choices[0]?.message?.content || '';
+  const jsonStr = extractJSON(text);
+
   if (!jsonStr) {
     return {
       score: 0,
@@ -200,9 +121,10 @@ Return ONLY this JSON (no other text):
 
   // Cache the result
   try {
+    const tokens = (response.usage?.prompt_tokens || 0) + (response.usage?.completion_tokens || 0);
     await sql`
       INSERT INTO ai_analysis (analysis_type, source_type, result, model, token_count)
-      VALUES ('gap_analysis', ${formType}, ${JSON.stringify(report)}::jsonb, ${response.model}, ${response.prompt_tokens + response.completion_tokens})
+      VALUES ('gap_analysis', ${formType}, ${JSON.stringify(report)}::jsonb, ${response.model || MODEL_PRIMARY}, ${tokens})
     `;
   } catch {
     // Non-fatal
@@ -263,32 +185,41 @@ export async function generateDailyBriefing(): Promise<DailyBriefing> {
   const todayDischarges = patients.filter((p) => p.current_stage === 'discharge');
   const admitted = patients.filter((p) => p.current_stage === 'admitted');
 
-  const response = await callLLM(
-    `You are the AI operations assistant for Even Hospital Race Course Road, Indore. Generate a concise morning briefing for the hospital operations team. Be specific with numbers and names. Respond ONLY with valid JSON. No markdown, no explanation.`,
-    `Generate today's morning briefing (${today}).
+  const response = await llm.chat.completions.create({
+    model: MODEL_PRIMARY,
+    temperature: 0.3,
+    max_tokens: 1500,
+    messages: [
+      {
+        role: 'system',
+        content: 'You are the AI operations assistant for Even Hospital Race Course Road, Indore. Generate a concise morning briefing. Be specific with numbers and names. Respond ONLY with valid JSON.',
+      },
+      {
+        role: 'user',
+        content: `Generate today's morning briefing (${today}).
 
 Active patients by stage: ${JSON.stringify(stageCounts)}
-Total active patients: ${patients.length}
+Total active: ${patients.length}
 
-Patients awaiting surgery/pre-op (${todaySurgeries.length}):
+Surgery/pre-op (${todaySurgeries.length}):
 ${todaySurgeries.map((p) => `- ${p.patient_name} (${p.current_stage})`).join('\n') || 'None'}
 
-Patients for discharge (${todayDischarges.length}):
+Discharge (${todayDischarges.length}):
 ${todayDischarges.map((p) => `- ${p.patient_name}`).join('\n') || 'None'}
 
-Recently admitted (${admitted.length}):
+Admitted (${admitted.length}):
 ${admitted.map((p) => `- ${p.patient_name} (since ${p.admission_date || 'unknown'})`).join('\n') || 'None'}
 
-Overdue readiness items (${overdueItems.length}):
+Overdue items (${overdueItems.length}):
 ${overdueItems.slice(0, 10).map((i) => `- ${i.patient_name}: ${i.item_name} (${i.item_category})`).join('\n') || 'None'}
 
-Active escalations (${escalations.length}):
+Escalations (${escalations.length}):
 ${escalations.slice(0, 5).map((e) => `- ${e.source_type}: ${e.message} (severity: ${e.severity})`).join('\n') || 'None'}
 
-On-duty staff today (${dutyRoster.length}):
+On-duty (${dutyRoster.length}):
 ${dutyRoster.slice(0, 10).map((d) => `- ${d.full_name} (${d.role}, ${d.shift_type}${d.dept_name ? ', ' + d.dept_name : ''})`).join('\n') || 'No roster entries'}
 
-Return ONLY this JSON (no other text):
+Return ONLY this JSON:
 {
   "date": "${today}",
   "summary": "<2-3 sentence overview>",
@@ -298,14 +229,16 @@ Return ONLY this JSON (no other text):
     "discharges": {"count": ${todayDischarges.length}, "highlights": ["..."]},
     "overdue_items": {"count": ${overdueItems.length}, "highlights": ["..."]},
     "escalations": {"count": ${escalations.length}, "highlights": ["..."]},
-    "staff_alerts": ["<any staffing concerns>"]
+    "staff_alerts": ["<any concerns>"]
   },
   "action_items": [{"priority": "high|medium|low", "text": "..."}]
 }`,
-    1500
-  );
+      },
+    ],
+  });
 
-  const jsonStr = extractJSON(response.text);
+  const text = response.choices[0]?.message?.content || '';
+  const jsonStr = extractJSON(text);
 
   let briefing: DailyBriefing;
   if (jsonStr) {
@@ -313,7 +246,7 @@ Return ONLY this JSON (no other text):
   } else {
     briefing = {
       date: today,
-      summary: 'Unable to generate briefing — LLM did not return valid JSON. Check that Ollama is running and reachable.',
+      summary: 'Unable to generate briefing — check that Ollama is running and the Cloudflare Tunnel is active.',
       sections: {
         admissions: { count: admitted.length, highlights: [] },
         surgeries: { count: todaySurgeries.length, highlights: [] },
@@ -326,11 +259,11 @@ Return ONLY this JSON (no other text):
     };
   }
 
-  // Cache
   try {
+    const tokens = (response.usage?.prompt_tokens || 0) + (response.usage?.completion_tokens || 0);
     await sql`
       INSERT INTO ai_analysis (analysis_type, source_type, result, model, token_count)
-      VALUES ('daily_briefing', 'hospital', ${JSON.stringify(briefing)}::jsonb, ${response.model}, ${response.prompt_tokens + response.completion_tokens})
+      VALUES ('daily_briefing', 'hospital', ${JSON.stringify(briefing)}::jsonb, ${response.model || MODEL_PRIMARY}, ${tokens})
     `;
   } catch {
     // Non-fatal
@@ -389,54 +322,53 @@ export async function predictPatientOutcomes(
     ? Math.ceil((Date.now() - admissionDate.getTime()) / (1000 * 60 * 60 * 24))
     : null;
 
-  const response = await callLLM(
-    `You are a hospital operations AI for Even Hospital. Predict patient outcomes based on available data. Be conservative with predictions. Respond ONLY with valid JSON. No markdown, no explanation.`,
-    `Predict outcomes for this patient:
+  const response = await llm.chat.completions.create({
+    model: MODEL_PRIMARY,
+    temperature: 0.2,
+    max_tokens: 800,
+    messages: [
+      {
+        role: 'system',
+        content: 'You are a hospital operations AI for Even Hospital. Predict patient outcomes conservatively. Respond ONLY with valid JSON.',
+      },
+      {
+        role: 'user',
+        content: `Predict outcomes for:
 
-Patient: ${patient.patient_name}
-Stage: ${patient.current_stage}
-Department: ${patient.department_name || 'Unknown'}
-Consultant: ${patient.consultant_name || 'Unknown'}
-LOS so far: ${losToDate !== null ? losToDate + ' days' : 'Not admitted yet'}
-Admission date: ${patient.admission_date || 'N/A'}
-
-Forms completed: ${forms.length} (avg score: ${
-      forms.length > 0
-        ? Math.round(
-            (forms.reduce((s, f) => s + ((f.completion_score as number) || 0), 0) / forms.length) * 100
-          )
-        : 0
-    }%)
-
+Patient: ${patient.patient_name}, Stage: ${patient.current_stage}
+Dept: ${patient.department_name || 'Unknown'}, Consultant: ${patient.consultant_name || 'Unknown'}
+LOS: ${losToDate !== null ? losToDate + ' days' : 'Not admitted'}, Admitted: ${patient.admission_date || 'N/A'}
+Forms: ${forms.length} (avg score: ${forms.length > 0 ? Math.round((forms.reduce((s, f) => s + ((f.completion_score as number) || 0), 0) / forms.length) * 100) : 0}%)
 Readiness: ${readinessStats.confirmed}/${readinessStats.total} confirmed, ${readinessStats.pending} pending, ${readinessStats.flagged} flagged, ${readinessStats.overdue} overdue
-
 Escalations: ${escalations.length} total, ${escalations.filter((e) => !e.resolved).length} unresolved
 
-Return ONLY this JSON (no other text):
+Return ONLY this JSON:
 {
-  "estimated_los_days": ${losToDate !== null ? '<number>' : 'null'},
+  "estimated_los_days": <number or null>,
   "discharge_readiness_pct": <0-100>,
   "escalation_risk": "high|medium|low",
-  "risk_factors": ["<list of specific risk factors>"]
+  "risk_factors": ["..."]
 }`,
-    800
-  );
+      },
+    ],
+  });
 
-  const jsonStr = extractJSON(response.text);
+  const text = response.choices[0]?.message?.content || '';
+  const jsonStr = extractJSON(text);
   if (!jsonStr) return null;
-  const predictions = JSON.parse(jsonStr);
 
+  const predictions = JSON.parse(jsonStr);
   const result: PredictionResult = {
     patient_thread_id: patientThreadId,
     patient_name: patient.patient_name as string,
     predictions,
   };
 
-  // Cache
   try {
+    const tokens = (response.usage?.prompt_tokens || 0) + (response.usage?.completion_tokens || 0);
     await sql`
       INSERT INTO ai_analysis (analysis_type, source_id, source_type, result, model, token_count)
-      VALUES ('prediction', ${patientThreadId}::uuid, 'patient_thread', ${JSON.stringify(result)}::jsonb, ${response.model}, ${response.prompt_tokens + response.completion_tokens})
+      VALUES ('prediction', ${patientThreadId}::uuid, 'patient_thread', ${JSON.stringify(result)}::jsonb, ${response.model || MODEL_PRIMARY}, ${tokens})
     `;
   } catch {
     // Non-fatal
