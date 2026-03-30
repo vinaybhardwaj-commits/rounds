@@ -256,8 +256,13 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
         await channel.watch();
         const state = channel.state;
         // Only show top-level messages (not thread replies), exclude deleted tombstones
-        const topLevel = state.messages.filter((m) => !m.parent_id && !m.deleted_at);
+        // Belt-and-suspenders: check both deleted_at AND type !== 'deleted'
+        const topLevel = state.messages.filter(
+          (m) => !m.parent_id && !m.deleted_at && (m as Record<string, unknown>).type !== 'deleted'
+        );
         setMessages(topLevel.map(toDisplayMessage));
+        // Explicitly mark channel as read so unread badges update
+        await channel.markRead();
         setTimeout(scrollToBottom, 100);
       } catch (error) {
         console.error('Failed to load messages:', error);
@@ -284,7 +289,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
     fetchDeletedMessages();
 
     const handleNewMessage = (event: { message?: MessageResponse }) => {
-      if (event.message && !event.message.parent_id) {
+      if (event.message && !event.message.parent_id && !event.message.deleted_at && (event.message as Record<string, unknown>).type !== 'deleted') {
         setMessages((prev) => [...prev, toDisplayMessage(event.message!)]);
         setTimeout(scrollToBottom, 50);
       }
@@ -292,13 +297,17 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
 
     const handleReactionNew = () => {
       // Refresh messages to get updated reaction counts
-      const topLevel = channel.state.messages.filter((m) => !m.parent_id && !m.deleted_at);
+      const topLevel = channel.state.messages.filter(
+        (m) => !m.parent_id && !m.deleted_at && (m as Record<string, unknown>).type !== 'deleted'
+      );
       setMessages(topLevel.map(toDisplayMessage));
     };
 
     const handleMessageDeleted = () => {
       // Message was deleted — refresh from channel state, exclude tombstones
-      const topLevel = channel.state.messages.filter((m) => !m.parent_id && !m.deleted_at);
+      const topLevel = channel.state.messages.filter(
+        (m) => !m.parent_id && !m.deleted_at && (m as Record<string, unknown>).type !== 'deleted'
+      );
       setMessages(topLevel.map(toDisplayMessage));
     };
 
@@ -859,7 +868,9 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
           onDeleted={async () => {
             setDeleteTarget(null);
             // Refresh messages from channel state, exclude tombstones
-            const topLevel = channel.state.messages.filter((m) => !m.parent_id && !m.deleted_at);
+            const topLevel = channel.state.messages.filter(
+              (m) => !m.parent_id && !m.deleted_at && (m as Record<string, unknown>).type !== 'deleted'
+            );
             setMessages(topLevel.map(toDisplayMessage));
             // Refresh deleted records from our DB for the accordion
             try {

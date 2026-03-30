@@ -77,9 +77,11 @@ function getLastMessagePreview(channel: Channel): { text: string; time: string }
   const msgs = channel.state?.messages;
   if (!msgs || msgs.length === 0) return { text: '', time: '' };
   // Skip deleted tombstones — find the most recent non-deleted message
+  // Belt-and-suspenders: check both deleted_at AND type !== 'deleted'
   let last = msgs[msgs.length - 1];
   for (let i = msgs.length - 1; i >= 0; i--) {
-    if (!msgs[i].deleted_at) {
+    const m = msgs[i] as Record<string, unknown>;
+    if (!msgs[i].deleted_at && m.type !== 'deleted') {
       last = msgs[i];
       break;
     }
