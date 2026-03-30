@@ -294,11 +294,33 @@ export async function POST() {
     await run('profiles_must_change_pin', `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS must_change_pin BOOLEAN NOT NULL DEFAULT false`);
     await run('must_change_pin_migration', `INSERT INTO _migrations (name) VALUES ('v9-must-change-pin') ON CONFLICT (name) DO NOTHING`);
 
+    // ── Step 10: deleted_messages audit table ──
+    await run('deleted_messages_table', `
+      CREATE TABLE IF NOT EXISTS deleted_messages (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        message_id VARCHAR(200) NOT NULL,
+        channel_id VARCHAR(200) NOT NULL,
+        original_text TEXT,
+        original_user_id UUID,
+        original_user_name VARCHAR(200),
+        deleted_by_id UUID NOT NULL REFERENCES profiles(id),
+        deleted_by_name VARCHAR(200),
+        deleted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        reason VARCHAR(50) NOT NULL DEFAULT 'other',
+        reason_detail TEXT,
+        is_system_message BOOLEAN NOT NULL DEFAULT false
+      )
+    `);
+    await run('idx_deleted_messages_channel', `CREATE INDEX IF NOT EXISTS idx_deleted_messages_channel ON deleted_messages(channel_id)`);
+    await run('idx_deleted_messages_message', `CREATE INDEX IF NOT EXISTS idx_deleted_messages_message ON deleted_messages(message_id)`);
+    await run('idx_deleted_messages_deleted_by', `CREATE INDEX IF NOT EXISTS idx_deleted_messages_deleted_by ON deleted_messages(deleted_by_id)`);
+    await run('deleted_messages_migration', `INSERT INTO _migrations (name) VALUES ('v10-deleted-messages') ON CONFLICT (name) DO NOTHING`);
+
     // 9. Verify
     const tables = await sql`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
-      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations')
+      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages')
       ORDER BY table_name
     `;
 
@@ -315,7 +337,7 @@ export async function POST() {
         tables_found: tables.map((t) => t.table_name),
         log: results,
       },
-      message: `Migration complete. ${successCount} executed, ${skipCount} skipped, ${errorCount} errors. ${tables.length}/7 tables found.`,
+      message: `Migration complete. ${successCount} executed, ${skipCount} skipped, ${errorCount} errors. ${tables.length}/8 tables found.`,
     });
   } catch (error) {
     console.error('POST /api/admin/migrate error:', error);

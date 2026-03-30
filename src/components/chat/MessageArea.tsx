@@ -23,10 +23,14 @@ import {
   File as FileIcon,
   Download,
   ClipboardList,
+  Trash2,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import type { Channel, MessageResponse } from 'stream-chat';
 import { useChatContext } from '@/providers/ChatProvider';
 import { MessageTypeBadge } from './MessageTypeBadge';
+import { DeleteMessageModal } from './DeleteMessageModal';
 import FormCard from '@/components/forms/FormCard';
 import type { MessageType, MessagePriority, FormType, PatientStage } from '@/types';
 import { FORM_TYPE_LABELS, FORMS_BY_STAGE } from '@/lib/form-registry';
@@ -55,6 +59,12 @@ interface DisplayMessage {
   own_reactions: string[];
   attachments: AttachmentData[];
   raw: MessageResponse;
+  // Soft-delete fields
+  rounds_deleted: boolean;
+  rounds_deleted_by_name?: string;
+  rounds_deleted_at?: string;
+  rounds_deleted_reason?: string;
+  rounds_original_text?: string;
 }
 
 // Role display labels and colors
@@ -147,6 +157,8 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<DisplayMessage | null>(null);
+  const [showDeletedAccordion, setShowDeletedAccordion] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -195,6 +207,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
 
       // Extract custom fields from GetStream user object
       const gsUser = msg.user as Record<string, unknown> | undefined;
+      const msgExtra = msg as Record<string, unknown>;
 
       return {
         id: msg.id,
@@ -205,15 +218,21 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
         user_department: (gsUser?.department_id as string) || '',
         created_at: msg.created_at || new Date().toISOString(),
         message_type:
-          ((msg as Record<string, unknown>).message_type as MessageType) || 'chat',
+          (msgExtra.message_type as MessageType) || 'chat',
         priority:
-          ((msg as Record<string, unknown>).priority as MessagePriority) || 'normal',
+          (msgExtra.priority as MessagePriority) || 'normal',
         is_system: msg.user?.id === 'rounds-system',
         reply_count: msg.reply_count || 0,
         reaction_counts: reactionCounts,
         own_reactions: ownReactions,
         attachments,
         raw: msg,
+        // Soft-delete fields
+        rounds_deleted: Boolean(msgExtra.rounds_deleted),
+        rounds_deleted_by_name: (msgExtra.rounds_deleted_by_name as string) || undefined,
+        rounds_deleted_at: (msgExtra.rounds_deleted_at as string) || undefined,
+        rounds_deleted_reason: (msgExtra.rounds_deleted_reason as string) || undefined,
+        rounds_original_text: (msgExtra.rounds_original_text as string) || undefined,
       };
     },
     [client?.userID]
@@ -262,12 +281,20 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
       setMessages(topLevel.map(toDisplayMessage));
     };
 
+    const handleMessageUpdated = () => {
+      // Re-map all messages — a soft-delete will now show rounds_deleted = true
+      const topLevel = channel.state.messages.filter((m) => !m.parent_id);
+      setMessages(topLevel.map(toDisplayMessage));
+    };
+
     channel.on('message.new', handleNewMessage);
+    channel.on('message.updated', handleMessageUpdated);
     channel.on('reaction.new', handleReactionNew);
     channel.on('reaction.deleted', handleReactionNew);
 
     return () => {
       channel.off('message.new', handleNewMessage);
+      channel.off('message.updated', handleMessageUpdated);
       channel.off('reaction.new', handleReactionNew);
       channel.off('reaction.deleted', handleReactionNew);
     };
@@ -432,15 +459,15 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
           </div>
         ) : (
           <>
-            {messages.map((msg, index) => {
+            {messages.filter(m => !m.rounds_deleted).map((msg, index, filteredMsgs) => {
               const isOwn = msg.user_id === client?.userID;
               const isSystem = msg.is_system;
               const isHovered = hoveredMessageId === msg.id;
               const showAvatar =
                 index === 0 ||
-                messages[index - 1].user_id !== msg.user_id ||
+                filteredMsgs[index - 1].user_id !== msg.user_id ||
                 new Date(msg.created_at).getTime() -
-                  new Date(messages[index - 1].created_at).getTime() >
+                  new Date(filteredMsgs[index - 1].created_at).getTime() >
                   300000;
 
               const time = new Date(msg.created_at).toLocaleTimeString('en-IN', {
@@ -462,7 +489,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                 return (
                   <div
                     key={msg.id}
-                    className={`px-3 py-2.5 rounded-lg border ${
+                    className={`group/sys relative px-3 py-2.5 rounded-lg border ${
                       isEscalation
                         ? 'bg-red-50 border-red-100'
                         : isStageTransition
@@ -470,6 +497,14 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                         : 'bg-blue-50 border-blue-100'
                     }`}
                   >
+                    {/* Delete button for system messages — visible on hover */}
+                    <button
+                      onClick={() => setDeleteTarget(msg)}
+                      className="absolute top-2 right-2 p-1 rounded-md opacity-0 group-hover/sys:opacity-100 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all"
+                      title="Delete this message"
+                    >
+                      <Trash2 size={13} />
+                    </button>
                     <div className="flex items-start gap-2">
                       <div
                         className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
@@ -596,6 +631,19 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                       >
                         <MessageCircleReply size={14} className="text-gray-500" />
                       </button>
+                      {/* Delete button — only for own messages */}
+                      {isOwn && (
+                        <>
+                          <div className="w-px h-4 bg-gray-200 mx-0.5" />
+                          <button
+                            onClick={() => setDeleteTarget(msg)}
+                            className="p-1 rounded hover:bg-red-50 transition-colors"
+                            title="Delete message"
+                          >
+                            <Trash2 size={14} className="text-gray-400 hover:text-red-500" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
 
@@ -726,10 +774,96 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                 </div>
               );
             })}
+            {/* Deleted Messages Accordion */}
+            {(() => {
+              const deletedMsgs = messages.filter(m => m.rounds_deleted);
+              if (deletedMsgs.length === 0) return null;
+              return (
+                <div className="mt-4 border-t border-dashed border-gray-200 pt-3">
+                  <button
+                    onClick={() => setShowDeletedAccordion(!showDeletedAccordion)}
+                    className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 transition-colors mb-2"
+                  >
+                    {showDeletedAccordion ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    <Trash2 size={12} />
+                    <span>
+                      Deleted Messages ({deletedMsgs.length})
+                    </span>
+                  </button>
+                  {showDeletedAccordion && (
+                    <div className="space-y-1.5 pl-1">
+                      {deletedMsgs.map(dm => {
+                        const delTime = dm.rounds_deleted_at
+                          ? new Date(dm.rounds_deleted_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+                          : '';
+                        const delDate = dm.rounds_deleted_at
+                          ? new Date(dm.rounds_deleted_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                          : '';
+                        const reasonLabels: Record<string, string> = {
+                          mistake: 'Sent by mistake',
+                          change_of_plans: 'Change of plans',
+                          duplicate: 'Duplicate',
+                          testing_debug: 'Testing/debug',
+                          other: 'Other',
+                        };
+                        return (
+                          <div key={dm.id} className="bg-gray-100/60 border border-gray-200 rounded-lg px-3 py-2 opacity-60">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="text-[10px] font-medium text-gray-500">
+                                {dm.is_system ? '🤖 Rounds System' : dm.user_name}
+                              </span>
+                              <span className="text-[10px] text-gray-400">
+                                {new Date(dm.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500 line-through leading-relaxed">
+                              {dm.rounds_original_text || dm.text}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-400">
+                              <Trash2 size={10} />
+                              <span>
+                                Deleted by {dm.rounds_deleted_by_name || 'Unknown'}
+                                {delDate ? ` on ${delDate}` : ''}
+                                {delTime ? ` at ${delTime}` : ''}
+                              </span>
+                              {dm.rounds_deleted_reason && (
+                                <>
+                                  <span className="text-gray-300">|</span>
+                                  <span>{reasonLabels[dm.rounds_deleted_reason] || dm.rounds_deleted_reason}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             <div ref={messagesEndRef} />
           </>
         )}
       </div>
+
+      {/* Delete Message Modal */}
+      {deleteTarget && channel && (
+        <DeleteMessageModal
+          messageId={deleteTarget.id}
+          channelType={channel.type}
+          channelId={channel.id || ''}
+          messageText={deleteTarget.text}
+          messageAuthor={deleteTarget.user_name}
+          isSystemMessage={deleteTarget.is_system}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={() => {
+            setDeleteTarget(null);
+            // Refresh messages from channel state
+            const topLevel = channel.state.messages.filter((m) => !m.parent_id);
+            setMessages(topLevel.map(toDisplayMessage));
+          }}
+        />
+      )}
 
       {/* Composer */}
       <div className="px-3 py-2 bg-white border-t border-gray-200">
