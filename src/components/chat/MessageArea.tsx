@@ -44,6 +44,8 @@ interface DisplayMessage {
   text: string;
   user_name: string;
   user_id: string;
+  user_role: string;       // rounds_role from GetStream user custom data
+  user_department: string;  // department_id from GetStream user
   created_at: string;
   message_type: MessageType;
   priority: MessagePriority;
@@ -54,6 +56,50 @@ interface DisplayMessage {
   attachments: AttachmentData[];
   raw: MessageResponse;
 }
+
+// Role display labels and colors
+const ROLE_LABELS: Record<string, string> = {
+  super_admin: 'Admin',
+  department_head: 'Dept Head',
+  doctor: 'Doctor',
+  surgeon: 'Surgeon',
+  nurse: 'Nurse',
+  anesthesiologist: 'Anesthetist',
+  ot_coordinator: 'OT Coord',
+  ip_coordinator: 'IP Coord',
+  billing_executive: 'Billing',
+  insurance_coordinator: 'Insurance',
+  pharmacist: 'Pharmacist',
+  physiotherapist: 'Physio',
+  marketing_executive: 'Marketing',
+  support_staff: 'Support',
+};
+
+const ROLE_COLORS: Record<string, string> = {
+  super_admin: 'bg-purple-100 text-purple-700',
+  department_head: 'bg-indigo-100 text-indigo-700',
+  doctor: 'bg-blue-100 text-blue-700',
+  surgeon: 'bg-red-100 text-red-700',
+  nurse: 'bg-green-100 text-green-700',
+  anesthesiologist: 'bg-amber-100 text-amber-700',
+  ot_coordinator: 'bg-orange-100 text-orange-700',
+  ip_coordinator: 'bg-teal-100 text-teal-700',
+  billing_executive: 'bg-cyan-100 text-cyan-700',
+  insurance_coordinator: 'bg-sky-100 text-sky-700',
+  pharmacist: 'bg-lime-100 text-lime-700',
+  physiotherapist: 'bg-emerald-100 text-emerald-700',
+  marketing_executive: 'bg-pink-100 text-pink-700',
+  support_staff: 'bg-gray-100 text-gray-600',
+};
+
+// Cross-functional channel → which roles are "primary" (get highlighted)
+const CF_RELEVANT_ROLES: Record<string, string[]> = {
+  'admission-coordination': ['ip_coordinator', 'billing_executive', 'insurance_coordinator', 'nurse'],
+  'discharge-coordination': ['ip_coordinator', 'billing_executive', 'nurse', 'pharmacist', 'doctor'],
+  'surgery-coordination': ['surgeon', 'anesthesiologist', 'ot_coordinator', 'nurse'],
+  'emergency-escalation': ['doctor', 'surgeon', 'nurse', 'department_head', 'super_admin'],
+  'ops-daily-huddle': ['department_head', 'super_admin', 'ip_coordinator'],
+};
 
 interface AttachmentData {
   type: string;
@@ -147,11 +193,16 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
         };
       });
 
+      // Extract custom fields from GetStream user object
+      const gsUser = msg.user as Record<string, unknown> | undefined;
+
       return {
         id: msg.id,
         text: msg.text || '',
         user_name: msg.user?.name || msg.user?.id || 'Unknown',
         user_id: msg.user?.id || '',
+        user_role: (gsUser?.rounds_role as string) || '',
+        user_department: (gsUser?.department_id as string) || '',
         created_at: msg.created_at || new Date().toISOString(),
         message_type:
           ((msg as Record<string, unknown>).message_type as MessageType) || 'chat',
@@ -506,10 +557,19 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                 );
               }
 
+              // Determine if this message's role is "relevant" in a cross-functional channel
+              const isCrossFunc = channel.type === 'cross-functional';
+              const relevantRoles = isCrossFunc ? (CF_RELEVANT_ROLES[channel.id || ''] || []) : [];
+              const isRelevantRole = isCrossFunc && msg.user_role && relevantRoles.includes(msg.user_role);
+              const roleLabel = ROLE_LABELS[msg.user_role] || (msg.user_role ? msg.user_role.replace(/_/g, ' ') : '');
+              const roleColor = ROLE_COLORS[msg.user_role] || 'bg-gray-100 text-gray-600';
+
               return (
                 <div
                   key={msg.id}
-                  className={`group relative ${showAvatar ? 'mt-3' : 'mt-0.5'}`}
+                  className={`group relative ${showAvatar ? 'mt-3' : 'mt-0.5'} ${
+                    isRelevantRole ? 'pl-2 border-l-[3px] border-l-even-blue bg-blue-50/30 rounded-r-md -ml-1' : ''
+                  }`}
                   onMouseEnter={() => setHoveredMessageId(msg.id)}
                   onMouseLeave={() => setHoveredMessageId(null)}
                 >
@@ -551,6 +611,12 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                       <span className="text-xs font-semibold text-gray-700">
                         {isOwn ? 'You' : msg.user_name}
                       </span>
+                      {/* Role badge */}
+                      {roleLabel && !msg.is_system && (
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${roleColor}`}>
+                          {roleLabel}
+                        </span>
+                      )}
                       {msg.message_type !== 'chat' && (
                         <MessageTypeBadge type={msg.message_type} />
                       )}

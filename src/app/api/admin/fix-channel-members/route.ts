@@ -1,14 +1,12 @@
 // ============================================
 // POST /api/admin/fix-channel-members
-// One-off fix: adds the current user (super_admin)
-// to all patient-thread channels they're not already in.
-// Also adds IP coordinators.
+// Adds ALL active Rounds users to ALL patient-thread
+// and cross-functional channels. Ensures full visibility.
 // ============================================
 
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { query } from '@/lib/db';
-import { findProfilesByRole } from '@/lib/db-v5';
 import { getStreamServerClient } from '@/lib/getstream';
 
 export async function POST() {
@@ -20,7 +18,24 @@ export async function POST() {
 
     const client = getStreamServerClient();
 
-    // Get all patient threads with channel IDs
+    // Get ALL active user profile IDs
+    const allUsers = await query<{ id: string }>(
+      `SELECT id FROM profiles WHERE status = 'active'`
+    );
+    const allUserIds = allUsers.map(u => u.id);
+
+    if (allUserIds.length === 0) {
+      return NextResponse.json({ success: true, data: { message: 'No active users found' } });
+    }
+
+    const results = {
+      users: allUserIds.length,
+      patient_channels: { total: 0, fixed: 0 },
+      cross_functional: { total: 0, fixed: 0 },
+      errors: [] as string[],
+    };
+
+    // 1. Fix all patient-thread channels
     const patients = await query<{
       id: string;
       patient_name: string;
@@ -30,50 +45,59 @@ export async function POST() {
        FROM patient_threads
        WHERE getstream_channel_id IS NOT NULL`
     );
-
-    // Collect user IDs to add: current user + all IP coordinators
-    const userIdsToAdd = new Set<string>();
-    userIdsToAdd.add(user.profileId);
-
-    try {
-      const ipCoords = await findProfilesByRole(['ip_coordinator']);
-      ipCoords.forEach(p => userIdsToAdd.add(p.id));
-    } catch { /* non-fatal */ }
-
-    const results = {
-      total: patients.length,
-      fixed: 0,
-      already_ok: 0,
-      errors: [] as string[],
-    };
+    results.patient_channels.total = patients.length;
 
     for (const pt of patients) {
       try {
         const channel = client.channel('patient-thread', pt.getstream_channel_id);
-        // Query channel to check current members
         await channel.watch();
-        const currentMembers = new Set(
-          Object.keys(channel.state.members || {})
-        );
-
-        const toAdd = [...userIdsToAdd].filter(id => !currentMembers.has(id));
-
+        const currentMembers = new Set(Object.keys(channel.state.members || {}));
+        const toAdd = allUserIds.filter(id => !currentMembers.has(id));
         if (toAdd.length > 0) {
-          await channel.addMembers(toAdd);
-          results.fixed++;
-        } else {
-          results.already_ok++;
+          // GetStream addMembers has a limit — batch in groups of 100
+          for (let i = 0; i < toAdd.length; i += 100) {
+            await channel.addMembers(toAdd.slice(i, i + 100));
+          }
+          results.patient_channels.fixed++;
         }
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        results.errors.push(`${pt.patient_name} (${pt.getstream_channel_id}): ${errMsg}`);
+        results.errors.push(`patient:${pt.getstream_channel_id}: ${errMsg}`);
+      }
+    }
+
+    // 2. Fix all cross-functional channels
+    const crossFunctionalIds = [
+      'ops-daily-huddle',
+      'admission-coordination',
+      'discharge-coordination',
+      'surgery-coordination',
+      'emergency-escalation',
+    ];
+    results.cross_functional.total = crossFunctionalIds.length;
+
+    for (const cfId of crossFunctionalIds) {
+      try {
+        const channel = client.channel('cross-functional', cfId);
+        await channel.watch();
+        const currentMembers = new Set(Object.keys(channel.state.members || {}));
+        const toAdd = allUserIds.filter(id => !currentMembers.has(id));
+        if (toAdd.length > 0) {
+          for (let i = 0; i < toAdd.length; i += 100) {
+            await channel.addMembers(toAdd.slice(i, i + 100));
+          }
+          results.cross_functional.fixed++;
+        }
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        results.errors.push(`cross-functional:${cfId}: ${errMsg}`);
       }
     }
 
     return NextResponse.json({
       success: true,
       data: results,
-      message: `Fixed ${results.fixed} channels, ${results.already_ok} already OK, ${results.errors.length} errors`,
+      message: `Added ${allUserIds.length} users to ${results.patient_channels.fixed} patient channels and ${results.cross_functional.fixed} cross-functional channels`,
     });
   } catch (error) {
     console.error('fix-channel-members error:', error);

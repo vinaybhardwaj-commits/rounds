@@ -207,6 +207,8 @@ export async function sendShiftHandoffMessage(
  * Auto-join a user to their default channels on login:
  * 1. Their department channel (if department_slug provided)
  * 2. The hospital-broadcast channel
+ * 3. ALL cross-functional channels (everyone needs coordination visibility)
+ * 4. ALL patient-thread channels (full transparency across hospital)
  *
  * Idempotent: silently succeeds if user is already a member.
  */
@@ -232,5 +234,43 @@ export async function autoJoinDefaultChannels(
     } catch {
       // Channel may not exist yet or user already a member — fine
     }
+  }
+
+  // Join ALL cross-functional channels
+  const crossFunctionalIds = [
+    'ops-daily-huddle',
+    'admission-coordination',
+    'discharge-coordination',
+    'surgery-coordination',
+    'emergency-escalation',
+  ];
+  for (const cfId of crossFunctionalIds) {
+    try {
+      const ch = client.channel('cross-functional', cfId);
+      await ch.addMembers([userId]);
+    } catch {
+      // Channel may not exist — fine
+    }
+  }
+
+  // Join ALL patient-thread channels (query and bulk-add)
+  try {
+    const patientChannels = await client.queryChannels(
+      { type: 'patient-thread' },
+      { last_message_at: -1 },
+      { limit: 200 }
+    );
+    for (const ch of patientChannels) {
+      const members = Object.keys(ch.state?.members || {});
+      if (!members.includes(userId)) {
+        try {
+          await ch.addMembers([userId]);
+        } catch {
+          // Non-fatal per channel
+        }
+      }
+    }
+  } catch {
+    // Query failed — non-fatal, user will see channels they're already in
   }
 }
