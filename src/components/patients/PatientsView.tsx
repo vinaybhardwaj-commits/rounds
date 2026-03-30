@@ -9,9 +9,13 @@ import {
   X,
   AlertCircle,
   CheckCircle,
+  Upload,
+  FileSpreadsheet,
 } from 'lucide-react';
 import type { PatientStage } from '@/types';
 import { PATIENT_STAGE_LABELS, PATIENT_STAGE_COLORS } from '@/types';
+
+type CreateTab = 'single' | 'upload';
 
 interface PatientThread {
   id: string;
@@ -39,11 +43,20 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
 
   // Create modal
   const [showCreate, setShowCreate] = useState(false);
+  const [createTab, setCreateTab] = useState<CreateTab>('single');
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [fName, setFName] = useState('');
   const [fUhid, setFUhid] = useState('');
   const [fStage, setFStage] = useState<PatientStage>('opd');
+
+  // IP Upload state
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadDate, setUploadDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [uploadResult, setUploadResult] = useState<{
+    created: number; skipped: number; errors: number;
+    created_list: string[]; skipped_list: string[]; message: string;
+  } | null>(null);
 
   const fetchPatients = useCallback(async () => {
     setLoading(true);
@@ -69,6 +82,31 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
         p.ip_number?.toLowerCase().includes(search.toLowerCase())
       )
     : patients;
+
+  const handleUpload = async () => {
+    if (!uploadFile) { setMsg({ type: 'error', text: 'Please select a CSV file.' }); return; }
+    setMsg(null);
+    setUploadResult(null);
+    setSaving(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', uploadFile);
+      formData.append('date', uploadDate);
+      const res = await fetch('/api/patients/import', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.success) {
+        setUploadResult(data.data);
+        setMsg({ type: 'success', text: data.message });
+        fetchPatients();
+      } else {
+        setMsg({ type: 'error', text: data.error || 'Import failed.' });
+      }
+    } catch {
+      setMsg({ type: 'error', text: 'Network error during upload.' });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleCreate = async () => {
     setMsg(null);
@@ -239,35 +277,156 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
       {/* ── Create Modal ── */}
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40">
-          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md mx-0 sm:mx-4 shadow-xl">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-even-navy">New Patient Thread</h2>
-              <button onClick={() => setShowCreate(false)} className="p-1 hover:bg-gray-100 rounded">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md mx-0 sm:mx-4 shadow-xl max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
+              <h2 className="text-lg font-semibold text-even-navy">Add Patients</h2>
+              <button onClick={() => { setShowCreate(false); setUploadResult(null); setUploadFile(null); }} className="p-1 hover:bg-gray-100 rounded">
                 <X size={18} />
               </button>
             </div>
-            <div className="px-5 py-4 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Patient Name *</label>
-                <input type="text" value={fName} onChange={e => setFName(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm" placeholder="Full name" autoFocus />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">UHID</label>
-                <input type="text" value={fUhid} onChange={e => setFUhid(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm" placeholder="KX-2026-001 (optional)" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Starting Stage</label>
-                <select value={fStage} onChange={e => setFStage(e.target.value as PatientStage)}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white">
-                  {(Object.entries(PATIENT_STAGE_LABELS) as [PatientStage, string][]).map(([k, v]) => (
-                    <option key={k} value={k}>{v}</option>
-                  ))}
-                </select>
-              </div>
+
+            {/* Tab switcher */}
+            <div className="flex border-b border-gray-200 shrink-0">
+              <button
+                onClick={() => { setCreateTab('single'); setMsg(null); setUploadResult(null); }}
+                className={`flex-1 py-2.5 text-sm font-medium text-center transition-colors ${
+                  createTab === 'single'
+                    ? 'text-even-blue border-b-2 border-even-blue'
+                    : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                Single Patient
+              </button>
+              <button
+                onClick={() => { setCreateTab('upload'); setMsg(null); }}
+                className={`flex-1 py-2.5 text-sm font-medium text-center transition-colors flex items-center justify-center gap-1.5 ${
+                  createTab === 'upload'
+                    ? 'text-even-blue border-b-2 border-even-blue'
+                    : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                <Upload size={14} />
+                IP Upload
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {/* ── Single Patient Tab ── */}
+              {createTab === 'single' && (
+                <div className="px-5 py-4 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Patient Name *</label>
+                    <input type="text" value={fName} onChange={e => setFName(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm" placeholder="Full name" autoFocus />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">UHID</label>
+                    <input type="text" value={fUhid} onChange={e => setFUhid(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm" placeholder="KX-2026-001 (optional)" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Starting Stage</label>
+                    <select value={fStage} onChange={e => setFStage(e.target.value as PatientStage)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white">
+                      {(Object.entries(PATIENT_STAGE_LABELS) as [PatientStage, string][]).map(([k, v]) => (
+                        <option key={k} value={k}>{v}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* ── IP Upload Tab ── */}
+              {createTab === 'upload' && (
+                <div className="px-5 py-4 space-y-4">
+                  <div className="p-3 bg-blue-50 rounded-lg">
+                    <p className="text-xs text-blue-700 leading-relaxed">
+                      Upload the <strong>KareXpert IP Patient List CSV</strong> to bulk-import admitted patients.
+                      Existing patients (matched by UHID) will be skipped — only new patients are added.
+                      Doctors not yet in Rounds will be auto-created as staff profiles.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Import Date</label>
+                    <input type="date" value={uploadDate} onChange={e => setUploadDate(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm" />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">CSV File *</label>
+                    <label className={`flex items-center gap-3 w-full px-4 py-3 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
+                      uploadFile ? 'border-even-blue bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                    }`}>
+                      <FileSpreadsheet size={20} className={uploadFile ? 'text-even-blue' : 'text-gray-400'} />
+                      <div className="flex-1 min-w-0">
+                        {uploadFile ? (
+                          <>
+                            <p className="text-sm font-medium text-even-navy truncate">{uploadFile.name}</p>
+                            <p className="text-xs text-gray-400">{(uploadFile.size / 1024).toFixed(1)} KB</p>
+                          </>
+                        ) : (
+                          <p className="text-sm text-gray-400">Tap to select CSV file</p>
+                        )}
+                      </div>
+                      <input
+                        type="file"
+                        accept=".csv,text/csv"
+                        className="hidden"
+                        onChange={e => {
+                          setUploadFile(e.target.files?.[0] || null);
+                          setUploadResult(null);
+                          setMsg(null);
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  {/* Upload results */}
+                  {uploadResult && (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="p-2 bg-green-50 rounded-lg">
+                          <div className="text-lg font-bold text-green-700">{uploadResult.created}</div>
+                          <div className="text-[10px] text-green-600 font-medium">Created</div>
+                        </div>
+                        <div className="p-2 bg-yellow-50 rounded-lg">
+                          <div className="text-lg font-bold text-yellow-700">{uploadResult.skipped}</div>
+                          <div className="text-[10px] text-yellow-600 font-medium">Skipped</div>
+                        </div>
+                        <div className="p-2 bg-red-50 rounded-lg">
+                          <div className="text-lg font-bold text-red-700">{uploadResult.errors}</div>
+                          <div className="text-[10px] text-red-600 font-medium">Errors</div>
+                        </div>
+                      </div>
+                      {uploadResult.created_list.length > 0 && (
+                        <details className="text-xs">
+                          <summary className="text-green-700 font-medium cursor-pointer py-1">
+                            {uploadResult.created_list.length} patients created
+                          </summary>
+                          <ul className="mt-1 space-y-0.5 text-gray-600 pl-3 max-h-24 overflow-y-auto">
+                            {uploadResult.created_list.map((p, i) => <li key={i}>• {p}</li>)}
+                          </ul>
+                        </details>
+                      )}
+                      {uploadResult.skipped_list.length > 0 && (
+                        <details className="text-xs">
+                          <summary className="text-yellow-700 font-medium cursor-pointer py-1">
+                            {uploadResult.skipped_list.length} already in Rounds (skipped)
+                          </summary>
+                          <ul className="mt-1 space-y-0.5 text-gray-600 pl-3 max-h-24 overflow-y-auto">
+                            {uploadResult.skipped_list.map((p, i) => <li key={i}>• {p}</li>)}
+                          </ul>
+                        </details>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Shared message toast */}
               {msg && showCreate && (
-                <div className={`p-2.5 rounded-lg flex items-center gap-2 text-xs ${
+                <div className={`mx-5 mb-3 p-2.5 rounded-lg flex items-center gap-2 text-xs ${
                   msg.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
                 }`}>
                   {msg.type === 'success' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
@@ -275,13 +434,23 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
                 </div>
               )}
             </div>
-            <div className="flex gap-3 px-5 py-4 border-t border-gray-200">
-              <button onClick={() => setShowCreate(false)}
+
+            {/* Action buttons */}
+            <div className="flex gap-3 px-5 py-4 border-t border-gray-200 shrink-0">
+              <button onClick={() => { setShowCreate(false); setUploadResult(null); setUploadFile(null); }}
                 className="flex-1 px-4 py-2.5 text-sm text-gray-600 bg-gray-100 rounded-lg">Cancel</button>
-              <button onClick={handleCreate} disabled={saving}
-                className="flex-1 px-4 py-2.5 text-sm bg-even-blue text-white rounded-lg disabled:opacity-50">
-                {saving ? 'Creating...' : 'Create'}
-              </button>
+              {createTab === 'single' ? (
+                <button onClick={handleCreate} disabled={saving}
+                  className="flex-1 px-4 py-2.5 text-sm bg-even-blue text-white rounded-lg disabled:opacity-50">
+                  {saving ? 'Creating...' : 'Create'}
+                </button>
+              ) : (
+                <button onClick={handleUpload} disabled={saving || !uploadFile}
+                  className="flex-1 px-4 py-2.5 text-sm bg-even-blue text-white rounded-lg disabled:opacity-50 flex items-center justify-center gap-1.5">
+                  <Upload size={14} />
+                  {saving ? 'Importing...' : 'Import Patients'}
+                </button>
+              )}
             </div>
           </div>
         </div>
