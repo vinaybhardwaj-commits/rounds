@@ -59,12 +59,17 @@ interface DisplayMessage {
   own_reactions: string[];
   attachments: AttachmentData[];
   raw: MessageResponse;
-  // Soft-delete fields
-  rounds_deleted: boolean;
-  rounds_deleted_by_name?: string;
-  rounds_deleted_at?: string;
-  rounds_deleted_reason?: string;
-  rounds_original_text?: string;
+}
+
+interface DeletedMessageRecord {
+  message_id: string;
+  channel_id: string;
+  original_text: string;
+  original_user_name: string;
+  deleted_by_name: string;
+  deleted_at: string;
+  reason: string;
+  is_system_message: boolean;
 }
 
 // Role display labels and colors
@@ -159,6 +164,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DisplayMessage | null>(null);
   const [showDeletedAccordion, setShowDeletedAccordion] = useState(false);
+  const [deletedRecords, setDeletedRecords] = useState<DeletedMessageRecord[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -227,12 +233,6 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
         own_reactions: ownReactions,
         attachments,
         raw: msg,
-        // Soft-delete fields
-        rounds_deleted: Boolean(msgExtra.rounds_deleted),
-        rounds_deleted_by_name: (msgExtra.rounds_deleted_by_name as string) || undefined,
-        rounds_deleted_at: (msgExtra.rounds_deleted_at as string) || undefined,
-        rounds_deleted_reason: (msgExtra.rounds_deleted_reason as string) || undefined,
-        rounds_original_text: (msgExtra.rounds_original_text as string) || undefined,
       };
     },
     [client?.userID]
@@ -266,7 +266,22 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
       }
     };
 
+    // Fetch deleted messages from our DB for the accordion
+    const fetchDeletedMessages = async () => {
+      try {
+        const channelFullId = `${channel.type}:${channel.id}`;
+        const res = await fetch(`/api/chat/delete-message?channel_id=${encodeURIComponent(channelFullId)}`);
+        const data = await res.json();
+        if (data.success) {
+          setDeletedRecords(data.data || []);
+        }
+      } catch {
+        // Non-fatal — accordion just won't show
+      }
+    };
+
     loadMessages();
+    fetchDeletedMessages();
 
     const handleNewMessage = (event: { message?: MessageResponse }) => {
       if (event.message && !event.message.parent_id) {
@@ -281,20 +296,20 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
       setMessages(topLevel.map(toDisplayMessage));
     };
 
-    const handleMessageUpdated = () => {
-      // Re-map all messages — a soft-delete will now show rounds_deleted = true
+    const handleMessageDeleted = () => {
+      // Message was hard-deleted — refresh from channel state
       const topLevel = channel.state.messages.filter((m) => !m.parent_id);
       setMessages(topLevel.map(toDisplayMessage));
     };
 
     channel.on('message.new', handleNewMessage);
-    channel.on('message.updated', handleMessageUpdated);
+    channel.on('message.deleted', handleMessageDeleted);
     channel.on('reaction.new', handleReactionNew);
     channel.on('reaction.deleted', handleReactionNew);
 
     return () => {
       channel.off('message.new', handleNewMessage);
-      channel.off('message.updated', handleMessageUpdated);
+      channel.off('message.deleted', handleMessageDeleted);
       channel.off('reaction.new', handleReactionNew);
       channel.off('reaction.deleted', handleReactionNew);
     };
@@ -459,15 +474,15 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
           </div>
         ) : (
           <>
-            {messages.filter(m => !m.rounds_deleted).map((msg, index, filteredMsgs) => {
+            {messages.map((msg, index) => {
               const isOwn = msg.user_id === client?.userID;
               const isSystem = msg.is_system;
               const isHovered = hoveredMessageId === msg.id;
               const showAvatar =
                 index === 0 ||
-                filteredMsgs[index - 1].user_id !== msg.user_id ||
+                messages[index - 1].user_id !== msg.user_id ||
                 new Date(msg.created_at).getTime() -
-                  new Date(filteredMsgs[index - 1].created_at).getTime() >
+                  new Date(messages[index - 1].created_at).getTime() >
                   300000;
 
               const time = new Date(msg.created_at).toLocaleTimeString('en-IN', {
@@ -774,73 +789,58 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                 </div>
               );
             })}
-            {/* Deleted Messages Accordion */}
-            {(() => {
-              const deletedMsgs = messages.filter(m => m.rounds_deleted);
-              if (deletedMsgs.length === 0) return null;
-              return (
-                <div className="mt-4 border-t border-dashed border-gray-200 pt-3">
-                  <button
-                    onClick={() => setShowDeletedAccordion(!showDeletedAccordion)}
-                    className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 transition-colors mb-2"
-                  >
-                    {showDeletedAccordion ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    <Trash2 size={12} />
-                    <span>
-                      Deleted Messages ({deletedMsgs.length})
-                    </span>
-                  </button>
-                  {showDeletedAccordion && (
-                    <div className="space-y-1.5 pl-1">
-                      {deletedMsgs.map(dm => {
-                        const delTime = dm.rounds_deleted_at
-                          ? new Date(dm.rounds_deleted_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
-                          : '';
-                        const delDate = dm.rounds_deleted_at
-                          ? new Date(dm.rounds_deleted_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-                          : '';
-                        const reasonLabels: Record<string, string> = {
-                          mistake: 'Sent by mistake',
-                          change_of_plans: 'Change of plans',
-                          duplicate: 'Duplicate',
-                          testing_debug: 'Testing/debug',
-                          other: 'Other',
-                        };
-                        return (
-                          <div key={dm.id} className="bg-gray-100/60 border border-gray-200 rounded-lg px-3 py-2 opacity-60">
-                            <div className="flex items-center gap-2 mb-0.5">
-                              <span className="text-[10px] font-medium text-gray-500">
-                                {dm.is_system ? '🤖 Rounds System' : dm.user_name}
-                              </span>
-                              <span className="text-[10px] text-gray-400">
-                                {new Date(dm.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
-                              </span>
-                            </div>
-                            <p className="text-xs text-gray-500 line-through leading-relaxed">
-                              {dm.rounds_original_text || dm.text}
-                            </p>
-                            <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-400">
-                              <Trash2 size={10} />
-                              <span>
-                                Deleted by {dm.rounds_deleted_by_name || 'Unknown'}
-                                {delDate ? ` on ${delDate}` : ''}
-                                {delTime ? ` at ${delTime}` : ''}
-                              </span>
-                              {dm.rounds_deleted_reason && (
-                                <>
-                                  <span className="text-gray-300">|</span>
-                                  <span>{reasonLabels[dm.rounds_deleted_reason] || dm.rounds_deleted_reason}</span>
-                                </>
-                              )}
-                            </div>
+            {/* Deleted Messages Accordion — fetched from our DB */}
+            {deletedRecords.length > 0 && (
+              <div className="mt-4 border-t border-dashed border-gray-200 pt-3">
+                <button
+                  onClick={() => setShowDeletedAccordion(!showDeletedAccordion)}
+                  className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 transition-colors mb-2"
+                >
+                  {showDeletedAccordion ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  <Trash2 size={12} />
+                  <span>Deleted Messages ({deletedRecords.length})</span>
+                </button>
+                {showDeletedAccordion && (
+                  <div className="space-y-1.5 pl-1">
+                    {deletedRecords.map(dm => {
+                      const delTime = new Date(dm.deleted_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+                      const delDate = new Date(dm.deleted_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+                      const reasonLabels: Record<string, string> = {
+                        mistake: 'Sent by mistake',
+                        change_of_plans: 'Change of plans',
+                        duplicate: 'Duplicate',
+                        testing_debug: 'Testing/debug',
+                        other: 'Other',
+                      };
+                      return (
+                        <div key={dm.message_id} className="bg-gray-100/60 border border-gray-200 rounded-lg px-3 py-2 opacity-60">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-[10px] font-medium text-gray-500">
+                              {dm.is_system_message ? '🤖 Rounds System' : dm.original_user_name}
+                            </span>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
+                          <p className="text-xs text-gray-500 line-through leading-relaxed">
+                            {dm.original_text}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-400">
+                            <Trash2 size={10} />
+                            <span>
+                              Deleted by {dm.deleted_by_name || 'Unknown'} on {delDate} at {delTime}
+                            </span>
+                            {dm.reason && (
+                              <>
+                                <span className="text-gray-300">|</span>
+                                <span>{reasonLabels[dm.reason] || dm.reason}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </>
         )}
@@ -856,11 +856,18 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
           messageAuthor={deleteTarget.user_name}
           isSystemMessage={deleteTarget.is_system}
           onClose={() => setDeleteTarget(null)}
-          onDeleted={() => {
+          onDeleted={async () => {
             setDeleteTarget(null);
-            // Refresh messages from channel state
+            // Refresh messages from channel state (deleted message is now gone)
             const topLevel = channel.state.messages.filter((m) => !m.parent_id);
             setMessages(topLevel.map(toDisplayMessage));
+            // Refresh deleted records from our DB for the accordion
+            try {
+              const channelFullId = `${channel.type}:${channel.id}`;
+              const res = await fetch(`/api/chat/delete-message?channel_id=${encodeURIComponent(channelFullId)}`);
+              const data = await res.json();
+              if (data.success) setDeletedRecords(data.data || []);
+            } catch { /* non-fatal */ }
           }}
         />
       )}
