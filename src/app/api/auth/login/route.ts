@@ -51,13 +51,26 @@ export async function POST(request: NextRequest) {
     }
 
     // Find the profile (with department slug for auto-join)
-    const result = await sql`
-      SELECT p.id, p.email, p.full_name, p.role, p.status, p.password_hash, p.account_type, p.department_id,
-             p.must_change_pin, d.slug as department_slug
-      FROM profiles p
-      LEFT JOIN departments d ON p.department_id = d.id
-      WHERE p.email = ${email.toLowerCase()}
-    `;
+    // Note: must_change_pin may not exist until migration v9 runs — query it safely
+    let result;
+    try {
+      result = await sql`
+        SELECT p.id, p.email, p.full_name, p.role, p.status, p.password_hash, p.account_type, p.department_id,
+               p.must_change_pin, d.slug as department_slug
+        FROM profiles p
+        LEFT JOIN departments d ON p.department_id = d.id
+        WHERE p.email = ${email.toLowerCase()}
+      `;
+    } catch {
+      // Fallback if must_change_pin column doesn't exist yet
+      result = await sql`
+        SELECT p.id, p.email, p.full_name, p.role, p.status, p.password_hash, p.account_type, p.department_id,
+               false as must_change_pin, d.slug as department_slug
+        FROM profiles p
+        LEFT JOIN departments d ON p.department_id = d.id
+        WHERE p.email = ${email.toLowerCase()}
+      `;
+    }
 
     if (result.length === 0) {
       return NextResponse.json(

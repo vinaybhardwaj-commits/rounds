@@ -16,10 +16,15 @@ export default async function HomePage() {
   }
 
   // Check if user must change their PIN (set by admin)
-  const sql = neon(process.env.POSTGRES_URL!);
-  const pinCheck = await sql`SELECT must_change_pin FROM profiles WHERE id = ${user.profileId}`;
-  if (pinCheck.length && (pinCheck[0] as Record<string, unknown>).must_change_pin) {
-    redirect('/auth/change-pin');
+  // Wrapped in try/catch: column may not exist until migration v9 runs
+  try {
+    const sql = neon(process.env.POSTGRES_URL!);
+    const pinCheck = await sql`SELECT must_change_pin FROM profiles WHERE id = ${user.profileId}`;
+    if (pinCheck.length && (pinCheck[0] as Record<string, unknown>).must_change_pin) {
+      redirect('/auth/change-pin');
+    }
+  } catch {
+    // Column doesn't exist yet — skip check until migration runs
   }
 
   // Generate a stream token for the client
