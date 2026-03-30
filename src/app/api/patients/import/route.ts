@@ -27,7 +27,35 @@ import { query, queryOne } from '@/lib/db';
 import {
   createPatientChannel,
   sendSystemMessage,
+  syncUserToGetStream,
 } from '@/lib/getstream';
+
+// Track which profile IDs have been synced to GetStream in this request
+const syncedToGetStream = new Set<string>();
+
+/**
+ * Ensure a profile exists in GetStream before using it as a channel member.
+ * Caches within the request to avoid redundant upserts.
+ */
+async function ensureGetStreamUser(profileId: string): Promise<void> {
+  if (syncedToGetStream.has(profileId)) return;
+  const profile = await queryOne<{
+    id: string; full_name: string; email: string; role: string; department_id: string | null;
+  }>(
+    `SELECT id, full_name, email, role, department_id FROM profiles WHERE id = $1`,
+    [profileId]
+  );
+  if (profile) {
+    await syncUserToGetStream({
+      id: profile.id,
+      name: profile.full_name,
+      email: profile.email,
+      role: profile.role,
+      department_id: profile.department_id,
+    });
+    syncedToGetStream.add(profileId);
+  }
+}
 
 // ── CSV column → Rounds field mapping ──
 
@@ -248,11 +276,24 @@ async function findOrCreateDoctor(
   try {
     const newProfile = await query<{ id: string }>(
       `INSERT INTO profiles (full_name, email, role, status, department_id, designation, account_type)
-       VALUES ($1, $2, 'staff', 'active', $3, $4, 'internal')
+       VALUES ($1, $2, 'doctor', 'active', $3, $4, 'internal')
        RETURNING id`,
       [normalizedName, stubEmail, deptId, specialty || 'Doctor']
     );
     if (newProfile[0]) {
+      // Immediately sync to GetStream so they can be added to channels
+      try {
+        await syncUserToGetStream({
+          id: newProfile[0].id,
+          name: normalizedName,
+          email: stubEmail,
+          role: 'doctor',
+          department_id: deptId,
+        });
+        syncedToGetStream.add(newProfile[0].id);
+      } catch (syncErr) {
+        console.error(`Failed to sync stub doctor ${doctorName} to GetStream:`, syncErr);
+      }
       doctorCache.set(cacheKey, newProfile[0].id);
       return newProfile[0].id;
     }
@@ -358,6 +399,7 @@ export async function POST(request: NextRequest) {
     // Clear caches for this import batch
     doctorCache.clear();
     deptCache.clear();
+    syncedToGetStream.clear();
 
     const results: {
       created: string[];
@@ -444,6 +486,19 @@ export async function POST(request: NextRequest) {
           stageStaff.forEach(p => memberIds.add(p.id));
         } catch { /* non-fatal */ }
 
+        // ── CRITICAL: sync ALL members to GetStream before channel creation ──
+        // GetStream rejects addMembers for users that don't exist in its system.
+        // This ensures every profile in the DB is also upserted in GetStream.
+        for (const memberId of memberIds) {
+          try {
+            await ensureGetStreamUser(memberId);
+          } catch {
+            // If a user can't be synced, remove them from members rather than
+            // failing the entire channel creation
+            memberIds.delete(memberId);
+          }
+        }
+
         try {
           const channelId = await createPatientChannel({
             patientThreadId: patientResult.id,
@@ -452,11 +507,11 @@ export async function POST(request: NextRequest) {
             currentStage: 'admitted',
             departmentId: deptId,
             createdById: user.profileId,
-            memberIds: [...memberIds],  // include importing user explicitly to guarantee channel membership
+            memberIds: [...memberIds],
           });
 
           await updatePatientThread(patientResult.id, {
-            getstream_channel_id: channelId as unknown as undefined,
+            getstream_channel_id: channelId as unknown as string,
           });
 
           await sendSystemMessage(
