@@ -12,6 +12,7 @@ import {
   getPatientThread,
   updatePatientThread,
   findProfilesByRole,
+  archivePatientThread,
 } from '@/lib/db-v5';
 import {
   updatePatientChannel,
@@ -169,6 +170,24 @@ export async function PATCH(
       }
     }
 
+    // Auto-archive when reaching post_discharge
+    let autoArchived = false;
+    if (newStage === 'post_discharge') {
+      try {
+        await archivePatientThread(id, 'post_discharge', user.profileId);
+        if (channelId) {
+          await updatePatientChannel(channelId, {
+            frozen: true,
+            archived: true,
+            archive_type: 'post_discharge',
+          });
+        }
+        autoArchived = true;
+      } catch (err) {
+        console.error('Failed to auto-archive post-discharge patient:', err);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -177,8 +196,9 @@ export async function PATCH(
         new_stage: newStage,
         new_members_added: newMembersAdded,
         channel_updated: !!channelId,
+        auto_archived: autoArchived,
       },
-      message: `Stage transitioned from ${currentStage} to ${newStage}`,
+      message: `Stage transitioned from ${currentStage} to ${newStage}${autoArchived ? ' (auto-archived)' : ''}`,
     });
   } catch (error) {
     console.error('PATCH /api/patients/[id]/stage error:', error);

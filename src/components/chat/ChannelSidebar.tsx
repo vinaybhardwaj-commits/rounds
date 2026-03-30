@@ -22,6 +22,8 @@ import {
   UserCircle,
   Activity,
   PenSquare,
+  Archive,
+  Trash2,
 } from 'lucide-react';
 import type { Channel } from 'stream-chat';
 import { useChatContext } from '@/providers/ChatProvider';
@@ -113,7 +115,7 @@ export function ChannelSidebar({
   const { client } = useChatContext();
   const [channelGroups, setChannelGroups] = useState<ChannelGroup[]>([]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
-    new Set(['direct', 'ops-broadcast'])
+    new Set(['direct', 'ops-broadcast', 'archived-post-dc', 'archived-removed'])
   );
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -133,8 +135,25 @@ export function ChannelSidebar({
       });
 
       const groups: Record<string, Channel[]> = {};
+      const archivedPostDC: Channel[] = [];
+      const archivedRemoved: Channel[] = [];
+
       for (const ch of channels) {
         const type = ch.type || 'messaging';
+        const chData = ch.data as Record<string, unknown> | undefined;
+        const isArchived = chData?.archived === true;
+        const archiveType = chData?.archive_type as string | undefined;
+
+        // Split patient-thread channels into active vs archived
+        if (type === 'patient-thread' && isArchived) {
+          if (archiveType === 'removed') {
+            archivedRemoved.push(ch);
+          } else {
+            archivedPostDC.push(ch);
+          }
+          continue;
+        }
+
         if (!groups[type]) groups[type] = [];
         groups[type].push(ch);
       }
@@ -156,6 +175,26 @@ export function ChannelSidebar({
           channels: groups[t.type],
           defaultOpen: t.defaultOpen,
         }));
+
+      // Add archived accordions at the end (collapsed by default)
+      if (archivedPostDC.length > 0) {
+        result.push({
+          label: `Post-Discharge (${archivedPostDC.length})`,
+          type: 'archived-post-dc',
+          icon: Archive,
+          channels: archivedPostDC,
+          defaultOpen: false,
+        });
+      }
+      if (archivedRemoved.length > 0) {
+        result.push({
+          label: `Removed (${archivedRemoved.length})`,
+          type: 'archived-removed',
+          icon: Trash2,
+          channels: archivedRemoved,
+          defaultOpen: false,
+        });
+      }
 
       setChannelGroups(result);
     } catch (error) {
@@ -336,6 +375,7 @@ export function ChannelSidebar({
                         const unreadCount = channel.countUnread?.() || 0;
                         const { text: lastMsg, time: lastTime } =
                           getLastMessagePreview(channel);
+                        const isArchivedChannel = group.type.startsWith('archived-');
 
                         return (
                           <button
@@ -346,6 +386,8 @@ export function ChannelSidebar({
                               ${
                                 isActive
                                   ? 'bg-even-blue text-white'
+                                  : isArchivedChannel
+                                  ? 'text-white/30 hover:bg-white/5 hover:text-white/50'
                                   : 'text-white/70 hover:bg-white/10 hover:text-white'
                               }
                             `}

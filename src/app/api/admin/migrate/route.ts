@@ -316,6 +316,15 @@ export async function POST() {
     await run('idx_deleted_messages_deleted_by', `CREATE INDEX IF NOT EXISTS idx_deleted_messages_deleted_by ON deleted_messages(deleted_by_id)`);
     await run('deleted_messages_migration', `INSERT INTO _migrations (name) VALUES ('v10-deleted-messages') ON CONFLICT (name) DO NOTHING`);
 
+    // ── Step 11: patient_threads soft-delete columns ──
+    await run('pt_archived_at', `ALTER TABLE patient_threads ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`);
+    await run('pt_archive_type', `ALTER TABLE patient_threads ADD COLUMN IF NOT EXISTS archive_type VARCHAR(20)`);
+    await run('pt_archive_reason', `ALTER TABLE patient_threads ADD COLUMN IF NOT EXISTS archive_reason VARCHAR(100)`);
+    await run('pt_archive_reason_detail', `ALTER TABLE patient_threads ADD COLUMN IF NOT EXISTS archive_reason_detail TEXT`);
+    await run('pt_archived_by', `ALTER TABLE patient_threads ADD COLUMN IF NOT EXISTS archived_by UUID REFERENCES profiles(id)`);
+    await run('idx_pt_archived', `CREATE INDEX IF NOT EXISTS idx_patient_threads_archived ON patient_threads(archive_type, archived_at DESC) WHERE archived_at IS NOT NULL`);
+    await run('pt_archive_migration', `INSERT INTO _migrations (name) VALUES ('v11-patient-soft-delete') ON CONFLICT (name) DO NOTHING`);
+
     // 9. Verify
     const tables = await sql`
       SELECT table_name FROM information_schema.tables

@@ -82,10 +82,16 @@ export async function listPatientThreads(filters?: {
   department_id?: string;
   limit?: number;
   offset?: number;
+  include_archived?: boolean;
 }) {
   const conditions: string[] = [];
   const params: unknown[] = [];
   let paramIndex = 1;
+
+  // By default, exclude archived patients
+  if (!filters?.include_archived) {
+    conditions.push(`pt.archived_at IS NULL`);
+  }
 
   if (filters?.stage) {
     conditions.push(`pt.current_stage = $${paramIndex++}`);
@@ -819,6 +825,62 @@ export async function listEscalations(filters?: {
      ${where}
      ORDER BY el.created_at DESC
      LIMIT $${paramIndex}`,
+    params
+  );
+}
+
+// ── Patient archive (soft-delete) functions ──
+
+export async function archivePatientThread(
+  id: string,
+  archiveType: 'post_discharge' | 'removed',
+  archivedBy: string,
+  reason?: string,
+  reasonDetail?: string
+) {
+  return queryOne(
+    `UPDATE patient_threads SET
+      archived_at = NOW(),
+      archive_type = $2,
+      archived_by = $3,
+      archive_reason = $4,
+      archive_reason_detail = $5
+     WHERE id = $1 RETURNING *`,
+    [id, archiveType, archivedBy, reason || null, reasonDetail || null]
+  );
+}
+
+export async function restorePatientThread(id: string) {
+  return queryOne(
+    `UPDATE patient_threads SET
+      archived_at = NULL,
+      archive_type = NULL,
+      archived_by = NULL,
+      archive_reason = NULL,
+      archive_reason_detail = NULL
+     WHERE id = $1 RETURNING *`,
+    [id]
+  );
+}
+
+export async function listArchivedPatientThreads(archiveType?: 'post_discharge' | 'removed') {
+  const typeFilter = archiveType
+    ? `AND pt.archive_type = $1`
+    : '';
+  const params = archiveType ? [archiveType] : [];
+
+  return query(
+    `SELECT pt.*, p.full_name as primary_consultant_name, d.name as department_name,
+            ap.full_name as archived_by_name,
+            at.bed_number, at.room_number, at.room_category, at.financial_category
+     FROM patient_threads pt
+     LEFT JOIN profiles p ON pt.primary_consultant_id = p.id
+     LEFT JOIN departments d ON pt.department_id = d.id
+     LEFT JOIN profiles ap ON pt.archived_by = ap.id
+     LEFT JOIN admission_tracker at ON at.patient_thread_id = pt.id
+     WHERE pt.archived_at IS NOT NULL ${typeFilter}
+     ORDER BY pt.archived_at DESC
+     LIMIT 200`,
     params
   );
 }
