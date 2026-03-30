@@ -452,7 +452,7 @@ export async function POST(request: NextRequest) {
             currentStage: 'admitted',
             departmentId: deptId,
             createdById: user.profileId,
-            memberIds: [...memberIds].filter(id => id !== user.profileId),
+            memberIds: [...memberIds],  // include importing user explicitly to guarantee channel membership
           });
 
           await updatePatientThread(patientResult.id, {

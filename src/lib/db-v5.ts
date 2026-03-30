@@ -99,10 +99,12 @@ export async function listPatientThreads(filters?: {
   const offset = filters?.offset || 0;
 
   return query(
-    `SELECT pt.*, p.full_name as primary_consultant_name, d.name as department_name
+    `SELECT pt.*, p.full_name as primary_consultant_name, d.name as department_name,
+            at.bed_number, at.room_number, at.room_category, at.financial_category
      FROM patient_threads pt
      LEFT JOIN profiles p ON pt.primary_consultant_id = p.id
      LEFT JOIN departments d ON pt.department_id = d.id
+     LEFT JOIN admission_tracker at ON at.patient_thread_id = pt.id
      ${where}
      ORDER BY pt.updated_at DESC
      LIMIT $${paramIndex++} OFFSET $${paramIndex++}`,

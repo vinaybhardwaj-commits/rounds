@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Plus,
   Search,
@@ -11,9 +11,11 @@ import {
   CheckCircle,
   Upload,
   FileSpreadsheet,
+  MessageCircle,
 } from 'lucide-react';
-import type { PatientStage } from '@/types';
+import type { PatientStage, FormType } from '@/types';
 import { PATIENT_STAGE_LABELS, PATIENT_STAGE_COLORS } from '@/types';
+import { FORMS_BY_STAGE, FORM_TYPE_LABELS } from '@/lib/form-registry';
 
 type CreateTab = 'single' | 'upload';
 
@@ -25,9 +27,15 @@ interface PatientThread {
   current_stage: PatientStage;
   primary_consultant_name: string | null;
   department_name: string | null;
+  primary_diagnosis: string | null;
   getstream_channel_id: string;
   admission_date: string | null;
   created_at: string;
+  // From admission_tracker JOIN
+  bed_number: string | null;
+  room_number: string | null;
+  room_category: string | null;
+  financial_category: string | null;
 }
 
 interface PatientsViewProps {
@@ -35,11 +43,61 @@ interface PatientsViewProps {
   onNavigateToChannel?: (channelId: string) => void;
 }
 
+// Short labels for chiclets (save horizontal space)
+const CHICLET_LABELS: Partial<Record<FormType, string>> = {
+  marketing_cc_handoff: 'CC Handoff',
+  admission_advice: 'Adm Advice',
+  financial_counseling: 'Fin Counsel',
+  ot_billing_clearance: 'OT Billing',
+  admission_checklist: 'Adm Checklist',
+  surgery_posting: 'Surgery Post',
+  pre_op_nursing_checklist: 'Pre-Op Nrsg',
+  who_safety_checklist: 'WHO Safety',
+  nursing_shift_handoff: 'Shift Handoff',
+  discharge_readiness: 'Discharge',
+  post_discharge_followup: 'Post-DC F/U',
+  daily_department_update: 'Dept Update',
+  pac_clearance: 'PAC',
+};
+
+function getChicletLabel(formType: FormType): string {
+  return CHICLET_LABELS[formType] || FORM_TYPE_LABELS[formType] || formType;
+}
+
+// Chiclet status dot color
+function getStatusColor(status: string | undefined): { bg: string; border: string; dotClass: string } {
+  switch (status) {
+    case 'submitted':
+    case 'reviewed':
+      return { bg: 'bg-green-50', border: 'border-green-200', dotClass: 'bg-green-500' };
+    case 'draft':
+      return { bg: 'bg-amber-50', border: 'border-amber-200', dotClass: 'bg-amber-500' };
+    case 'flagged':
+      return { bg: 'bg-red-50', border: 'border-red-200', dotClass: 'bg-red-500' };
+    default:
+      return { bg: 'bg-gray-50', border: 'border-gray-200', dotClass: 'bg-gray-300' };
+  }
+}
+
+// Financial category badge
+function getFinancialBadge(category: string | null): { label: string; className: string } | null {
+  if (!category) return null;
+  switch (category) {
+    case 'cash': return { label: 'Cash', className: 'bg-green-100 text-green-700' };
+    case 'insurance': return { label: 'TPA', className: 'bg-blue-100 text-blue-700' };
+    case 'credit': return { label: 'Credit', className: 'bg-amber-100 text-amber-700' };
+    default: return null;
+  }
+}
+
 export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsViewProps) {
   const [patients, setPatients] = useState<PatientThread[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('');
+
+  // Form status per patient: { patient_id: { form_type: status } }
+  const [formStatuses, setFormStatuses] = useState<Record<string, Record<string, string>>>({});
 
   // Create modal
   const [showCreate, setShowCreate] = useState(false);
@@ -75,13 +133,35 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
 
   useEffect(() => { fetchPatients(); }, [fetchPatients]);
 
+  // Fetch form statuses whenever patient list changes
+  useEffect(() => {
+    if (patients.length === 0) return;
+    const ids = patients.map(p => p.id).join(',');
+    fetch(`/api/patients/form-status?ids=${ids}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) setFormStatuses(data.data || {});
+      })
+      .catch(() => { /* non-fatal */ });
+  }, [patients]);
+
   const filtered = search
     ? patients.filter(p =>
         p.patient_name.toLowerCase().includes(search.toLowerCase()) ||
         p.uhid?.toLowerCase().includes(search.toLowerCase()) ||
-        p.ip_number?.toLowerCase().includes(search.toLowerCase())
+        p.ip_number?.toLowerCase().includes(search.toLowerCase()) ||
+        p.bed_number?.toLowerCase().includes(search.toLowerCase())
       )
     : patients;
+
+  // Stage counts for filter pills (computed from FULL patient list, not filtered)
+  const stageCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const p of patients) {
+      counts[p.current_stage] = (counts[p.current_stage] || 0) + 1;
+    }
+    return counts;
+  }, [patients]);
 
   const handleUpload = async () => {
     if (!uploadFile) { setMsg({ type: 'error', text: 'Please select a CSV file.' }); return; }
@@ -160,12 +240,12 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name, UHID, or IP number..."
+            placeholder="Search by name, UHID, IP#, or bed..."
             className="w-full pl-9 pr-3 py-2 bg-gray-100 rounded-lg text-sm outline-none focus:ring-2 focus:ring-even-blue/30"
           />
         </div>
 
-        {/* Stage filter pills */}
+        {/* Stage filter pills with counts */}
         <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-none">
           <button
             onClick={() => setStageFilter('')}
@@ -173,22 +253,27 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
               !stageFilter ? 'bg-even-blue text-white' : 'bg-gray-100 text-gray-500'
             }`}
           >
-            All
+            All{patients.length > 0 ? ` (${patients.length})` : ''}
           </button>
-          {(Object.entries(PATIENT_STAGE_LABELS) as [PatientStage, string][]).map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setStageFilter(key)}
-              className={`shrink-0 text-xs px-3 py-1 rounded-full font-medium transition-colors ${
-                stageFilter === key
-                  ? 'text-white'
-                  : 'bg-gray-100 text-gray-500'
-              }`}
-              style={stageFilter === key ? { backgroundColor: PATIENT_STAGE_COLORS[key] } : undefined}
-            >
-              {label}
-            </button>
-          ))}
+          {(Object.entries(PATIENT_STAGE_LABELS) as [PatientStage, string][]).map(([key, label]) => {
+            const count = stageCounts[key] || 0;
+            return (
+              <button
+                key={key}
+                onClick={() => setStageFilter(key)}
+                className={`shrink-0 text-xs px-3 py-1 rounded-full font-medium transition-colors ${
+                  stageFilter === key
+                    ? 'text-white'
+                    : count > 0
+                    ? 'bg-gray-100 text-gray-600'
+                    : 'bg-gray-50 text-gray-300'
+                }`}
+                style={stageFilter === key ? { backgroundColor: PATIENT_STAGE_COLORS[key] } : undefined}
+              >
+                {label}{count > 0 ? ` (${count})` : ''}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -214,7 +299,7 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
             </p>
             <p className="text-gray-400 text-xs mt-1">
               {search
-                ? 'Try a different name, UHID, or IP number'
+                ? 'Try a different name, UHID, IP#, or bed number'
                 : 'Tap the + button to create a patient thread. Any staff member can start one.'}
             </p>
           </div>
@@ -222,6 +307,20 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
           <div className="space-y-2">
             {filtered.map(patient => {
               const stageColor = PATIENT_STAGE_COLORS[patient.current_stage];
+              const forms = FORMS_BY_STAGE[patient.current_stage] || [];
+              const patientFormStatuses = formStatuses[patient.id] || {};
+              const financialBadge = getFinancialBadge(patient.financial_category);
+
+              // Parse bed info from primary_diagnosis if no admission_tracker data
+              let bedDisplay = patient.bed_number;
+              let floorDisplay: string | null = null;
+              if (!bedDisplay && patient.primary_diagnosis) {
+                const bedMatch = patient.primary_diagnosis.match(/Bed:\s*([^|]+)/);
+                const floorMatch = patient.primary_diagnosis.match(/Floor:\s*([^|]+)/);
+                if (bedMatch) bedDisplay = bedMatch[1].trim();
+                if (floorMatch) floorDisplay = floorMatch[1].trim();
+              }
+
               return (
                 <button
                   key={patient.id}
@@ -231,21 +330,22 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
                     } else if (onNavigateToChannel && patient.getstream_channel_id) {
                       onNavigateToChannel(patient.getstream_channel_id);
                     } else if (!patient.getstream_channel_id) {
-                      setMsg({ type: 'error', text: `No chat channel for ${patient.patient_name}. This patient was created before channel auto-creation was added.` });
+                      setMsg({ type: 'error', text: `No chat channel for ${patient.patient_name}.` });
                     }
                   }}
-                  className="w-full flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 hover:shadow-sm transition-shadow text-left"
+                  className="w-full flex items-start gap-3 p-3 bg-white rounded-xl border border-gray-100 hover:shadow-sm transition-shadow text-left"
                 >
                   {/* Stage indicator */}
                   <div
-                    className="w-1 h-12 rounded-full shrink-0"
+                    className="w-1 self-stretch rounded-full shrink-0"
                     style={{ backgroundColor: stageColor }}
                   />
 
                   {/* Patient info */}
                   <div className="flex-1 min-w-0">
+                    {/* Row 1: Name + Stage badge */}
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm text-even-navy truncate">
+                      <span className="font-semibold text-sm text-even-navy truncate">
                         {patient.patient_name}
                       </span>
                       <span
@@ -255,18 +355,62 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
                         {PATIENT_STAGE_LABELS[patient.current_stage]}
                       </span>
                     </div>
-                    <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-2">
+
+                    {/* Row 2: UHID, IP#, Bed, Financial */}
+                    <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
                       {patient.uhid && <span>{patient.uhid}</span>}
-                      {patient.ip_number && <span>IP: {patient.ip_number}</span>}
+                      {patient.ip_number && (
+                        <>
+                          <span className="text-gray-200">·</span>
+                          <span>IP: {patient.ip_number}</span>
+                        </>
+                      )}
+                      {bedDisplay && (
+                        <>
+                          <span className="text-gray-200">·</span>
+                          <span className="font-medium text-even-navy">
+                            Bed {bedDisplay}
+                            {floorDisplay ? ` · ${floorDisplay}F` : ''}
+                          </span>
+                        </>
+                      )}
+                      {financialBadge && (
+                        <span className={`text-[9px] px-1.5 py-0 rounded-full font-semibold ${financialBadge.className}`}>
+                          {financialBadge.label}
+                        </span>
+                      )}
                     </div>
+
+                    {/* Row 3: Doctor + Dept */}
                     {patient.primary_consultant_name && (
                       <div className="text-xs text-gray-400 mt-0.5 truncate">
-                        {patient.primary_consultant_name} &middot; {patient.department_name || ''}
+                        {patient.primary_consultant_name}
+                        {patient.department_name ? ` · ${patient.department_name}` : ''}
+                      </div>
+                    )}
+
+                    {/* Row 4: Form chiclets */}
+                    {forms.length > 0 && (
+                      <div className="flex gap-1 mt-1.5 flex-wrap">
+                        {forms.map(formType => {
+                          const status = patientFormStatuses[formType];
+                          const colors = getStatusColor(status);
+                          return (
+                            <span
+                              key={formType}
+                              className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md border ${colors.bg} ${colors.border}`}
+                              title={`${FORM_TYPE_LABELS[formType]}: ${status || 'Not started'}`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${colors.dotClass}`} />
+                              <span className="text-gray-600">{getChicletLabel(formType)}</span>
+                            </span>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
 
-                  <ChevronRight size={16} className="text-gray-300 shrink-0" />
+                  <ChevronRight size={16} className="text-gray-300 shrink-0 mt-1" />
                 </button>
               );
             })}

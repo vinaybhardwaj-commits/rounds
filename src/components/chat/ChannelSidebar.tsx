@@ -101,7 +101,9 @@ export function ChannelSidebar({
 }: ChannelSidebarProps) {
   const { client } = useChatContext();
   const [channelGroups, setChannelGroups] = useState<ChannelGroup[]>([]);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    new Set(['direct', 'ops-broadcast'])
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -116,7 +118,7 @@ export function ChannelSidebar({
       const channels = await client.queryChannels(filter, sort, {
         watch: true,
         state: true,
-        limit: 50,
+        limit: 100,
       });
 
       const groups: Record<string, Channel[]> = {};
@@ -129,9 +131,9 @@ export function ChannelSidebar({
       const orderedTypes = [
         { type: 'department', label: 'Departments', icon: Hash, defaultOpen: true },
         { type: 'cross-functional', label: 'Cross-Functional', icon: Users, defaultOpen: true },
-        { type: 'patient-thread', label: 'Patient Threads', icon: Activity, defaultOpen: false },
+        { type: 'patient-thread', label: 'Patient Threads', icon: Activity, defaultOpen: true },
         { type: 'direct', label: 'Direct Messages', icon: MessageCircle, defaultOpen: false },
-        { type: 'ops-broadcast', label: 'Broadcast', icon: Megaphone, defaultOpen: true },
+        { type: 'ops-broadcast', label: 'Broadcast', icon: Megaphone, defaultOpen: false },
       ];
 
       const result: ChannelGroup[] = orderedTypes
