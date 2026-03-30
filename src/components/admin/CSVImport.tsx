@@ -41,43 +41,46 @@ export function CSVImport() {
   };
 
   const downloadTemplate = () => {
-    const csv = 'email,full_name,department,role,designation,phone\njohn.doe@even.in,John Doe,emergency,staff,Senior Nurse,+919876543210\n';
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
+    // Download the pre-built XLSX template from /public
     const a = document.createElement('a');
-    a.href = url;
-    a.download = 'rounds-staff-import-template.csv';
+    a.href = '/rounds-staff-import-template.xlsx';
+    a.download = 'rounds-staff-import-template.xlsx';
     a.click();
-    URL.revokeObjectURL(url);
   };
 
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-3xl">
       <h1 className="text-2xl font-bold text-even-navy mb-2">Import Staff Profiles</h1>
       <p className="text-sm text-gray-500 mb-6">
-        Upload a CSV file with staff data to bulk-create or update profiles.
+        Upload a CSV or XLSX file with staff data to bulk-create or update profiles.
       </p>
 
-      {/* Template download */}
-      <button
-        onClick={downloadTemplate}
-        className="flex items-center gap-2 text-sm text-even-blue hover:underline mb-6"
-      >
-        <Download size={14} />
-        Download CSV template
-      </button>
-
-      {/* Expected format */}
-      <div className="bg-gray-50 rounded-xl p-4 mb-6">
-        <h3 className="text-sm font-semibold text-gray-700 mb-2">Expected CSV columns</h3>
-        <div className="text-xs text-gray-500 space-y-1">
-          <p><strong>email</strong> (required) \u2014 @even.in for internal staff</p>
-          <p><strong>full_name</strong> (required) \u2014 Staff member&apos;s full name</p>
-          <p><strong>department</strong> \u2014 Department slug or name (e.g. &quot;emergency&quot;, &quot;pharmacy&quot;)</p>
-          <p><strong>role</strong> \u2014 staff, department_head, super_admin, pac_coordinator, marketing, guest</p>
-          <p><strong>designation</strong> \u2014 Job title (optional)</p>
-          <p><strong>phone</strong> \u2014 Phone number (optional)</p>
+      {/* Expected format + Template download side by side */}
+      <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4 mb-6">
+        {/* Left: Expected columns */}
+        <div className="bg-gray-50 rounded-xl p-4">
+          <h3 className="text-sm font-semibold text-gray-700 mb-2">Expected columns</h3>
+          <div className="text-xs text-gray-500 space-y-1">
+            <p><strong>email</strong> (required) &mdash; @even.in for internal staff</p>
+            <p><strong>full_name</strong> (required) &mdash; Staff member&apos;s full name</p>
+            <p><strong>department</strong> &mdash; Department slug or name</p>
+            <p><strong>role</strong> &mdash; staff, doctor, nurse, department_head, etc.</p>
+            <p><strong>designation</strong> &mdash; Job title (optional)</p>
+            <p><strong>phone</strong> &mdash; Phone number (optional)</p>
+          </div>
         </div>
+
+        {/* Right: Template download card */}
+        <button
+          onClick={downloadTemplate}
+          className="flex flex-col items-center justify-center gap-2 bg-even-blue/5 border-2 border-dashed border-even-blue/30 rounded-xl px-6 py-5 hover:bg-even-blue/10 hover:border-even-blue/50 transition-colors cursor-pointer text-center min-w-[180px]"
+        >
+          <Download size={28} className="text-even-blue" />
+          <span className="text-sm font-semibold text-even-navy">Download Template</span>
+          <span className="text-[11px] text-gray-500 leading-tight">
+            XLSX file with dropdowns.<br />Fill it in, then upload<br />it back here.
+          </span>
+        </button>
       </div>
 
       {/* Upload area */}
@@ -91,7 +94,7 @@ export function CSVImport() {
         <input
           ref={inputRef}
           type="file"
-          accept=".csv"
+          accept=".csv,.xlsx"
           className="hidden"
           onChange={(e) => {
             setFile(e.target.files?.[0] || null);
@@ -110,7 +113,7 @@ export function CSVImport() {
         ) : (
           <>
             <Upload size={32} className="mx-auto text-gray-300 mb-3" />
-            <p className="text-sm text-gray-500">Click to select a CSV file</p>
+            <p className="text-sm text-gray-500">Click to select a CSV or XLSX file</p>
             <p className="text-xs text-gray-400 mt-1">or drag and drop</p>
           </>
         )}

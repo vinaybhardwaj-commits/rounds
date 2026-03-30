@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { getCurrentUser } from '@/lib/auth';
 import { parse } from 'csv-parse/sync';
+import * as XLSX from 'xlsx';
 import type { CSVImportResult } from '@/types';
 
 let _sql: ReturnType<typeof neon> | null = null;
@@ -22,15 +23,59 @@ export async function POST(request: NextRequest) {
     const file = formData.get('file') as File | null;
 
     if (!file) {
-      return NextResponse.json({ success: false, error: 'No CSV file provided' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'No file provided' }, { status: 400 });
     }
 
-    const csvText = await file.text();
-    const records = parse(csvText, {
-      columns: true,
-      skip_empty_lines: true,
-      trim: true,
-    });
+    const fileName = file.name?.toLowerCase() || '';
+    let records: Record<string, string>[];
+
+    if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+      // Parse XLSX/XLS using SheetJS
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+
+      // Auto-detect the header row: find the row containing "email" in column A
+      const range = XLSX.utils.decode_range(firstSheet['!ref'] || 'A1');
+      let headerRowIdx = 0;
+      for (let r = range.s.r; r <= Math.min(range.e.r, 10); r++) {
+        const cellAddr = XLSX.utils.encode_cell({ r, c: 0 });
+        const cellVal = String(firstSheet[cellAddr]?.v ?? '').trim().toLowerCase();
+        if (cellVal === 'email') {
+          headerRowIdx = r;
+          break;
+        }
+      }
+
+      // Convert to JSON starting from the detected header row
+      const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, {
+        defval: '',
+        range: headerRowIdx,
+      });
+
+      // Convert all values to strings and filter out example/empty rows
+      records = raw
+        .map(row => {
+          const clean: Record<string, string> = {};
+          for (const [k, v] of Object.entries(row)) {
+            clean[k.trim().toLowerCase()] = String(v ?? '').trim();
+          }
+          return clean;
+        })
+        .filter(row => {
+          // Must have a proper email (user@domain.tld), skip notes/header rows
+          const email = row.email || '';
+          return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+        });
+    } else {
+      // Parse CSV
+      const csvText = await file.text();
+      records = parse(csvText, {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+      });
+    }
 
     // Pre-fetch department slugs for mapping
     const departments = await sql`SELECT id, slug, name FROM departments WHERE is_active = true`;
@@ -75,7 +120,7 @@ export async function POST(request: NextRequest) {
       const departmentId = deptMap.get(deptKey) || null;
 
       // Validate role
-      const validRoles = ['super_admin', 'department_head', 'staff', 'pac_coordinator', 'marketing', 'guest'];
+      const validRoles = ['super_admin', 'department_head', 'staff', 'pac_coordinator', 'marketing', 'guest', 'doctor', 'nurse', 'resident', 'pharmacist', 'lab_technician'];
       const finalRole = validRoles.includes(role) ? role : 'staff';
 
       try {
@@ -118,6 +163,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('POST /api/profiles/import error:', error);
-    return NextResponse.json({ success: false, error: 'CSV import failed' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Import failed — check file format (CSV or XLSX)' }, { status: 500 });
   }
 }
