@@ -325,6 +325,7 @@ export async function updateReadinessItem(
     confirmed_by?: string;
     flagged_reason?: string;
     notes?: string;
+    responsible_user_id?: string;
   }
 ) {
   return queryOne(
@@ -333,7 +334,8 @@ export async function updateReadinessItem(
       confirmed_by = $2,
       confirmed_at = CASE WHEN $1 = 'confirmed' THEN NOW() ELSE confirmed_at END,
       flagged_reason = $3,
-      notes = $4
+      notes = $4,
+      responsible_user_id = COALESCE($6, responsible_user_id)
      WHERE id = $5 RETURNING *`,
     [
       update.status,
@@ -341,6 +343,7 @@ export async function updateReadinessItem(
       update.flagged_reason || null,
       update.notes || null,
       id,
+      update.responsible_user_id || null,
     ]
   );
 }

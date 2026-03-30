@@ -20,7 +20,7 @@ export async function PATCH(
 
     const { itemId } = params;
     const body = await request.json();
-    const { status, flagged_reason, notes } = body;
+    const { status, flagged_reason, notes, responsible_user_id } = body;
 
     if (!status) {
       return NextResponse.json(
@@ -42,6 +42,7 @@ export async function PATCH(
       confirmed_by: status === 'confirmed' ? user.profileId : undefined,
       flagged_reason: flagged_reason || undefined,
       notes: notes || undefined,
+      responsible_user_id: responsible_user_id || undefined,
     });
 
     if (!updated) {

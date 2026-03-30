@@ -2,19 +2,27 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  ClipboardCheck,
   Clock,
   AlertTriangle,
   CheckCircle,
   RefreshCw,
-  Filter,
+  Check,
+  Flag,
+  UserPlus,
+  X,
+  ChevronRight,
+  Search,
+  Loader2,
 } from 'lucide-react';
+
+// ----- Types -----
 
 interface ReadinessItem {
   id: string;
   item_name: string;
   item_category: string;
   responsible_role: string;
+  responsible_user_id: string | null;
   status: string;
   due_by: string | null;
   escalated: boolean;
@@ -34,15 +42,36 @@ interface EscalationEntry {
   created_at: string;
 }
 
+interface StaffProfile {
+  id: string;
+  full_name: string;
+  role: string;
+  department_name?: string;
+}
+
 import { DailyBriefing } from '@/components/ai/DailyBriefing';
 
 type TaskTab = 'briefing' | 'overdue' | 'escalations';
 
-export function TasksView() {
+interface TasksViewProps {
+  onNavigateToPatient?: (patientThreadId: string) => void;
+}
+
+export function TasksView({ onNavigateToPatient }: TasksViewProps) {
   const [tab, setTab] = useState<TaskTab>('briefing');
   const [overdueItems, setOverdueItems] = useState<ReadinessItem[]>([]);
   const [escalations, setEscalations] = useState<EscalationEntry[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Action states
+  const [actionLoading, setActionLoading] = useState<string | null>(null); // item id being acted on
+  const [flagTarget, setFlagTarget] = useState<ReadinessItem | null>(null);
+  const [flagReason, setFlagReason] = useState('');
+  const [assignTarget, setAssignTarget] = useState<ReadinessItem | null>(null);
+  const [staffList, setStaffList] = useState<StaffProfile[]>([]);
+  const [staffSearch, setStaffSearch] = useState('');
+  const [staffLoading, setStaffLoading] = useState(false);
+  const [confirmTarget, setConfirmTarget] = useState<ReadinessItem | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -52,7 +81,6 @@ export function TasksView() {
         fetch('/api/escalation/log?resolved=false'),
       ]);
 
-      // Overdue endpoint may not exist yet — handle gracefully
       if (overdueRes.ok) {
         const overdueData = await overdueRes.json();
         if (overdueData.success) setOverdueItems(overdueData.data || []);
@@ -69,12 +97,114 @@ export function TasksView() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // ----- Helpers -----
+
   const formatTimeAgo = (d: string) => {
     const mins = Math.round((Date.now() - new Date(d).getTime()) / 60000);
     if (mins < 60) return `${mins}m ago`;
     if (mins < 1440) return `${Math.round(mins / 60)}h ago`;
     return `${Math.round(mins / 1440)}d ago`;
   };
+
+  const formatOverdue = (dueBy: string | null) => {
+    if (!dueBy) return '';
+    const overdueMins = Math.round((Date.now() - new Date(dueBy).getTime()) / 60000);
+    if (overdueMins >= 1440) return `${Math.round(overdueMins / 1440)}d ${Math.round((overdueMins % 1440) / 60)}h overdue`;
+    if (overdueMins >= 60) return `${Math.round(overdueMins / 60)}h ${overdueMins % 60}m overdue`;
+    return `${overdueMins}m overdue`;
+  };
+
+  // ----- Actions -----
+
+  const handleConfirm = async (item: ReadinessItem) => {
+    setActionLoading(item.id);
+    try {
+      const res = await fetch(`/api/readiness/items/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'confirmed' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Remove from list with animation feel
+        setOverdueItems(prev => prev.filter(i => i.id !== item.id));
+        setConfirmTarget(null);
+      }
+    } catch (err) {
+      console.error('Failed to confirm item:', err);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleFlag = async () => {
+    if (!flagTarget) return;
+    setActionLoading(flagTarget.id);
+    try {
+      const res = await fetch(`/api/readiness/items/${flagTarget.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'flagged', flagged_reason: flagReason }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setOverdueItems(prev => prev.filter(i => i.id !== flagTarget.id));
+        setFlagTarget(null);
+        setFlagReason('');
+      }
+    } catch (err) {
+      console.error('Failed to flag item:', err);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleAssign = async (staffId: string) => {
+    if (!assignTarget) return;
+    setActionLoading(assignTarget.id);
+    try {
+      const res = await fetch(`/api/readiness/items/${assignTarget.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'pending', responsible_user_id: staffId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Update in place — item stays in list but shows new assignee
+        setOverdueItems(prev =>
+          prev.map(i => i.id === assignTarget.id ? { ...i, responsible_user_id: staffId } : i)
+        );
+        setAssignTarget(null);
+        setStaffSearch('');
+      }
+    } catch (err) {
+      console.error('Failed to assign item:', err);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Fetch staff for assign picker
+  const openAssignPicker = async (item: ReadinessItem) => {
+    setAssignTarget(item);
+    setStaffLoading(true);
+    try {
+      const res = await fetch('/api/profiles?limit=100&status=active');
+      const data = await res.json();
+      if (data.success) {
+        setStaffList(data.data || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch staff:', err);
+    } finally {
+      setStaffLoading(false);
+    }
+  };
+
+  const filteredStaff = staffList.filter(s =>
+    s.full_name?.toLowerCase().includes(staffSearch.toLowerCase()) ||
+    s.role?.toLowerCase().includes(staffSearch.toLowerCase())
+  );
 
   const overdueCount = overdueItems.length;
   const escCount = escalations.length;
@@ -89,7 +219,7 @@ export function TasksView() {
             onClick={fetchData}
             className="p-2 text-gray-400 hover:text-even-blue hover:bg-gray-100 rounded-lg transition-colors"
           >
-            <RefreshCw size={18} />
+            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
 
@@ -146,69 +276,98 @@ export function TasksView() {
               <CheckCircle size={40} className="mx-auto text-green-200 mb-3" />
               <p className="text-gray-500 font-medium text-sm">All caught up!</p>
               <p className="text-gray-400 text-xs mt-1">
-                No overdue readiness items. When forms are submitted with SLA deadlines
-                and items aren&apos;t completed on time, they&apos;ll appear here.
+                No overdue readiness items.
               </p>
             </div>
           ) : (
             <div className="space-y-2 mt-2">
-              {overdueItems.map(item => {
-                const overdueMins = item.due_by
-                  ? Math.round((Date.now() - new Date(item.due_by).getTime()) / 60000)
-                  : 0;
-                const overdueStr = overdueMins >= 60
-                  ? `${Math.round(overdueMins / 60)}h ${overdueMins % 60}m overdue`
-                  : `${overdueMins}m overdue`;
-
-                return (
+              {overdueItems.map(item => (
+                <div
+                  key={item.id}
+                  className={`bg-white rounded-xl border p-3 transition-all ${
+                    item.escalated ? 'border-red-200' : 'border-amber-200'
+                  } ${actionLoading === item.id ? 'opacity-50' : ''}`}
+                >
+                  {/* Tappable header area → navigate to patient */}
                   <div
-                    key={item.id}
-                    className={`bg-white rounded-xl border p-3 ${
-                      item.escalated ? 'border-red-200' : 'border-amber-200'
+                    className={`flex items-start justify-between gap-2 ${
+                      item.patient_thread_id && onNavigateToPatient ? 'cursor-pointer' : ''
                     }`}
+                    onClick={() => {
+                      if (item.patient_thread_id && onNavigateToPatient) {
+                        onNavigateToPatient(item.patient_thread_id);
+                      }
+                    }}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-even-navy">{item.item_name}</div>
-                        <div className="text-xs text-gray-400 mt-0.5">
-                          {item.form_type.replace(/_/g, ' ')}
-                          {item.patient_name && ` · ${item.patient_name}`}
-                        </div>
-                        <div className="flex items-center gap-2 mt-1.5">
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">
-                            {item.responsible_role.replace(/_/g, ' ')}
-                          </span>
-                          <span className="text-[10px] text-amber-600 font-medium flex items-center gap-0.5">
-                            <Clock size={9} /> {overdueStr}
-                          </span>
-                        </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-even-navy">{item.item_name}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        {item.form_type.replace(/_/g, ' ')}
+                        {item.patient_name && ` · ${item.patient_name}`}
                       </div>
-                      {item.escalated && (
-                        <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">
-                          L{item.escalation_level}
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                          {item.responsible_role.replace(/_/g, ' ')}
                         </span>
-                      )}
+                        <span className="text-[10px] text-amber-600 font-medium flex items-center gap-0.5">
+                          <Clock size={9} /> {formatOverdue(item.due_by)}
+                        </span>
+                        {item.escalated && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">
+                            L{item.escalation_level}
+                          </span>
+                        )}
+                      </div>
                     </div>
+                    {item.patient_thread_id && onNavigateToPatient && (
+                      <ChevronRight size={16} className="text-gray-300 shrink-0 mt-1" />
+                    )}
                   </div>
-                );
-              })}
+
+                  {/* Action buttons */}
+                  <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-gray-50">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setConfirmTarget(item); }}
+                      disabled={actionLoading === item.id}
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+                    >
+                      <Check size={12} /> Done
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openAssignPicker(item); }}
+                      disabled={actionLoading === item.id}
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+                    >
+                      <UserPlus size={12} /> Assign
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setFlagTarget(item); }}
+                      disabled={actionLoading === item.id}
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors"
+                    >
+                      <Flag size={12} /> Flag
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           )
         ) : (
+          /* Escalations tab */
           escalations.length === 0 ? (
             <div className="text-center py-16">
               <CheckCircle size={40} className="mx-auto text-green-200 mb-3" />
               <p className="text-gray-500 font-medium text-sm">No open escalations</p>
               <p className="text-gray-400 text-xs mt-1">
-                When readiness items are overdue and escalated through the chain
-                (responsible → dept head → on-duty → ops), they&apos;ll appear here.
+                When readiness items are overdue and escalated through the chain,
+                they&apos;ll appear here.
               </p>
             </div>
           ) : (
             <div className="space-y-2 mt-2">
               {escalations.map(esc => {
                 const levelColors = [
-                  '', // no level 0
+                  '',
                   'bg-amber-100 text-amber-700',
                   'bg-orange-100 text-orange-700',
                   'bg-red-100 text-red-700',
@@ -237,6 +396,148 @@ export function TasksView() {
           )
         )}
       </div>
+
+      {/* ===== CONFIRM MODAL ===== */}
+      {confirmTarget && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end justify-center" onClick={() => setConfirmTarget(null)}>
+          <div className="bg-white rounded-t-2xl w-full max-w-lg p-5 pb-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-even-navy">Mark as Done?</h3>
+              <button onClick={() => setConfirmTarget(null)} className="p-1 text-gray-400">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-1">{confirmTarget.item_name}</p>
+            <p className="text-xs text-gray-400 mb-4">
+              {confirmTarget.form_type.replace(/_/g, ' ')}
+              {confirmTarget.patient_name && ` · ${confirmTarget.patient_name}`}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmTarget(null)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-600 bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleConfirm(confirmTarget)}
+                disabled={actionLoading === confirmTarget.id}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {actionLoading === confirmTarget.id ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Check size={14} />
+                )}
+                Confirm Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== FLAG MODAL ===== */}
+      {flagTarget && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end justify-center" onClick={() => { setFlagTarget(null); setFlagReason(''); }}>
+          <div className="bg-white rounded-t-2xl w-full max-w-lg p-5 pb-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-even-navy">Flag Issue</h3>
+              <button onClick={() => { setFlagTarget(null); setFlagReason(''); }} className="p-1 text-gray-400">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-3">{flagTarget.item_name}</p>
+            <textarea
+              value={flagReason}
+              onChange={e => setFlagReason(e.target.value)}
+              placeholder="Why is this flagged? (e.g., patient refused, equipment unavailable)"
+              className="w-full border border-gray-200 rounded-xl p-3 text-sm resize-none h-24 focus:outline-none focus:ring-2 focus:ring-orange-300"
+              autoFocus
+            />
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => { setFlagTarget(null); setFlagReason(''); }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-600 bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleFlag}
+                disabled={!flagReason.trim() || actionLoading === flagTarget.id}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {actionLoading === flagTarget.id ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Flag size={14} />
+                )}
+                Flag Item
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== ASSIGN MODAL ===== */}
+      {assignTarget && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end justify-center" onClick={() => { setAssignTarget(null); setStaffSearch(''); }}>
+          <div className="bg-white rounded-t-2xl w-full max-w-lg p-5 pb-8 max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-semibold text-even-navy">Assign To</h3>
+              <button onClick={() => { setAssignTarget(null); setStaffSearch(''); }} className="p-1 text-gray-400">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mb-3">
+              {assignTarget.item_name} · {assignTarget.patient_name || 'No patient'}
+            </p>
+
+            {/* Search */}
+            <div className="relative mb-3">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={staffSearch}
+                onChange={e => setStaffSearch(e.target.value)}
+                placeholder="Search staff by name or role..."
+                className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-300"
+                autoFocus
+              />
+            </div>
+
+            {/* Staff list */}
+            <div className="flex-1 overflow-y-auto space-y-1">
+              {staffLoading ? (
+                <div className="text-center py-8 text-gray-400 text-sm">
+                  <Loader2 size={20} className="animate-spin mx-auto mb-2" />
+                  Loading staff...
+                </div>
+              ) : filteredStaff.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 text-sm">No staff found</div>
+              ) : (
+                filteredStaff.map(staff => (
+                  <button
+                    key={staff.id}
+                    onClick={() => handleAssign(staff.id)}
+                    disabled={actionLoading === assignTarget.id}
+                    className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-blue-50 transition-colors flex items-center justify-between"
+                  >
+                    <div>
+                      <div className="text-sm font-medium text-even-navy">{staff.full_name}</div>
+                      <div className="text-[11px] text-gray-400">{staff.role?.replace(/_/g, ' ')}</div>
+                    </div>
+                    {actionLoading === assignTarget.id ? (
+                      <Loader2 size={14} className="animate-spin text-gray-400" />
+                    ) : (
+                      <ChevronRight size={14} className="text-gray-300" />
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

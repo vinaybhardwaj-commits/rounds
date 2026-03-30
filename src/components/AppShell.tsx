@@ -199,7 +199,12 @@ function AppShellInner({ userRole }: { userRole: string }) {
 
         {/* Tasks Tab */}
         <div className={activeTab === 'tasks' ? 'h-full' : 'hidden'}>
-          <TasksView />
+          <TasksView
+            onNavigateToPatient={(patientThreadId) => {
+              setSelectedPatientId(patientThreadId);
+              setActiveTab('patients');
+            }}
+          />
         </div>
 
         {/* Me Tab */}
