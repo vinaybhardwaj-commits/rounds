@@ -24,7 +24,30 @@ export async function POST() {
   }
 
   try {
-    // 2. Drop old stage constraint
+    // 2. Find invalid stage values before touching constraint
+    const badRows = await query<{ id: string; current_stage: string }>(
+      `SELECT id, current_stage FROM patient_threads WHERE current_stage NOT IN (
+         'opd', 'pre_admission', 'admitted', 'pre_op', 'surgery',
+         'post_op', 'discharge', 'post_discharge',
+         'medical_management', 'post_op_care', 'long_term_followup'
+       )`,
+      []
+    );
+    if (badRows.length > 0) {
+      for (const row of badRows) {
+        results.push(`🔍 Invalid stage found: id=${row.id}, stage="${row.current_stage}" → fixing to "opd"`);
+        await query(`UPDATE patient_threads SET current_stage = 'opd' WHERE id = $1`, [row.id]);
+      }
+      results.push(`✅ Fixed ${badRows.length} invalid stage value(s)`);
+    } else {
+      results.push('✅ All stage values are valid');
+    }
+  } catch (e: unknown) {
+    results.push(`⚠️ Check bad stages: ${(e as Error).message}`);
+  }
+
+  try {
+    // 3. Drop old stage constraint
     await query(`ALTER TABLE patient_threads DROP CONSTRAINT IF EXISTS patient_threads_current_stage_check`, []);
     results.push('✅ Dropped old stage constraint');
   } catch (e: unknown) {
@@ -32,7 +55,7 @@ export async function POST() {
   }
 
   try {
-    // 3. Add new stage constraint with 11 stages
+    // 4. Add new stage constraint with 11 stages
     await query(
       `ALTER TABLE patient_threads ADD CONSTRAINT patient_threads_current_stage_check
        CHECK (current_stage IN (
