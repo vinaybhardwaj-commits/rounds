@@ -7,6 +7,10 @@ function sql(strings: TemplateStringsArray, ...values: unknown[]) {
   if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
   return _sql(strings, ...values);
 }
+function sqlQuery(text: string, params: unknown[]) {
+  if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
+  return _sql(text, params as never[]);
+}
 
 // GET /api/admin/approvals — list pending signups
 export async function GET() {
@@ -18,7 +22,7 @@ export async function GET() {
   try {
     const result = await sql`
       SELECT p.id, p.email, p.full_name, p.role, p.designation, p.phone,
-             p.status, p.created_at, d.name as department_name
+             p.department_id, p.status, p.created_at, d.name as department_name
       FROM profiles p
       LEFT JOIN departments d ON p.department_id = d.id
       WHERE p.status = 'pending_approval'
@@ -32,7 +36,7 @@ export async function GET() {
   }
 }
 
-// POST /api/admin/approvals — approve or reject a user
+// POST /api/admin/approvals — approve or reject a user (with optional profile edits)
 export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user || user.role !== 'super_admin') {
@@ -41,7 +45,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { profileId, action } = body;
+    const { profileId, action, updates } = body;
 
     if (!profileId || !action) {
       return NextResponse.json(
@@ -57,6 +61,45 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // If approving with updates, apply them first
+    if (action === 'approve' && updates) {
+      const setClauses: string[] = [];
+      const params: unknown[] = [];
+      let paramIdx = 1;
+
+      if (updates.full_name !== undefined) {
+        setClauses.push(`full_name = $${paramIdx}`);
+        params.push(updates.full_name);
+        paramIdx++;
+      }
+      if (updates.role !== undefined) {
+        setClauses.push(`role = $${paramIdx}`);
+        params.push(updates.role);
+        paramIdx++;
+      }
+      if (updates.department_id !== undefined) {
+        setClauses.push(`department_id = $${paramIdx}`);
+        params.push(updates.department_id || null);
+        paramIdx++;
+      }
+      if (updates.designation !== undefined) {
+        setClauses.push(`designation = $${paramIdx}`);
+        params.push(updates.designation || null);
+        paramIdx++;
+      }
+      if (updates.phone !== undefined) {
+        setClauses.push(`phone = $${paramIdx}`);
+        params.push(updates.phone || null);
+        paramIdx++;
+      }
+
+      if (setClauses.length > 0) {
+        const updateQuery = `UPDATE profiles SET ${setClauses.join(', ')} WHERE id = $${paramIdx} AND status = 'pending_approval'`;
+        params.push(profileId);
+        await sqlQuery(updateQuery, params);
+      }
+    }
+
     const newStatus = action === 'approve' ? 'active' : 'rejected';
 
     const result = await sql`
@@ -65,7 +108,7 @@ export async function POST(request: NextRequest) {
           approved_by = ${user.profileId},
           approved_at = NOW()
       WHERE id = ${profileId} AND status = 'pending_approval'
-      RETURNING id, email, full_name, status
+      RETURNING id, email, full_name, role, status
     `;
 
     if (result.length === 0) {

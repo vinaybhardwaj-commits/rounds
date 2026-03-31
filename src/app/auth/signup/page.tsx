@@ -10,29 +10,24 @@ interface Department {
   slug: string;
 }
 
-const POSITION_OPTIONS = [
-  'Doctor',
-  'Nurse',
-  'Charge Nurse',
-  'Scrub Tech',
-  'OPD Coordinator',
-  'IPD Coordinator',
-  'Customer Care Executive',
-  'Pharmacist',
-  'Lab Technician',
-  'Radiologist',
-  'Physiotherapist',
-  'Dietician',
-  'Administrator',
-  'Medical Administrator',
-  'Operations Manager',
-  'Unit Head',
-  'Marketing Executive',
-  'Housekeeping Supervisor',
-  'Security Supervisor',
-  'Biomedical Engineer',
-  'IT Support',
-  'Other',
+const ROLE_OPTIONS = [
+  { value: 'staff', label: 'Staff' },
+  { value: 'nurse', label: 'Nurse' },
+  { value: 'department_head', label: 'Department Head' },
+  { value: 'ip_coordinator', label: 'IP Coordinator' },
+  { value: 'anesthesiologist', label: 'Anesthesiologist' },
+  { value: 'ot_coordinator', label: 'OT Coordinator' },
+  { value: 'billing_executive', label: 'Billing Executive' },
+  { value: 'insurance_coordinator', label: 'Insurance Coordinator' },
+  { value: 'pharmacist', label: 'Pharmacist' },
+  { value: 'physiotherapist', label: 'Physiotherapist' },
+  { value: 'marketing_executive', label: 'Marketing Executive' },
+  { value: 'clinical_care', label: 'Clinical Care' },
+  { value: 'pac_coordinator', label: 'PAC Coordinator' },
+  { value: 'administrator', label: 'Administrator' },
+  { value: 'medical_administrator', label: 'Medical Administrator' },
+  { value: 'operations_manager', label: 'Operations Manager' },
+  { value: 'unit_head', label: 'Unit Head' },
 ];
 
 export default function SignupPage() {
@@ -51,6 +46,7 @@ export default function SignupPage() {
     department_id: '',
     designation: '',
     phone: '',
+    role: 'staff',
   });
 
   // Fetch departments for dropdown
@@ -101,6 +97,7 @@ export default function SignupPage() {
           department_id: form.department_id || null,
           designation: form.designation,
           phone: form.phone || null,
+          role: form.role,
         }),
       });
 
@@ -203,6 +200,33 @@ export default function SignupPage() {
             />
           </div>
 
+          {/* Phone */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+            <input
+              type="tel"
+              value={form.phone}
+              onChange={e => setForm({ ...form, phone: e.target.value })}
+              placeholder="+91 98765 43210"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-even-blue focus:border-even-blue outline-none"
+            />
+          </div>
+
+          {/* Designation */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Designation / Job Title <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.designation}
+              onChange={e => setForm({ ...form, designation: e.target.value })}
+              placeholder="e.g. Senior Nurse, HOD — ICU"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-even-blue focus:border-even-blue outline-none"
+              required
+            />
+          </div>
+
           {/* Department */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
@@ -218,34 +242,18 @@ export default function SignupPage() {
             </select>
           </div>
 
-          {/* Position/Designation */}
+          {/* Role */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Position / Role <span className="text-red-500">*</span>
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
             <select
-              value={form.designation}
-              onChange={e => setForm({ ...form, designation: e.target.value })}
+              value={form.role}
+              onChange={e => setForm({ ...form, role: e.target.value })}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-even-blue focus:border-even-blue outline-none bg-white"
-              required
             >
-              <option value="">Select your position...</option>
-              {POSITION_OPTIONS.map(p => (
-                <option key={p} value={p}>{p}</option>
+              {ROLE_OPTIONS.map(r => (
+                <option key={r.value} value={r.value}>{r.label}</option>
               ))}
             </select>
-          </div>
-
-          {/* Phone */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-            <input
-              type="tel"
-              value={form.phone}
-              onChange={e => setForm({ ...form, phone: e.target.value })}
-              placeholder="+91 98765 43210"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-even-blue focus:border-even-blue outline-none"
-            />
           </div>
 
           {/* PIN */}
