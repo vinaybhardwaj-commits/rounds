@@ -133,6 +133,8 @@ export async function updatePatientThread(
     primary_diagnosis: string;
     planned_procedure: string;
     primary_consultant_id: string;
+    department_id: string;
+    pac_status: string | null;
   }>
 ) {
   const setClauses: string[] = [];

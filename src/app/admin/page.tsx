@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Building2, Upload, Shield, UserCheck, Calendar, AlertTriangle, Activity, UserPlus } from 'lucide-react';
+import { Users, Building2, Upload, Shield, UserCheck, Calendar, AlertTriangle, Activity, UserPlus, ClipboardList } from 'lucide-react';
 import Link from 'next/link';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 
@@ -130,6 +130,13 @@ export default function AdminDashboard() {
               {stats.activeAdmissions > 0 && (
                 <span className="ml-auto bg-even-blue text-white text-xs font-bold px-2 py-0.5 rounded-full">{stats.activeAdmissions}</span>
               )}
+            </Link>
+            <Link href="/admin/changelog" className="flex items-center gap-3 px-4 py-3 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors">
+              <ClipboardList size={18} className="text-purple-600" />
+              <div>
+                <div className="text-sm font-medium">Patient Changelog</div>
+                <div className="text-xs text-gray-500">Full history of changes, messages, and forms per patient</div>
+              </div>
             </Link>
             <Link href="/admin/escalations" className="flex items-center gap-3 px-4 py-3 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">
               <AlertTriangle size={18} className="text-red-600" />

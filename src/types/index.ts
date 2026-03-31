@@ -171,7 +171,10 @@ export type PatientStage =
   | 'surgery'
   | 'post_op'
   | 'discharge'
-  | 'post_discharge';
+  | 'post_discharge'
+  | 'medical_management'
+  | 'post_op_care'
+  | 'long_term_followup';
 
 export const PATIENT_STAGE_LABELS: Record<PatientStage, string> = {
   opd: 'OPD',
@@ -182,6 +185,9 @@ export const PATIENT_STAGE_LABELS: Record<PatientStage, string> = {
   post_op: 'Post-Op',
   discharge: 'Discharge',
   post_discharge: 'Post-Discharge',
+  medical_management: 'Medical Management',
+  post_op_care: 'Post-Op Care',
+  long_term_followup: 'Long Term Follow-up',
 };
 
 export const PATIENT_STAGE_COLORS: Record<PatientStage, string> = {
@@ -193,7 +199,61 @@ export const PATIENT_STAGE_COLORS: Record<PatientStage, string> = {
   post_op: '#F97316',
   discharge: '#22C55E',
   post_discharge: '#6B7280',
+  medical_management: '#0D9488',
+  post_op_care: '#7C3AED',
+  long_term_followup: '#6366F1',
 };
+
+// ============================================
+// PAC STATUS
+// ============================================
+
+export type PacStatus =
+  | 'telemed_pac_pending'
+  | 'inpatient_pac_pending'
+  | 'telemed_pac_passed'
+  | 'inpatient_pac_passed';
+
+export const PAC_STATUS_LABELS: Record<PacStatus, string> = {
+  telemed_pac_pending: 'TeleMed PAC Pending',
+  inpatient_pac_pending: 'In-Patient PAC Pending',
+  telemed_pac_passed: 'TeleMed PAC Passed',
+  inpatient_pac_passed: 'In-Patient PAC Passed',
+};
+
+export const PAC_STATUS_COLORS: Record<PacStatus, { bg: string; text: string }> = {
+  telemed_pac_pending: { bg: 'bg-amber-100', text: 'text-amber-700' },
+  inpatient_pac_pending: { bg: 'bg-orange-100', text: 'text-orange-700' },
+  telemed_pac_passed: { bg: 'bg-green-100', text: 'text-green-700' },
+  inpatient_pac_passed: { bg: 'bg-emerald-100', text: 'text-emerald-700' },
+};
+
+// Stages where PAC status is relevant (Pre-Op and above)
+export const PAC_RELEVANT_STAGES: PatientStage[] = [
+  'pre_op', 'surgery', 'post_op', 'discharge', 'post_discharge',
+  'medical_management', 'post_op_care', 'long_term_followup',
+];
+
+// ============================================
+// CHANGELOG
+// ============================================
+
+export type ChangelogType = 'stage_change' | 'field_edit' | 'pac_status_change' | 'form_submission';
+
+export interface PatientChangelogEntry {
+  id: string;
+  patient_thread_id: string;
+  change_type: ChangelogType;
+  field_name: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  old_display: string | null;
+  new_display: string | null;
+  changed_by: string;
+  changed_by_name: string | null;
+  notes: string | null;
+  created_at: string;
+}
 
 export interface PatientThread {
   id: string;

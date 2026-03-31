@@ -2,8 +2,8 @@
 // PATCH /api/patients/[id]/stage
 // Transition a patient thread to a new stage.
 // Updates DB, GetStream channel custom data,
-// and auto-adds stage-specific staff to channel.
-// Step 5.1: Patient Thread + Channel Auto-Creation
+// logs to patient_changelog, and auto-adds
+// stage-specific staff to channel.
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -14,6 +14,7 @@ import {
   findProfilesByRole,
   archivePatientThread,
 } from '@/lib/db-v5';
+import { query } from '@/lib/db';
 import {
   updatePatientChannel,
   addUsersToChannel,
@@ -24,14 +25,17 @@ import { PATIENT_STAGE_LABELS } from '@/types';
 
 // Valid stage transitions (forward progression + some backward corrections)
 const VALID_TRANSITIONS: Record<string, string[]> = {
-  opd: ['pre_admission'],
-  pre_admission: ['admitted', 'opd'],       // can go back to OPD if not admitted
-  admitted: ['pre_op', 'discharge'],          // can skip to discharge if no surgery
-  pre_op: ['surgery', 'admitted'],            // can go back if surgery postponed
+  opd: ['pre_admission', 'admitted'],                          // can go direct to admitted
+  pre_admission: ['admitted', 'opd'],                          // can go back to OPD
+  admitted: ['pre_op', 'medical_management', 'discharge'],     // pre-op, medical mgmt, or discharge
+  medical_management: ['discharge', 'admitted'],               // discharge or back to admitted
+  pre_op: ['surgery', 'admitted'],                             // surgery or back if postponed
   surgery: ['post_op'],
-  post_op: ['discharge', 'surgery'],          // back to surgery if re-operation
-  discharge: ['post_discharge', 'admitted'],  // re-admit if needed
-  post_discharge: [],                         // terminal stage
+  post_op: ['discharge', 'surgery'],                           // discharge or re-operation
+  discharge: ['post_discharge', 'post_op_care', 'long_term_followup', 'admitted'], // multiple post-discharge paths + re-admit
+  post_discharge: [],                                          // terminal
+  post_op_care: ['discharge'],                                 // back to discharge
+  long_term_followup: ['discharge'],                           // back to discharge
 };
 
 // Stage → roles to auto-add to the channel
@@ -43,6 +47,8 @@ function getStageRoles(stage: string): string[] {
       return ['billing_executive', 'insurance_coordinator'];
     case 'admitted':
       return ['nurse', 'pharmacist'];
+    case 'medical_management':
+      return ['nurse', 'pharmacist', 'clinical_care'];
     case 'pre_op':
       return ['anesthesiologist', 'ot_coordinator', 'nurse'];
     case 'surgery':
@@ -51,6 +57,10 @@ function getStageRoles(stage: string): string[] {
       return ['nurse', 'physiotherapist'];
     case 'discharge':
       return ['billing_executive', 'pharmacist'];
+    case 'post_op_care':
+      return ['nurse', 'physiotherapist'];
+    case 'long_term_followup':
+      return ['clinical_care'];
     case 'post_discharge':
       return [];
     default:
@@ -125,7 +135,21 @@ export async function PATCH(
 
     await updatePatientThread(id, updateData as Parameters<typeof updatePatientThread>[1]);
 
-    // 2. Update GetStream channel (if exists)
+    // 2. Log to changelog
+    const fromLabel = PATIENT_STAGE_LABELS[currentStage as PatientStage] || currentStage;
+    const toLabel = PATIENT_STAGE_LABELS[newStage] || newStage;
+
+    try {
+      await query(
+        `INSERT INTO patient_changelog (patient_thread_id, change_type, field_name, old_value, new_value, old_display, new_display, changed_by, changed_by_name)
+         VALUES ($1, 'stage_change', 'current_stage', $2, $3, $4, $5, $6, $7)`,
+        [id, currentStage, newStage, fromLabel, toLabel, user.profileId, user.email]
+      );
+    } catch (err) {
+      console.error('Failed to log stage change to changelog:', err);
+    }
+
+    // 3. Update GetStream channel (if exists)
     const channelId = patient.getstream_channel_id as string | null;
     let newMembersAdded = 0;
 
@@ -158,8 +182,6 @@ export async function PATCH(
 
       // Post stage transition system message
       try {
-        const fromLabel = PATIENT_STAGE_LABELS[currentStage as PatientStage] || currentStage;
-        const toLabel = PATIENT_STAGE_LABELS[newStage] || newStage;
         await sendSystemMessage(
           'patient-thread',
           channelId,
