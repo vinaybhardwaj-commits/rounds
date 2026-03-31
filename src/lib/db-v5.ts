@@ -807,7 +807,6 @@ export async function getCompletedReadinessItems() {
      LEFT JOIN patient_threads pt ON ri.patient_thread_id = pt.id
      LEFT JOIN profiles p ON ri.confirmed_by = p.id
      WHERE ri.status = 'confirmed'
-       AND (pt.archived_at IS NULL OR pt.id IS NULL)
      ORDER BY ri.confirmed_at DESC`,
     []
   );
