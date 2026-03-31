@@ -1537,5 +1537,8 @@ export const FORMS_BY_STAGE: Record<string, FormType[]> = {
   post_op: ['nursing_shift_handoff'],
   discharge: ['discharge_readiness'],
   post_discharge: ['post_discharge_followup'],
+  medical_management: ['nursing_shift_handoff'],
+  post_op_care: ['nursing_shift_handoff', 'discharge_readiness'],
+  long_term_followup: ['post_discharge_followup'],
   any: ['daily_department_update'], // stage-agnostic
 };

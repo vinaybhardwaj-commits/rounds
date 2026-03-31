@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { createFormSubmission, listFormSubmissions, createReadinessItem } from '@/lib/db-v5';
+import { query as sqlQuery } from '@/lib/db';
 import {
   FORM_REGISTRY,
   FORM_TYPE_LABELS,
@@ -156,36 +157,79 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Post form card to GetStream channel (if channel context provided)
+    // Post form card to GetStream channels
+    const formLabel = FORM_TYPE_LABELS[form_type as FormType] || form_type;
+    const formAttachment = {
+      type: 'form_submission',
+      form_id: formId,
+      form_type: form_type,
+      form_label: formLabel,
+      status: 'submitted',
+      submitted_by_name: user.email,
+      completion_score: completionScore,
+      readiness_items_created: readinessItemsCreated,
+    };
+
+    // 1. Post to patient's chat channel (if channel context provided)
     if (
       status !== 'draft' &&
       body.getstream_channel_id &&
       body.getstream_channel_type
     ) {
       try {
-        const formLabel = FORM_TYPE_LABELS[form_type as FormType] || form_type;
         await sendSystemMessage(
           body.getstream_channel_type,
           body.getstream_channel_id,
           `📋 ${formLabel} submitted by ${user.email}`,
-          {
-            attachments: [
-              {
-                type: 'form_submission',
-                form_id: formId,
-                form_type: form_type,
-                form_label: formLabel,
-                status: 'submitted',
-                submitted_by_name: user.email,
-                completion_score: completionScore,
-                readiness_items_created: readinessItemsCreated,
-              },
-            ],
-          }
+          { attachments: [formAttachment] }
         );
       } catch (err) {
         // Don't fail the form submission if the message fails
-        console.error('Failed to post form card to channel:', err);
+        console.error('Failed to post form card to patient channel:', err);
+      }
+    }
+
+    // 2. Post to submitter's department channel (if post_to_department flag is set)
+    if (status !== 'draft' && body.post_to_department) {
+      try {
+        // Look up the submitter's department slug
+        const profileRows = await sqlQuery<{ department_id: string | null }>(
+          `SELECT department_id FROM profiles WHERE id = $1`,
+          [user.profileId]
+        );
+        const deptId = profileRows[0]?.department_id;
+
+        if (deptId) {
+          const deptRows = await sqlQuery<{ slug: string }>(
+            `SELECT slug FROM departments WHERE id = $1`,
+            [deptId]
+          );
+          const deptSlug = deptRows[0]?.slug;
+
+          if (deptSlug) {
+            // Look up patient name for context in department chat
+            let patientContext = '';
+            if (body.patient_thread_id) {
+              const ptRows = await sqlQuery<{ patient_name: string }>(
+                `SELECT patient_name FROM patient_threads WHERE id = $1`,
+                [body.patient_thread_id]
+              );
+              patientContext = ptRows[0]?.patient_name
+                ? ` for ${ptRows[0].patient_name}`
+                : '';
+            }
+
+            await sendSystemMessage(
+              'department',
+              deptSlug,
+              `📋 ${formLabel} submitted by ${user.email}${patientContext}`,
+              { attachments: [{ ...formAttachment, patient_thread_id: body.patient_thread_id || null }] }
+            );
+          }
+        }
+      } catch (err) {
+        // Non-fatal — department post is best-effort
+        console.error('Failed to post form card to department channel:', err);
       }
     }
 

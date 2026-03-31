@@ -1,8 +1,8 @@
 'use client';
 
-import { Users, MessageSquare, ClipboardCheck, UserCircle } from 'lucide-react';
+import { Users, MessageSquare, ClipboardCheck, UserCircle, ClipboardList } from 'lucide-react';
 
-export type TabId = 'patients' | 'chat' | 'tasks' | 'me';
+export type TabId = 'patients' | 'chat' | 'forms' | 'tasks' | 'me';
 
 interface BottomTabBarProps {
   activeTab: TabId;
@@ -13,6 +13,7 @@ interface BottomTabBarProps {
 const TABS: { id: TabId; label: string; icon: typeof Users }[] = [
   { id: 'patients', label: 'Patients', icon: Users },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
+  { id: 'forms', label: 'Forms', icon: ClipboardList },
   { id: 'tasks', label: 'Tasks', icon: ClipboardCheck },
   { id: 'me', label: 'Me', icon: UserCircle },
 ];
@@ -35,7 +36,7 @@ export function BottomTabBar({ activeTab, onTabChange, badges = {} }: BottomTabB
               }`}
             >
               <div className="relative">
-                <Icon size={22} strokeWidth={isActive ? 2.2 : 1.8} />
+                <Icon size={20} strokeWidth={isActive ? 2.2 : 1.8} />
                 {badge && badge > 0 && (
                   <span className="absolute -top-1.5 -right-2.5 bg-red-500 text-white text-[9px] font-bold min-w-[16px] h-4 flex items-center justify-center rounded-full px-1">
                     {badge > 99 ? '99+' : badge}

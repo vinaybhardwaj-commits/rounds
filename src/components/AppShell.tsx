@@ -14,6 +14,7 @@ import { PatientsView } from './patients/PatientsView';
 import { PatientDetailView } from './patients/PatientDetailView';
 import { TasksView } from './tasks/TasksView';
 import { ProfileView } from './profile/ProfileView';
+import { FormsView } from './forms/FormsView';
 import { BottomTabBar, type TabId } from './layout/BottomTabBar';
 
 interface AppShellProps {
@@ -163,6 +164,11 @@ function AppShellInner({ userRole }: { userRole: string }) {
             onChannelNavigated={handleChannelNavigated}
             onUnreadCountChange={handleUnreadCountChange}
           />
+        </div>
+
+        {/* Forms Tab */}
+        <div className={activeTab === 'forms' ? 'h-full' : 'hidden'}>
+          <FormsView />
         </div>
 
         {/* Tasks Tab */}
