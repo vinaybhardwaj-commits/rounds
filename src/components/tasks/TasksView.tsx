@@ -64,7 +64,7 @@ export function TasksView({ onNavigateToPatient }: TasksViewProps) {
   const [loading, setLoading] = useState(true);
 
   // Action states
-  const [actionLoading, setActionLoading] = useState<string | null>(null); // item id being acted on
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [flagTarget, setFlagTarget] = useState<ReadinessItem | null>(null);
   const [flagReason, setFlagReason] = useState('');
   const [assignTarget, setAssignTarget] = useState<ReadinessItem | null>(null);
@@ -72,6 +72,10 @@ export function TasksView({ onNavigateToPatient }: TasksViewProps) {
   const [staffSearch, setStaffSearch] = useState('');
   const [staffLoading, setStaffLoading] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<ReadinessItem | null>(null);
+
+  // Feedback
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [assignedNames, setAssignedNames] = useState<Record<string, string>>({});  // itemId -> name
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -96,6 +100,13 @@ export function TasksView({ onNavigateToPatient }: TasksViewProps) {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Auto-dismiss toast after 3s
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   // ----- Helpers -----
 
@@ -126,12 +137,17 @@ export function TasksView({ onNavigateToPatient }: TasksViewProps) {
       });
       const data = await res.json();
       if (data.success) {
-        // Remove from list with animation feel
         setOverdueItems(prev => prev.filter(i => i.id !== item.id));
+        setConfirmTarget(null);
+        setToast({ type: 'success', text: `"${item.item_name}" marked as done` });
+      } else {
+        setToast({ type: 'error', text: data.error || 'Failed to confirm item' });
         setConfirmTarget(null);
       }
     } catch (err) {
       console.error('Failed to confirm item:', err);
+      setToast({ type: 'error', text: 'Network error — could not confirm' });
+      setConfirmTarget(null);
     } finally {
       setActionLoading(null);
     }
@@ -139,6 +155,7 @@ export function TasksView({ onNavigateToPatient }: TasksViewProps) {
 
   const handleFlag = async () => {
     if (!flagTarget) return;
+    const itemName = flagTarget.item_name;
     setActionLoading(flagTarget.id);
     try {
       const res = await fetch(`/api/readiness/items/${flagTarget.id}`, {
@@ -151,9 +168,17 @@ export function TasksView({ onNavigateToPatient }: TasksViewProps) {
         setOverdueItems(prev => prev.filter(i => i.id !== flagTarget.id));
         setFlagTarget(null);
         setFlagReason('');
+        setToast({ type: 'success', text: `"${itemName}" flagged` });
+      } else {
+        setToast({ type: 'error', text: data.error || 'Failed to flag item' });
+        setFlagTarget(null);
+        setFlagReason('');
       }
     } catch (err) {
       console.error('Failed to flag item:', err);
+      setToast({ type: 'error', text: 'Network error — could not flag' });
+      setFlagTarget(null);
+      setFlagReason('');
     } finally {
       setActionLoading(null);
     }
@@ -161,24 +186,34 @@ export function TasksView({ onNavigateToPatient }: TasksViewProps) {
 
   const handleAssign = async (staffId: string) => {
     if (!assignTarget) return;
-    setActionLoading(assignTarget.id);
+    const staffName = staffList.find(s => s.id === staffId)?.full_name || 'staff member';
+    const itemId = assignTarget.id;
+    setActionLoading(itemId);
     try {
-      const res = await fetch(`/api/readiness/items/${assignTarget.id}`, {
+      const res = await fetch(`/api/readiness/items/${itemId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'pending', responsible_user_id: staffId }),
       });
       const data = await res.json();
       if (data.success) {
-        // Update in place — item stays in list but shows new assignee
         setOverdueItems(prev =>
-          prev.map(i => i.id === assignTarget.id ? { ...i, responsible_user_id: staffId } : i)
+          prev.map(i => i.id === itemId ? { ...i, responsible_user_id: staffId } : i)
         );
+        setAssignedNames(prev => ({ ...prev, [itemId]: staffName }));
+        setAssignTarget(null);
+        setStaffSearch('');
+        setToast({ type: 'success', text: `Assigned to ${staffName}` });
+      } else {
+        setToast({ type: 'error', text: data.error || 'Failed to assign' });
         setAssignTarget(null);
         setStaffSearch('');
       }
     } catch (err) {
       console.error('Failed to assign item:', err);
+      setToast({ type: 'error', text: 'Network error — could not assign' });
+      setAssignTarget(null);
+      setStaffSearch('');
     } finally {
       setActionLoading(null);
     }
@@ -315,6 +350,11 @@ export function TasksView({ onNavigateToPatient }: TasksViewProps) {
                         {item.escalated && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">
                             L{item.escalation_level}
+                          </span>
+                        )}
+                        {assignedNames[item.id] && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium flex items-center gap-0.5">
+                            <UserPlus size={9} /> {assignedNames[item.id]}
                           </span>
                         )}
                       </div>
@@ -475,6 +515,20 @@ export function TasksView({ onNavigateToPatient }: TasksViewProps) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ===== TOAST ===== */}
+      {toast && (
+        <div
+          className={`fixed bottom-24 left-1/2 -translate-x-1/2 z-[60] px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2 transition-all ${
+            toast.type === 'success'
+              ? 'bg-green-600 text-white'
+              : 'bg-red-600 text-white'
+          }`}
+        >
+          {toast.type === 'success' ? <CheckCircle size={14} /> : <AlertTriangle size={14} />}
+          {toast.text}
         </div>
       )}
 

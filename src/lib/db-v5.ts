@@ -334,11 +334,13 @@ export async function updateReadinessItem(
     responsible_user_id?: string;
   }
 ) {
+  // Use separate parameter for CASE to avoid Neon "inconsistent types" error
+  // when the same $N is used in SET and CASE WHEN contexts
   return queryOne(
     `UPDATE readiness_items SET
-      status = $1,
+      status = $1::varchar,
       confirmed_by = $2,
-      confirmed_at = CASE WHEN $1 = 'confirmed' THEN NOW() ELSE confirmed_at END,
+      confirmed_at = CASE WHEN $7::varchar = 'confirmed' THEN NOW() ELSE confirmed_at END,
       flagged_reason = $3,
       notes = $4,
       responsible_user_id = COALESCE($6, responsible_user_id)
@@ -350,6 +352,7 @@ export async function updateReadinessItem(
       update.notes || null,
       id,
       update.responsible_user_id || null,
+      update.status, // $7 — duplicate of $1 for the CASE expression
     ]
   );
 }

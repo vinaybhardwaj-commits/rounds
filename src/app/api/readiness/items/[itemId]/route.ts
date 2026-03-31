@@ -58,7 +58,7 @@ export async function PATCH(
     console.error('PATCH /api/readiness/items/[itemId] error:', error);
     const errMsg = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { success: false, error: 'Failed to update readiness item', debug: errMsg },
+      { success: false, error: 'Failed to update readiness item' },
       { status: 500 }
     );
   }
