@@ -26,6 +26,7 @@ import {
   Trash2,
   ChevronDown,
   ChevronRight,
+  AtSign,
 } from 'lucide-react';
 import type { Channel, MessageResponse } from 'stream-chat';
 import { useChatContext } from '@/providers/ChatProvider';
@@ -58,6 +59,7 @@ interface DisplayMessage {
   reaction_counts: Record<string, number>;
   own_reactions: string[];
   attachments: AttachmentData[];
+  mentioned_user_ids: string[];
   raw: MessageResponse;
 }
 
@@ -150,6 +152,31 @@ const REACTION_EMOJIS = [
   { emoji: '❓', type: 'question' },
 ];
 
+// --- @Mention text rendering helper ---
+
+function renderTextWithMentions(text: string, mentionedIds: string[], currentUserId: string): React.ReactNode {
+  // Split on @Name patterns — highlight any @word that matches
+  const parts = text.split(/(@\S+)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('@') && part.length > 1) {
+      const isMentioningMe = mentionedIds.includes(currentUserId);
+      return (
+        <span
+          key={i}
+          className={`font-semibold rounded px-0.5 ${
+            isMentioningMe
+              ? 'bg-blue-100 text-blue-700'
+              : 'bg-purple-50 text-purple-700'
+          }`}
+        >
+          {part}
+        </span>
+      );
+    }
+    return part;
+  });
+}
+
 // --- Component ---
 
 export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAreaProps) {
@@ -165,6 +192,12 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
   const [deleteTarget, setDeleteTarget] = useState<DisplayMessage | null>(null);
   const [showDeletedAccordion, setShowDeletedAccordion] = useState(false);
   const [deletedRecords, setDeletedRecords] = useState<DeletedMessageRecord[]>([]);
+  // @mention autocomplete
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionCursorPos, setMentionCursorPos] = useState(0);
+  const [mentionStartPos, setMentionStartPos] = useState(0);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [pendingMentions, setPendingMentions] = useState<{ id: string; name: string }[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -232,6 +265,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
         reaction_counts: reactionCounts,
         own_reactions: ownReactions,
         attachments,
+        mentioned_user_ids: (msg.mentioned_users || []).map((u: Record<string, unknown>) => (u.id as string) || ''),
         raw: msg,
       };
     },
@@ -340,14 +374,101 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
     }
   };
 
-  // Send message
+  // Build channel member list for @mention autocomplete
+  const channelMembers = React.useMemo(() => {
+    if (!channel?.state?.members) return [];
+    return Object.entries(channel.state.members)
+      .filter(([uid]) => uid !== client?.userID) // exclude self
+      .map(([uid, m]) => ({
+        id: uid,
+        name: (m.user?.name as string) || uid,
+        role: ((m.user as Record<string, unknown>)?.rounds_role as string) || '',
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [channel?.state?.members, client?.userID]);
+
+  // Filtered members for the autocomplete dropdown
+  const filteredMentionMembers = React.useMemo(() => {
+    if (mentionQuery === null) return [];
+    const q = mentionQuery.toLowerCase();
+    return channelMembers.filter(
+      (m) => m.name.toLowerCase().includes(q) || m.role.toLowerCase().includes(q)
+    ).slice(0, 8);
+  }, [mentionQuery, channelMembers]);
+
+  // Handle @mention detection in textarea onChange
+  const handleTextChange = (val: string, cursorPos: number) => {
+    setMessageText(val);
+    // Slash menu
+    if (val === '/') {
+      setShowSlashMenu(true);
+      setMentionQuery(null);
+      return;
+    } else if (!val.startsWith('/')) {
+      setShowSlashMenu(false);
+    }
+
+    // Detect @mention: look backwards from cursor for an unmatched @
+    const textBeforeCursor = val.slice(0, cursorPos);
+    const lastAt = textBeforeCursor.lastIndexOf('@');
+    if (lastAt >= 0) {
+      // Check that @ is at start or preceded by whitespace
+      const charBefore = lastAt > 0 ? textBeforeCursor[lastAt - 1] : ' ';
+      if (charBefore === ' ' || charBefore === '\n' || lastAt === 0) {
+        const query = textBeforeCursor.slice(lastAt + 1);
+        // Only show autocomplete if no space in query (single-word partial match) or short query
+        if (!query.includes('\n') && query.length <= 30) {
+          setMentionQuery(query);
+          setMentionStartPos(lastAt);
+          setMentionCursorPos(cursorPos);
+          setMentionIndex(0);
+          return;
+        }
+      }
+    }
+    setMentionQuery(null);
+  };
+
+  // Insert a selected mention into the text
+  const insertMention = (member: { id: string; name: string }) => {
+    const before = messageText.slice(0, mentionStartPos);
+    const after = messageText.slice(mentionCursorPos);
+    const mentionText = `@${member.name} `;
+    const newText = before + mentionText + after;
+    setMessageText(newText);
+    setPendingMentions((prev) => {
+      // Avoid duplicates
+      if (prev.some((m) => m.id === member.id)) return prev;
+      return [...prev, { id: member.id, name: member.name }];
+    });
+    setMentionQuery(null);
+    // Refocus textarea and set cursor after mention
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        const pos = before.length + mentionText.length;
+        inputRef.current.setSelectionRange(pos, pos);
+      }
+    }, 0);
+  };
+
+  // Send message with mention data
   const sendMessage = async () => {
     if (!messageText.trim() || !channel || sending) return;
 
     setSending(true);
     try {
-      await channel.sendMessage({ text: messageText.trim() });
+      // Extract mentioned user IDs from the text (match @Name patterns against pendingMentions)
+      const mentionedUserIds = pendingMentions
+        .filter((m) => messageText.includes(`@${m.name}`))
+        .map((m) => m.id);
+
+      await channel.sendMessage({
+        text: messageText.trim(),
+        mentioned_users: mentionedUserIds,
+      });
       setMessageText('');
+      setPendingMentions([]);
       inputRef.current?.focus();
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -487,6 +608,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
               const isOwn = msg.user_id === client?.userID;
               const isSystem = msg.is_system;
               const isHovered = hoveredMessageId === msg.id;
+              const mentionsMe = msg.mentioned_user_ids.includes(client?.userID || '');
               const showAvatar =
                 index === 0 ||
                 messages[index - 1].user_id !== msg.user_id ||
@@ -627,7 +749,9 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                 <div
                   key={msg.id}
                   className={`group relative ${showAvatar ? 'mt-3' : 'mt-0.5'} ${
-                    isRelevantRole ? 'pl-2 border-l-[3px] border-l-even-blue bg-blue-50/30 rounded-r-md -ml-1' : ''
+                    mentionsMe
+                      ? 'pl-2 border-l-[3px] border-l-blue-500 bg-blue-50/50 rounded-r-md -ml-1'
+                      : isRelevantRole ? 'pl-2 border-l-[3px] border-l-even-blue bg-blue-50/30 rounded-r-md -ml-1' : ''
                   }`}
                   onMouseEnter={() => setHoveredMessageId(msg.id)}
                   onMouseLeave={() => setHoveredMessageId(null)}
@@ -697,10 +821,12 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                   )}
 
                   <div className="ml-8">
-                    {/* Message text */}
+                    {/* Message text — with @mention highlighting */}
                     {msg.text && (
                       <p className="text-sm text-gray-800 leading-relaxed">
-                        {msg.text}
+                        {msg.mentioned_user_ids.length > 0
+                          ? renderTextWithMentions(msg.text, msg.mentioned_user_ids, client?.userID || '')
+                          : msg.text}
                       </p>
                     )}
 
@@ -927,20 +1053,63 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                 }}
               />
             )}
+            {/* @Mention autocomplete dropdown */}
+            {mentionQuery !== null && filteredMentionMembers.length > 0 && (
+              <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto z-20">
+                <div className="px-3 py-1.5 border-b border-gray-100">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Mention someone</p>
+                </div>
+                {filteredMentionMembers.map((member, idx) => (
+                  <button
+                    key={member.id}
+                    onClick={() => insertMention(member)}
+                    className={`w-full text-left px-3 py-2 flex items-center gap-2 transition-colors ${
+                      idx === mentionIndex ? 'bg-blue-50' : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="w-6 h-6 rounded-full bg-even-blue flex items-center justify-center text-[10px] font-bold text-white shrink-0">
+                      {member.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-even-navy truncate">{member.name}</div>
+                      {member.role && (
+                        <div className="text-[10px] text-gray-400">{member.role.replace(/_/g, ' ')}</div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
             <textarea
               ref={inputRef}
               value={messageText}
               onChange={(e) => {
-                const val = e.target.value;
-                setMessageText(val);
-                // Show slash menu when user types "/"
-                if (val === '/') {
-                  setShowSlashMenu(true);
-                } else if (!val.startsWith('/')) {
-                  setShowSlashMenu(false);
-                }
+                handleTextChange(e.target.value, e.target.selectionStart || 0);
               }}
               onKeyDown={(e) => {
+                // Mention autocomplete keyboard nav
+                if (mentionQuery !== null && filteredMentionMembers.length > 0) {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setMentionIndex((prev) => Math.min(prev + 1, filteredMentionMembers.length - 1));
+                    return;
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setMentionIndex((prev) => Math.max(prev - 1, 0));
+                    return;
+                  }
+                  if (e.key === 'Enter' || e.key === 'Tab') {
+                    e.preventDefault();
+                    insertMention(filteredMentionMembers[mentionIndex]);
+                    return;
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setMentionQuery(null);
+                    return;
+                  }
+                }
                 if (showSlashMenu && e.key === 'Escape') {
                   setShowSlashMenu(false);
                   setMessageText('');
@@ -949,7 +1118,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                 }
                 handleKeyDown(e);
               }}
-              placeholder={`Message #${channelName.toLowerCase()} — type / for forms`}
+              placeholder={`Message #${channelName.toLowerCase()} — type @ to mention, / for forms`}
               rows={1}
               className="w-full resize-none bg-gray-100 rounded-lg px-3 py-2 text-sm outline-none focus:bg-gray-50 focus:ring-1 focus:ring-even-blue/30 transition-colors max-h-32"
               style={{ minHeight: '36px' }}

@@ -24,6 +24,7 @@ import {
   PenSquare,
   Archive,
   Trash2,
+  AtSign,
 } from 'lucide-react';
 import type { Channel } from 'stream-chat';
 import { useChatContext } from '@/providers/ChatProvider';
@@ -393,6 +394,7 @@ export function ChannelSidebar({
                         const ChannelIcon =
                           CHANNEL_ICONS[channel.type] || Hash;
                         const unreadCount = channel.countUnread?.() || 0;
+                        const mentionCount = (channel as unknown as { countUnreadMentions?: () => number }).countUnreadMentions?.() || 0;
                         const { text: lastMsg, time: lastTime } =
                           getLastMessagePreview(channel);
                         const isArchivedChannel = group.type.startsWith('archived-');
@@ -406,8 +408,12 @@ export function ChannelSidebar({
                               ${
                                 isActive
                                   ? 'bg-even-blue text-white'
+                                  : mentionCount > 0
+                                  ? 'bg-blue-600/20 text-white border-l-2 border-l-blue-400 hover:bg-blue-600/30'
                                   : isArchivedChannel
                                   ? 'text-white/30 hover:bg-white/5 hover:text-white/50'
+                                  : unreadCount > 0
+                                  ? 'text-white font-medium hover:bg-white/10'
                                   : 'text-white/70 hover:bg-white/10 hover:text-white'
                               }
                             `}
@@ -449,11 +455,15 @@ export function ChannelSidebar({
                                 </p>
                               )}
                             </div>
-                            {unreadCount > 0 && (
+                            {mentionCount > 0 ? (
+                              <span className="flex-shrink-0 min-w-[18px] h-[18px] flex items-center justify-center bg-blue-500 text-white text-[10px] font-bold rounded-full px-1 mt-0.5 gap-0.5">
+                                <AtSign size={8} /> {mentionCount > 99 ? '99+' : mentionCount}
+                              </span>
+                            ) : unreadCount > 0 ? (
                               <span className="flex-shrink-0 min-w-[18px] h-[18px] flex items-center justify-center bg-even-pink text-white text-[10px] font-bold rounded-full px-1 mt-0.5">
                                 {unreadCount > 99 ? '99+' : unreadCount}
                               </span>
-                            )}
+                            ) : null}
                           </button>
                         );
                       })}
