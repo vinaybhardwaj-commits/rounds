@@ -129,7 +129,7 @@ export function ProfileView({ isAdmin = false }: ProfileViewProps) {
         <h1 className="text-xl font-bold text-even-navy mb-4">Profile</h1>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-20">
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
         {/* Edit success/error toast */}
         {editMsg && (
           <div className={`mb-3 p-2.5 rounded-lg text-xs flex items-center gap-2 ${

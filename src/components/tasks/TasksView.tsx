@@ -431,7 +431,7 @@ export function TasksView({ onNavigateToPatient }: TasksViewProps) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 pb-20">
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
         {tab === 'briefing' ? (
           <DailyBriefing />
         ) : loading ? (

@@ -459,7 +459,7 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
       )}
 
       {/* Patient list + archived accordions */}
-      <div className="flex-1 overflow-y-auto px-4 pb-20">
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
         {loading ? (
           <div className="text-center py-12 text-gray-400 text-sm">Loading patients...</div>
         ) : filtered.length === 0 && archivedPostDC.length === 0 && archivedRemoved.length === 0 ? (

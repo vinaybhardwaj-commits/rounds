@@ -286,7 +286,7 @@ export function PatientDetailView({
       </div>
 
       {/* ── Scrollable content ── */}
-      <div className="flex-1 overflow-y-auto pb-20">
+      <div className="flex-1 overflow-y-auto pb-4">
         {/* ── Stage Progress Bar ── */}
         <div className="px-4 py-4">
           <div className="flex items-center gap-0.5">
