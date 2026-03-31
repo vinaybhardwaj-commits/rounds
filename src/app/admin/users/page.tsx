@@ -32,6 +32,11 @@ const ROLE_BADGE: Record<string, string> = {
   staff: 'bg-gray-100 text-gray-600',
   pac_coordinator: 'bg-teal-100 text-teal-700',
   marketing: 'bg-pink-100 text-pink-700',
+  marketing_executive: 'bg-pink-100 text-pink-700',
+  administrator: 'bg-indigo-100 text-indigo-700',
+  medical_administrator: 'bg-indigo-100 text-indigo-700',
+  operations_manager: 'bg-sky-100 text-sky-700',
+  unit_head: 'bg-cyan-100 text-cyan-700',
   guest: 'bg-orange-100 text-orange-700',
 };
 

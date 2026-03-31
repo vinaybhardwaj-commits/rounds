@@ -22,6 +22,10 @@ export type UserRole =
   | 'marketing_executive'
   | 'clinical_care'
   | 'pac_coordinator'
+  | 'administrator'
+  | 'medical_administrator'
+  | 'operations_manager'
+  | 'unit_head'
   | 'marketing'
   | 'guest';
 

@@ -28,10 +28,12 @@ const DEPARTMENTS = [
   { name: 'Biomedical', slug: 'biomedical', headEmail: 'arul@even.in' },
   { name: 'Nursing', slug: 'nursing', headEmail: 'mary.nirmala@even.in' },
   { name: 'IT', slug: 'it', headEmail: 'bv.dilip@even.in' },
+  { name: 'Marketing', slug: 'marketing', headEmail: '' },
+  { name: 'Administration', slug: 'administration', headEmail: '' },
 ];
 
 async function seed() {
-  console.log('🏥 Rounds — Seeding 17 EHRC departments...\n');
+  console.log('🏥 Rounds — Seeding 19 EHRC departments...\n');
 
   let created = 0;
   let updated = 0;

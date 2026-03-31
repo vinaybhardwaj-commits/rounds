@@ -24,6 +24,10 @@ const ROLE_OPTIONS = [
   'marketing_executive',
   'clinical_care',
   'pac_coordinator',
+  'administrator',
+  'medical_administrator',
+  'operations_manager',
+  'unit_head',
 ];
 
 export default function AddStaffPage() {

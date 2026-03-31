@@ -35,7 +35,9 @@ interface DeptOption  { id: string; name: string; }
 const ROLE_OPTIONS = [
   'nurse', 'anesthesiologist', 'ot_coordinator', 'billing_executive',
   'insurance_coordinator', 'pharmacist', 'physiotherapist', 'ip_coordinator',
-  'marketing_executive', 'clinical_care', 'pac_coordinator', 'department_head', 'staff',
+  'marketing_executive', 'clinical_care', 'pac_coordinator',
+  'administrator', 'medical_administrator', 'operations_manager', 'unit_head',
+  'department_head', 'staff',
 ];
 
 const ALL_DAYS = [1, 2, 3, 4, 5, 6, 0]; // Mon–Sun display order

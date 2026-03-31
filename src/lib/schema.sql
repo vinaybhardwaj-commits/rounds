@@ -24,8 +24,8 @@ CREATE TABLE IF NOT EXISTS profiles (
   full_name VARCHAR(200) NOT NULL,
   display_name VARCHAR(100),
   avatar_url TEXT,
-  role VARCHAR(20) NOT NULL DEFAULT 'staff'
-    CHECK (role IN ('super_admin', 'department_head', 'staff', 'pac_coordinator', 'marketing', 'guest')),
+  role VARCHAR(30) NOT NULL DEFAULT 'staff'
+    CHECK (role IN ('super_admin', 'department_head', 'staff', 'ip_coordinator', 'anesthesiologist', 'ot_coordinator', 'nurse', 'billing_executive', 'insurance_coordinator', 'pharmacist', 'physiotherapist', 'marketing_executive', 'clinical_care', 'pac_coordinator', 'administrator', 'medical_administrator', 'operations_manager', 'unit_head', 'marketing', 'guest')),
   account_type VARCHAR(10) NOT NULL DEFAULT 'internal'
     CHECK (account_type IN ('internal', 'guest')),
   department_id UUID REFERENCES departments(id),
