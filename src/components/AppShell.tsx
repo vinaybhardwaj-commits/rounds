@@ -32,7 +32,7 @@ export function AppShell({ userId, userRole, streamToken }: AppShellProps) {
 
 // ── Inner component (inside ChatProvider so it can use useChatContext) ──
 function AppShellInner({ userRole }: { userRole: string }) {
-  const { client } = useChatContext();
+  useChatContext(); // keep ChatProvider mounted
   const [activeTab, setActiveTab] = useState<TabId>('patients');
   const isAdmin = userRole === 'super_admin' || userRole === 'department_head';
 
@@ -51,44 +51,11 @@ function AppShellInner({ userRole }: { userRole: string }) {
   // Track tab history for back button handling (non-default tabs only)
   const tabHistoryRef = useRef<TabId[]>(['patients']);
 
-  // ── Unread count from GetStream ──
-  useEffect(() => {
-    if (!client) return;
-
-    // Get initial unread count
-    const updateUnread = () => {
-      const user = client.user;
-      if (user) {
-        const total = (user.total_unread_count as number) || 0;
-        setUnreadCount(total);
-      }
-    };
-
-    updateUnread();
-
-    // Listen for unread count changes
-    const handleEvent = (event: { total_unread_count?: number }) => {
-      if (typeof event.total_unread_count === 'number') {
-        setUnreadCount(event.total_unread_count);
-      }
-    };
-
-    client.on('notification.message_new', handleEvent);
-    client.on('notification.mark_read', handleEvent);
-
-    return () => {
-      client.off('notification.message_new', handleEvent);
-      client.off('notification.mark_read', handleEvent);
-    };
-  }, [client]);
-
-  // Clear unread badge when switching to chat tab
-  useEffect(() => {
-    if (activeTab === 'chat' && client) {
-      // GetStream will auto-mark as read when channel is watched
-      // The badge will update via the event listener above
-    }
-  }, [activeTab, client]);
+  // Unread count is now computed by ChannelSidebar from active (non-archived) channels only,
+  // passed up via onUnreadCountChange callback through ChatShell.
+  const handleUnreadCountChange = useCallback((count: number) => {
+    setUnreadCount(count);
+  }, []);
 
   // ── Overdue count for Tasks badge ──
   useEffect(() => {
@@ -194,6 +161,7 @@ function AppShellInner({ userRole }: { userRole: string }) {
             isAdmin={isAdmin}
             pendingChannelId={pendingChannelId}
             onChannelNavigated={handleChannelNavigated}
+            onUnreadCountChange={handleUnreadCountChange}
           />
         </div>
 

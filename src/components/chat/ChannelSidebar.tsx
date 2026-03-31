@@ -46,6 +46,7 @@ interface ChannelSidebarProps {
   isAdmin?: boolean;
   onNewMessage: () => void;
   onGlobalSearch: () => void;
+  onUnreadCountChange?: (count: number) => void;
 }
 
 // --- Channel type → icon mapping ---
@@ -111,6 +112,7 @@ export function ChannelSidebar({
   isAdmin = false,
   onNewMessage,
   onGlobalSearch,
+  onUnreadCountChange,
 }: ChannelSidebarProps) {
   const { client } = useChatContext();
   const [channelGroups, setChannelGroups] = useState<ChannelGroup[]>([]);
@@ -197,12 +199,28 @@ export function ChannelSidebar({
       }
 
       setChannelGroups(result);
+
+      // Compute unread count from ACTIVE channels only (exclude archived)
+      const activeChannels = Object.values(groups).flat();
+      let activeUnread = 0;
+      for (const ch of activeChannels) {
+        activeUnread += ch.countUnread?.() || 0;
+      }
+      onUnreadCountChange?.(activeUnread);
+
+      // Auto-mark archived channels as read so they don't pollute GetStream's global count
+      const allArchived = [...archivedPostDC, ...archivedRemoved];
+      for (const ch of allArchived) {
+        if ((ch.countUnread?.() || 0) > 0) {
+          ch.markRead().catch(() => {});
+        }
+      }
     } catch (error) {
       console.error('Failed to load channels:', error);
     } finally {
       setLoading(false);
     }
-  }, [client]);
+  }, [client, onUnreadCountChange]);
 
   useEffect(() => {
     loadChannels();
@@ -220,12 +238,14 @@ export function ChannelSidebar({
     client.on('notification.added_to_channel', handleEvent);
     client.on('notification.removed_from_channel', handleEvent);
     client.on('message.new', handleEvent);
+    client.on('notification.mark_read', handleEvent);
 
     return () => {
       client.off('channel.updated', handleEvent);
       client.off('notification.added_to_channel', handleEvent);
       client.off('notification.removed_from_channel', handleEvent);
       client.off('message.new', handleEvent);
+      client.off('notification.mark_read', handleEvent);
     };
   }, [client, loadChannels]);
 

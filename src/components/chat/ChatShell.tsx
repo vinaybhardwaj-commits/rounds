@@ -21,12 +21,14 @@ interface ChatShellProps {
   isAdmin?: boolean;
   pendingChannelId?: string | null;
   onChannelNavigated?: () => void;
+  onUnreadCountChange?: (count: number) => void;
 }
 
 export function ChatShell({
   isAdmin = false,
   pendingChannelId,
   onChannelNavigated,
+  onUnreadCountChange,
 }: ChatShellProps) {
   const { client, connecting, error } = useChatContext();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -157,6 +159,7 @@ export function ChatShell({
           isAdmin={isAdmin}
           onNewMessage={() => setNewMessageOpen(true)}
           onGlobalSearch={() => setSearchOpen(true)}
+          onUnreadCountChange={onUnreadCountChange}
         />
 
         {/* Main content */}
