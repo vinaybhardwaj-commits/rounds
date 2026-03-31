@@ -2,8 +2,8 @@
 
 **Purpose**: Paste this at the start of a new thread to restore full build context for continuing Rounds development. This captures everything a new session needs to pick up where we left off.
 
-**Last updated**: 30 March 2026
-**Current step**: Steps 0 through 8.3 ALL COMPLETE — development paused for testing & UX polish
+**Last updated**: 1 April 2026
+**Current step**: Steps 0 through 9.4 ALL COMPLETE — Phase 10 (Insurance + Files + Patient Tabs) specified in PRD addendum, not yet built
 
 ---
 
@@ -22,8 +22,8 @@ Rounds is an AI-organized hospital communication and patient workflow platform f
 | Layer | Technology | Notes |
 |-------|-----------|-------|
 | Frontend | React 18 + Tailwind CSS 3 | Custom chat UI, no stream-chat-react |
-| Messaging | GetStream Chat (`stream-chat` v9.38) | 5 channel types, 23 seeded channels |
-| Database | Neon PostgreSQL (`@neondatabase/serverless`) | 15 tables, HTTP driver (no multi-statement) |
+| Messaging | GetStream Chat (`stream-chat` v9.38) | 5 channel types, 25 seeded channels |
+| Database | Neon PostgreSQL (`@neondatabase/serverless`) | 18 tables, HTTP driver (no multi-statement) |
 | Auth | Custom JWT (`jose` v6 + `bcryptjs`) | Email + 4-digit PIN, NOT NextAuth/OAuth |
 | Hosting | Vercel (project: `rounds-sqxh`) | Auto-deploy from `main` branch |
 | AI | Local Ollama via Cloudflare Tunnel | `openai` npm SDK → `LLM_BASE_URL` |
@@ -64,9 +64,10 @@ page.tsx → AppShell → ChatProvider → AppShellInner
                                       ├── PatientDetailView   (when selectedPatientId set)
                                       ├── PatientsView        (default tab)
                                       ├── ChatShell           (always mounted, hidden when inactive)
+                                      ├── FormsView           (standalone form-centric module)
                                       ├── TasksView           (with Briefing/Overdue/Escalations tabs)
                                       ├── ProfileView
-                                      └── BottomTabBar        (badges: unread chat count)
+                                      └── BottomTabBar        (5 tabs, badges: unread chat + overdue tasks)
 ```
 
 ### LLM Integration Pattern
@@ -110,11 +111,11 @@ git remote set-url origin https://x-access-token:<PAT>@github.com/vinaybhardwaj-
 
 ---
 
-## 5. Database Schema (17 tables)
+## 5. Database Schema (18 tables)
 
 ### Original 8 tables (Steps 0–1):
 - `profiles` — staff accounts (id UUID, email, full_name, role, status, department_id, PIN hash)
-- `departments` — 17 EHRC departments (id, name, slug, head_profile_id)
+- `departments` — 19 EHRC departments (id, name, slug, head_profile_id) — added Marketing & Administration in Step 9
 - `login_pins` — PIN hashes linked to profiles
 - `user_sessions` — JWT session tracking
 - `pending_approvals` — signup approval queue
@@ -123,7 +124,7 @@ git remote set-url origin https://x-access-token:<PAT>@github.com/vinaybhardwaj-
 - `_migrations` — migration version tracking
 
 ### v5 tables (Step 3.1 — 6 tables):
-- `patient_threads` — patient → Rounds lifecycle link, 8 stages: opd, pre_admission, admitted, pre_op, surgery, post_op, discharge, post_discharge
+- `patient_threads` — patient → Rounds lifecycle link, **11 stages**: opd, pre_admission, admitted, pre_op, surgery, post_op, discharge, post_discharge, medical_management, post_op_care, long_term_followup. Also has `pac_status` column (telemed_pac_pending, inpatient_pac_pending, telemed_pac_passed, inpatient_pac_passed)
 - `form_submissions` — JSONB form data, 13 form types, version tracking, completion_score, ai_gap_report
 - `readiness_items` — individual checklist items (per form), status: pending/confirmed/flagged/na, escalation_level, sla_deadline
 - `escalation_log` — escalation events with 4-level chain, resolved flag, notes
@@ -133,6 +134,9 @@ git remote set-url origin https://x-access-token:<PAT>@github.com/vinaybhardwaj-
 ### Step 7-8 tables (2 tables):
 - `push_subscriptions` — web push subscription data (profile_id, endpoint, subscription_json)
 - `ai_analysis` — cached AI analysis results (analysis_type, source_id, source_type, result JSONB, model, token_count)
+
+### Step 9 tables (1 table):
+- `patient_changelog` — immutable change audit trail per patient (patient_thread_id, changed_by, field_name, old_value, new_value, change_type, metadata JSONB). 3 indexes: patient_thread_id, changed_by, created_at DESC
 
 ### 13 Form Types:
 marketing_cc_handoff, admission_advice, financial_counseling, ot_billing_clearance, admission_checklist, surgery_posting, pre_op_nursing_checklist, who_safety_checklist, nursing_shift_handoff, discharge_readiness, post_discharge_followup, daily_department_update, pac_clearance
@@ -144,26 +148,28 @@ marketing_cc_handoff, admission_advice, financial_counseling, ot_billing_clearan
 - **Org**: EHRC | **App ID**: 1563440 | **Region**: US Ohio
 - **API Key** (public): `ekbhy4vctj9g`
 - **5 Channel Types**: department, cross-functional, patient-thread, direct, ops-broadcast
-- **23 Seeded Channels**: 17 department (one per EHRC dept) + 5 cross-functional (ops-daily-huddle, admission-coordination, discharge-coordination, surgery-coordination, emergency-escalation) + 1 broadcast (hospital-broadcast)
+- **25 Seeded Channels**: 19 department (one per EHRC dept, including Marketing & Administration added in Step 9) + 5 cross-functional (ops-daily-huddle, admission-coordination, discharge-coordination, surgery-coordination, emergency-escalation) + 1 broadcast (hospital-broadcast)
 - **Auto-join on login**: Users auto-added to `hospital-broadcast` + their department channel
 - **Patient channels**: `pt-{first8chars-of-uuid}`, auto-created with members on patient thread creation
 
 ---
 
-## 7. API Routes (36 total)
+## 7. API Routes (~46 total)
 
 ### Auth (5 routes):
 - `POST /api/auth/login` — email+PIN → JWT cookie + GetStream token + auto-join channels
-- `POST /api/auth/signup` — create profile (pending approval)
+- `POST /api/auth/signup` — create profile (pending approval), blocks duplicate signups with status-specific messages
 - `POST /api/auth/logout` — clear session cookie
 - `GET /api/auth/me` — return current user from JWT
 - `GET /api/auth/stream-token` — generate fresh GetStream user token
 
-### Admin (4 routes):
+### Admin (6 routes):
 - `GET/PATCH /api/admin/approvals` — list pending, approve/reject
 - `POST /api/admin/getstream/setup` — one-time: create 5 channel types + system bot
-- `POST /api/admin/getstream/seed-channels` — seed 23 channels (idempotent)
+- `POST /api/admin/getstream/seed-channels` — seed 25 channels (idempotent)
 - `POST /api/admin/migrate` — execute v5 DB migration (idempotent)
+- `GET /api/admin/changelog` — list all non-archived patients for changelog view
+- `GET /api/admin/changelog/[patientId]` — merged timeline (DB changelog + form submissions + GetStream messages) for fishbone view
 
 ### Data (4 routes):
 - `GET /api/departments` — list all departments
@@ -171,15 +177,17 @@ marketing_cc_handoff, admission_advice, financial_counseling, ot_billing_clearan
 - `POST /api/profiles/import` — CSV bulk import
 - `POST /api/webhooks/getstream` — GetStream event webhook
 
-### Patient Workflow (12 routes):
-- `GET/POST /api/patients` — list (stage+dept filters) / create patient thread (auto-creates GetStream channel)
+### Patient Workflow (16 routes):
+- `GET/POST /api/patients` — list (stage+dept filters, include_archived param) / create patient thread (auto-creates GetStream channel)
 - `GET/PATCH /api/patients/[id]` — get (with form history) / partial update
-- `PATCH /api/patients/[id]/stage` — stage transition with validation, channel update, member auto-add
-- `GET/POST /api/forms` — list (type+patient+status filters) / submit form (server validation, readiness auto-gen)
+- `PATCH /api/patients/[id]/stage` — stage transition with validation, channel update, member auto-add, changelog logging
+- `PATCH /api/patients/[id]/fields` — inline field editing (uhid, ip_number, consulting_doctor, department_id) with changelog logging
+- `PATCH /api/patients/[id]/pac-status` — PAC status update with changelog logging
+- `GET/POST /api/forms` — list (type+patient+status filters) / submit form (server validation, readiness auto-gen, dual chat posting to patient channel + department channel)
 - `GET /api/forms/[id]` — get form + readiness items + aggregate
 - `GET /api/readiness/[formId]` — readiness items for a form
 - `PATCH /api/readiness/items/[itemId]` — confirm/flag readiness item
-- `GET /api/readiness/overdue` — all overdue readiness items (used by TasksView)
+- `GET /api/readiness/overdue` — all overdue readiness items (used by TasksView badge)
 - `GET /api/admission-tracker` + `POST` — list active admissions / create new admission
 
 ### Duty Roster (4 routes):
@@ -211,8 +219,10 @@ marketing_cc_handoff, admission_advice, financial_counseling, ot_billing_clearan
 AppShell (outer, wraps ChatProvider)
 └── AppShellInner (inner, consumes useChatContext for badges)
     ├── PatientDetailView (when selectedPatientId set)
-    │   ├── Stage progress bar (8 stages)
+    │   ├── Stage progress bar (11 stages)
     │   ├── "Advance Stage" button
+    │   ├── Inline editable fields (UHID, IP Number, Doctor, Department)
+    │   ├── PAC Status selector (4 states)
     │   ├── Form history with GapAnalysisCard links
     │   ├── PredictionCard (AI: LOS, discharge readiness, risk)
     │   └── "Open Channel" link
@@ -224,6 +234,11 @@ AppShell (outer, wraps ChatProvider)
     ├── Chat Tab — ChatShell.tsx (always mounted)
     │   ├── ChannelSidebar (category-grouped)
     │   └── MessageArea (reactions, files, threads, form cards, slash commands, actionable system messages)
+    ├── Forms Tab — FormsView.tsx (standalone form-centric module)
+    │   ├── Form list (13 types, searchable, grouped by stage)
+    │   ├── Patient picker (searchable by name/UHID/IP/department)
+    │   ├── Form fill (FormRenderer + stage mismatch warning)
+    │   └── Success screen (Submit Another / View Submitted)
     ├── Tasks Tab — TasksView.tsx
     │   ├── Briefing sub-tab (AI daily briefing — default)
     │   ├── Overdue Items sub-tab
@@ -232,12 +247,13 @@ AppShell (outer, wraps ChatProvider)
     │   ├── Profile card
     │   ├── Admin Dashboard link (admin only)
     │   └── Log Out
-    └── BottomTabBar (badges: unread chat count from GetStream)
+    └── BottomTabBar (5 tabs, badges: unread chat count + overdue tasks count)
 ```
 
-### Admin Pages (6):
-- `/admin` — Dashboard: user stats, roster count, open escalations, active admissions, quick actions
+### Admin Pages (7):
+- `/admin` — Dashboard: user stats, roster count, open escalations, active admissions, quick actions (including Patient Changelog link)
 - `/admin/admissions` — 3-tab: Stage Board (Kanban), Surgery Schedule, Discharge Readiness
+- `/admin/changelog` — Patient Changelog: searchable patient list + fishbone timeline (horizontal desktop / vertical mobile) merging DB changelog, form submissions, and GetStream messages
 - `/admin/duty-roster` — Table + Create modal + Handoff notifications
 - `/admin/escalations` — Card list + Run Check button + Resolve modal
 - `/admin/approvals` — Approve/reject signups
@@ -276,6 +292,10 @@ AppShell (outer, wraps ChatProvider)
 | 8.1 | AI gap analysis (Ollama via Cloudflare Tunnel) | ✅ Done | `3992add`+`244d584` |
 | 8.2 | AI daily briefing | ✅ Done | `3992add`+`244d584` |
 | 8.3 | Predictive intelligence | ✅ Done | `3992add`+`244d584` |
+| 9.1 | Departments & roles expansion (19 depts, 20 roles) | ✅ Done | `ccf9625` |
+| 9.2 | Patient detail enhancements (inline edit, 11 stages, PAC, changelog) | ✅ Done | `ccf9625`+`9353cdb`+`610534e` |
+| 9.3 | Admin Changelog page (fishbone timeline) | ✅ Done | `ccf9625` |
+| 9.4 | Standalone Forms module (5th bottom tab, dual chat posting) | ✅ Done | `3eee752` |
 
 ---
 
@@ -295,6 +315,13 @@ AppShell (outer, wraps ChatProvider)
 - **Test data cleanup**: "Test Patient Alpha" in production DB.
 - **Stage-aware nudges**: Banner in patient channels suggesting next required form (deferred from 6.2b).
 
+### Phase 10 — PRD Addendum (specified, not yet built):
+Full PRD document at `Rounds-PRD-Addendum-Insurance-Files-Tabs.docx`. Four implementation phases:
+1. **Foundation** (Phase 10a): `files` + `patient_files` tables, Vercel Blob storage, tabbed PatientDetailView (Overview | Files | Insurance), file upload/download/link UI
+2. **Insurance Module** (Phase 10b): `insurance_policies` + `patient_insurance` + `insurance_events` tables, TPA workflow with 17 event types, policy management UI in Insurance tab
+3. **Chat-to-Files** (Phase 10c): Auto-link chat file attachments to patient's file store
+4. **AI Enhancements** (Phase 10d): AI-powered file analysis, insurance document parsing, auto-tagging
+
 ---
 
 ## 11. Key Personnel Context
@@ -308,7 +335,7 @@ AppShell (outer, wraps ChatProvider)
 
 ---
 
-## 12. File Tree (~90 source files)
+## 12. File Tree (~95 source files)
 
 ```
 middleware.ts                              — Edge auth middleware
@@ -321,32 +348,44 @@ src/
 ├── app/
 │   ├── layout.tsx, page.tsx               — Root layout (+ SW reg, InstallPrompt) + AppShell entry
 │   ├── offline/page.tsx                   — PWA offline fallback
-│   ├── admin/                             — Admin dashboard (6 pages)
-│   │   ├── page.tsx                       — Admin home (stats + quick actions)
+│   ├── admin/                             — Admin dashboard (7 pages)
+│   │   ├── page.tsx                       — Admin home (stats + quick actions + changelog link)
 │   │   ├── admissions/page.tsx            — Admission tracker (3-tab)
+│   │   ├── changelog/page.tsx             — Patient Changelog with fishbone timeline (~460 lines)
 │   │   ├── duty-roster/page.tsx           — Roster CRUD + handoff
 │   │   ├── escalations/page.tsx           — Escalation log + resolve
 │   │   ├── approvals/page.tsx             — User approvals
 │   │   └── profiles/, users/, departments/ — Staff management
 │   ├── auth/                              — Login, signup, pending (3 pages)
 │   ├── forms/                             — Form picker, new, [id] view (3 pages)
-│   └── api/                               — 36 API routes (see section 7)
+│   └── api/                               — ~46 API routes (see section 7)
+│       ├── admin/{approvals, getstream/setup, getstream/seed-channels, migrate, changelog, changelog/[patientId]}
+│       ├── auth/{login, logout, me, signup, stream-token}
+│       ├── {departments, profiles, profiles/import, profiles/me, webhooks/getstream}
+│       ├── patients/, patients/[id]/, patients/[id]/stage/, patients/[id]/fields/, patients/[id]/pac-status/
+│       ├── forms/, forms/[id]/
+│       ├── readiness/[formId]/, readiness/items/[itemId]/, readiness/overdue/
+│       ├── admission-tracker/
+│       ├── duty-roster/, duty-roster/[id]/, duty-roster/resolve/, duty-roster/handoff/
+│       ├── escalation/cron/, escalation/log/
+│       ├── push/vapid-key/, push/subscribe/, push/send/
+│       └── ai/gap-analysis/, ai/briefing/, ai/predict/
 ├── components/
 │   ├── AppShell.tsx                       — Main app wrapper (outer + inner for GetStream badges)
 │   ├── admin/                             — CSVImport, DepartmentList, ProfilesTable
 │   ├── ai/                                — GapAnalysisCard, DailyBriefing, PredictionCard
 │   ├── chat/                              — ChatShell, ChannelSidebar, MessageArea (+SlashCommandMenu), ThreadPanel, SearchOverlay, NewMessageDialog, MessageTypeBadge
-│   ├── forms/                             — FormRenderer, FormCard
-│   ├── layout/                            — AuthProvider, Header, Sidebar, BottomTabBar
-│   ├── patients/                          — PatientsView, PatientDetailView
+│   ├── forms/                             — FormRenderer, FormCard, FormsView (~500 lines, standalone form-centric module)
+│   ├── layout/                            — AuthProvider, Header, Sidebar, BottomTabBar (5 tabs)
+│   ├── patients/                          — PatientsView, PatientDetailView (inline edit, PAC status, 11 stages)
 │   ├── profile/                           — ProfileView
 │   ├── pwa/                               — InstallPrompt, ServiceWorkerRegistration
 │   └── tasks/                             — TasksView (Briefing/Overdue/Escalations tabs)
 ├── lib/
 │   ├── auth.ts                            — JWT create/verify, getCurrentUser
 │   ├── db.ts                              — Neon SQL helpers (original)
-│   ├── db-v5.ts                           — v5 CRUD helpers (817 lines)
-│   ├── form-registry.ts                   — 13 form schemas (1,541 lines)
+│   ├── db-v5.ts                           — v5 CRUD helpers (817+ lines, includes changelog functions)
+│   ├── form-registry.ts                   — 13 form schemas (1,541+ lines, FORMS_BY_STAGE updated for 11 stages)
 │   ├── getstream.ts                       — Server client + helpers (236 lines)
 │   ├── getstream-setup.ts                 — Channel type definitions
 │   ├── llm.ts                             — OpenAI SDK client → Ollama via Cloudflare Tunnel
@@ -355,7 +394,7 @@ src/
 ├── providers/
 │   └── ChatProvider.tsx                   — GetStream StreamChat client wrapper
 └── types/
-    └── index.ts                           — Shared TypeScript types (539 lines)
+    └── index.ts                           — Shared TypeScript types (expanded with PAC status, 11 stages, changelog types)
 ```
 
 ---
@@ -412,7 +451,7 @@ curl -c /tmp/cookies.txt -X POST https://rounds-sqxh.vercel.app/api/auth/login \
 
 ## 15. Instruction to AI Assistant
 
-You are continuing work on the Rounds app. **All core features (Steps 0–8.3) are implemented. Development is paused for testing & UX polish.**
+You are continuing work on the Rounds app. **Steps 0–9.4 are complete. Phase 10 (Insurance + Files + Patient Tabs) is specified in a PRD addendum but not yet built.**
 
 The user (V) prefers:
 - Ask clarifying questions before starting work
@@ -422,12 +461,15 @@ The user (V) prefers:
 - ChatShell must ALWAYS stay mounted (hidden class, not conditional render)
 - Use `h-full` not `h-screen` inside AppShell's tab layout
 - AI uses local Ollama via Cloudflare Tunnel (`src/lib/llm.ts`), NOT cloud APIs
+- Forms data must be immutable once submitted — new submission rather than edit
 
 Current focus areas:
 1. **Testing**: End-to-end workflow testing on Vercel with real staff accounts
 2. **UI/UX polish**: Mobile usability, edge cases, visual refinements
 3. **Infrastructure setup**: Cloudflare Tunnel on Mac Mini, Vercel env vars for LLM + VAPID
+4. **Phase 10 planning**: Insurance lifecycle, file management (Vercel Blob), tabbed PatientDetailView — see PRD addendum
 
 The build order document is at: `docs/ROUNDS-BUILD-ORDER.md`
 The context seeds are at: `docs/context-seeds/`
 The full ops suite documentation is at: `EHRC-OPS-SUITE-DOCUMENTATION.md`
+The PRD addendum is at: `Rounds-PRD-Addendum-Insurance-Files-Tabs.docx` (in workspace folder)

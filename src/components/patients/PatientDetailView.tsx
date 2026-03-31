@@ -26,6 +26,7 @@ import {
   Check,
   X,
   Stethoscope,
+  Paperclip,
 } from 'lucide-react';
 import type { PatientStage, FormType, FormStatus, PacStatus } from '@/types';
 import {
@@ -37,6 +38,9 @@ import {
 } from '@/types';
 import { FORM_TYPE_LABELS, FORMS_BY_STAGE } from '@/lib/form-registry';
 import { PredictionCard } from '@/components/ai/PredictionCard';
+import { PatientFilesTab } from './PatientFilesTab';
+
+type DetailTab = 'overview' | 'files';
 
 // ── Ordered stages for the progress bar ──
 const STAGES_ORDERED: PatientStage[] = [
@@ -155,6 +159,9 @@ export function PatientDetailView({
   const [advancing, setAdvancing] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [confirmStage, setConfirmStage] = useState<PatientStage | null>(null);
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<DetailTab>('overview');
 
   // Inline edit state
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -379,8 +386,35 @@ export function PatientDetailView({
         </div>
       </div>
 
-      {/* ── Scrollable content ── */}
-      <div className="flex-1 overflow-y-auto pb-4">
+      {/* ── Tab Bar ── */}
+      <div className="flex border-b border-gray-100 px-4">
+        {([
+          { id: 'overview' as DetailTab, label: 'Overview', icon: <FileText size={14} /> },
+          { id: 'files' as DetailTab, label: 'Files', icon: <Paperclip size={14} /> },
+        ]).map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+              activeTab === tab.id
+                ? 'border-even-blue text-even-blue'
+                : 'border-transparent text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            {tab.icon} {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Files Tab ── */}
+      {activeTab === 'files' && (
+        <div className="flex-1 overflow-hidden">
+          <PatientFilesTab patientId={patient.id} patientName={patient.patient_name} />
+        </div>
+      )}
+
+      {/* ── Overview Tab (Scrollable content) ── */}
+      <div className={`flex-1 overflow-y-auto pb-4 ${activeTab !== 'overview' ? 'hidden' : ''}`}>
         {/* ── Stage Progress Bar ── */}
         <div className="px-4 py-4">
           <div className="flex items-center gap-0.5">

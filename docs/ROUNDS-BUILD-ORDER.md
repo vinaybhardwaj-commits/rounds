@@ -1,9 +1,9 @@
 # Rounds Build Order — Status Tracker
 
-**Last updated**: 30 March 2026 (Step 8.3 complete — development paused for testing & UX)
+**Last updated**: 1 April 2026 (Step 9.4 complete — Phase 10 specified in PRD addendum, not yet built)
 **Repo**: https://github.com/vinaybhardwaj-commits/rounds
 **Live**: https://rounds-sqxh.vercel.app
-**Latest commit**: `244d584` — AI refactor to local Ollama (pending: OpenAI SDK refactor)
+**Latest commit**: `3eee752` — Standalone Forms module (5th bottom tab) with dual chat posting
 
 ---
 
@@ -269,12 +269,89 @@
 
 ---
 
-## Current Status: DEVELOPMENT PAUSED — Testing & UX Phase
+## Phase 9: Expansion & Forms Module (Steps 9.1–9.4) ✅
 
-All core features (Steps 0 through 8.3) are implemented. Development is paused to focus on:
+### Step 9.1 — Departments & Roles Expansion ✅
+**Commit**: `ccf9625` (part of patient detail enhancements commit)
+- Departments expanded from 17 to 19: added **Marketing** and **Administration**
+- GetStream department channels seeded for both new departments (25 total channels)
+- Roles expanded from 16 to 20: added `administrator`, `medical_administrator`, `operations_manager`, `unit_head`, `marketing_executive`
+- Signup flow enhanced: blocks duplicate signups with status-specific error messages (active, pending, rejected)
+
+### Step 9.2 — Patient Detail Enhancements ✅
+**Commits**: `ccf9625` + `9353cdb` (migration fix) + `610534e` (cleanup)
+- **Inline field editing**: UHID, IP Number, Consulting Doctor, Department — editable directly in PatientDetailView via `PATCH /api/patients/[id]/fields`
+- **Patient stages expanded**: 8 → 11 stages. Added `medical_management`, `post_op_care`, `long_term_followup`
+  - DB CHECK constraint updated (required fixing one row with legacy `admission_scheduled` value → `opd`)
+  - Stage progress bar updated in PatientDetailView
+  - `FORMS_BY_STAGE` updated in form-registry.ts for 3 new stages
+- **PAC Status**: New `pac_status` column on `patient_threads` (4 states: `telemed_pac_pending`, `inpatient_pac_pending`, `telemed_pac_passed`, `inpatient_pac_passed`). New `PATCH /api/patients/[id]/pac-status` route. Selector in PatientDetailView.
+- **Patient Changelog**: New `patient_changelog` table (immutable audit trail). All field edits, stage transitions, and PAC status changes are logged with old/new values, changed_by, and metadata JSONB.
+- **Migration**: One-time migration endpoint created, run against live Neon DB, then deleted. Migration added: pac_status column, 11-stage CHECK constraint, pac_status CHECK constraint, patient_changelog table + 3 indexes.
+
+### Step 9.3 — Admin Changelog Page ✅
+**Commit**: `ccf9625`
+- New `/admin/changelog` page (~460 lines) with fishbone timeline visualization
+- **Patient list**: Searchable list of all non-archived patients, fetched from `GET /api/admin/changelog`
+- **Timeline**: Merged view of DB changelog entries, form submissions, and GetStream chat messages via `GET /api/admin/changelog/[patientId]`
+  - Horizontal fishbone on desktop (alternating top/bottom cards along spine)
+  - Vertical timeline on mobile
+  - Color-coded by type: blue (changelog), green (forms), purple (messages)
+  - Date-grouped event clusters
+- **Admin dashboard**: Added Patient Changelog quick action link with purple ClipboardList icon
+
+### Step 9.4 — Standalone Forms Module (5th Bottom Tab) ✅
+**Commit**: `3eee752`
+- **Major UX change**: Forms elevated from chat sub-feature to first-class bottom tab
+- **BottomTabBar**: 4 → 5 tabs (Patients | Chat | Forms | Tasks | Me), icon size 22→20 for fit
+- **FormsView.tsx** (~500 lines): New standalone form-centric component with 4 view states:
+  1. `list`: All 13 forms searchable, grouped by patient journey stage, with stage badges
+  2. `pick-patient`: Patient picker (fetches non-archived patients, searchable by name/UHID/IP/department)
+  3. `fill`: Uses existing FormRenderer, shows stage mismatch warning if form doesn't match patient stage
+  4. `success`: Confirmation with "Submit Another Form" and "View Submitted Form" options
+- **Dual chat posting**: Form submissions now post to BOTH the patient's chat channel AND the submitter's department channel
+  - `POST /api/forms` enhanced: new `post_to_department` flag triggers department channel lookup chain (profiles.department_id → departments.slug → GetStream `department` channel)
+  - Department message includes patient name context
+- **AppShell.tsx**: Added FormsView import and Forms tab content div
+- **Existing chat clipboard shortcut preserved**: Forms still accessible from chat via the existing icon
+
+---
+
+## Phase 10: Insurance + Files + Patient Tabs (PRD Addendum — NOT YET BUILT)
+
+Full specification in `Rounds-PRD-Addendum-Insurance-Files-Tabs.docx`. Four sub-phases:
+
+### Phase 10a — Foundation (Files + Tabs)
+- 2 new tables: `files` (Vercel Blob storage, metadata JSONB), `patient_files` (many-to-many linking)
+- Tabbed PatientDetailView: Overview | Files | Insurance
+- File upload, download, preview, search, tag, and multi-patient linking UI
+
+### Phase 10b — Insurance Module
+- 3 new tables: `insurance_policies`, `patient_insurance` (many-to-many), `insurance_events` (immutable TPA workflow timeline with 17 event types)
+- Insurance tab in PatientDetailView: policy details, TPA workflow timeline, coverage limits
+- Standalone insurance management for policy-level operations
+
+### Phase 10c — Chat-to-Files Bridge
+- Auto-link file attachments sent in patient chat channels to the patient's file store
+- Retroactive linking of existing attachments
+
+### Phase 10d — AI Enhancements
+- AI-powered file analysis (document parsing, auto-tagging)
+- Insurance document extraction (coverage, exclusions, limits)
+- Smart search across file metadata
+
+**5 new DB tables total**: files, patient_files, insurance_policies, patient_insurance, insurance_events
+**New dependency**: `@vercel/blob`
+
+---
+
+## Current Status: Steps 0–9.4 COMPLETE — Phase 10 Planned
+
+All core features plus expansion (Steps 0–9.4) are implemented and deployed. Current focus:
 1. **Testing**: End-to-end workflow testing on Vercel with real staff accounts
 2. **UI/UX polish**: Mobile usability, edge cases, visual refinements
 3. **Infrastructure**: Set up Cloudflare Tunnel on Mac Mini, configure Vercel env vars for LLM
+4. **Phase 10 planning**: Insurance lifecycle, file management, tabbed patient detail — PRD addendum complete, build not started
 
 ---
 
@@ -293,10 +370,14 @@ All core features (Steps 0 through 8.3) are implemented. Development is paused t
 | AI provider | Claude API (Anthropic) | Local Ollama via Cloudflare Tunnel | Cost control, data privacy, V has Mac Mini M4 Pro |
 | AI SDK | `@anthropic-ai/sdk` | `openai` npm (Ollama-compatible) | Ollama exposes OpenAI-compatible `/v1` endpoint |
 | `NEXTAUTH_URL` env var | Removed from code | Still referenced in `process.env` | Legacy; harmless but should clean up |
+| Patient stages | 8 stages | 11 stages (added medical_management, post_op_care, long_term_followup) | Real patient journeys don't always follow linear path |
+| Bottom tabs | 4 tabs (Patients/Chat/Tasks/Me) | 5 tabs (added Forms) | Forms were undiscoverable inside chat; needed standalone module |
+| Forms access | Only via chat clipboard shortcut | Both: standalone tab + chat shortcut | Form-centric workflow more natural for staff |
+| Departments | 17 | 19 (added Marketing, Administration) | Gaps found during operational use |
 
 ---
 
-## Current File Tree (~90 source files)
+## Current File Tree (~95 source files)
 
 ```
 middleware.ts                              — Edge auth middleware
@@ -309,15 +390,18 @@ src/
 ├── app/
 │   ├── layout.tsx, page.tsx               — Root layout (+ SW registration, InstallPrompt) + AppShell entry
 │   ├── offline/page.tsx                   — PWA offline fallback
-│   ├── admin/                             — Admin dashboard (6 pages)
-│   │   ├── page.tsx, admissions/, duty-roster/, escalations/, approvals/, profiles/, users/, departments/
+│   ├── admin/                             — Admin dashboard (7 pages)
+│   │   ├── page.tsx                       — Admin home (stats + quick actions + changelog link)
+│   │   ├── admissions/page.tsx            — Admission tracker (3-tab)
+│   │   ├── changelog/page.tsx             — Patient Changelog with fishbone timeline (~460 lines)
+│   │   ├── duty-roster/, escalations/, approvals/, profiles/, users/, departments/
 │   ├── auth/                              — Login, signup, pending (3 pages)
 │   ├── forms/                             — Form picker, new, [id] view (3 pages)
-│   └── api/                               — 36 API routes
-│       ├── admin/{approvals, getstream/setup, getstream/seed-channels, migrate}
+│   └── api/                               — ~46 API routes
+│       ├── admin/{approvals, getstream/setup, getstream/seed-channels, migrate, changelog, changelog/[patientId]}
 │       ├── auth/{login, logout, me, signup, stream-token}
 │       ├── {departments, profiles, profiles/import, profiles/me, webhooks/getstream}
-│       ├── patients/, patients/[id]/, patients/[id]/stage/
+│       ├── patients/, patients/[id]/, patients/[id]/stage/, patients/[id]/fields/, patients/[id]/pac-status/
 │       ├── forms/, forms/[id]/
 │       ├── readiness/[formId]/, readiness/items/[itemId]/, readiness/overdue/
 │       ├── admission-tracker/
@@ -326,21 +410,21 @@ src/
 │       ├── push/vapid-key/, push/subscribe/, push/send/
 │       └── ai/gap-analysis/, ai/briefing/, ai/predict/
 ├── components/
-│   ├── AppShell.tsx                       — Main app wrapper (outer + inner split for GetStream badges)
+│   ├── AppShell.tsx                       — Main app wrapper (5 tabs, outer + inner split for GetStream badges)
 │   ├── admin/                             — CSVImport, DepartmentList, ProfilesTable
 │   ├── ai/                                — GapAnalysisCard, DailyBriefing, PredictionCard
 │   ├── chat/                              — ChatShell, ChannelSidebar, MessageArea (+ SlashCommandMenu), ThreadPanel, SearchOverlay, NewMessageDialog, MessageTypeBadge
-│   ├── forms/                             — FormRenderer, FormCard
-│   ├── layout/                            — AuthProvider, Header, Sidebar, BottomTabBar
-│   ├── patients/                          — PatientsView, PatientDetailView
+│   ├── forms/                             — FormRenderer, FormCard, FormsView (~500 lines, standalone module)
+│   ├── layout/                            — AuthProvider, Header, Sidebar, BottomTabBar (5 tabs)
+│   ├── patients/                          — PatientsView, PatientDetailView (inline edit, PAC, 11 stages)
 │   ├── profile/                           — ProfileView
 │   ├── pwa/                               — InstallPrompt, ServiceWorkerRegistration
 │   └── tasks/                             — TasksView (with Briefing tab)
 ├── lib/
 │   ├── auth.ts                            — JWT create/verify, getCurrentUser
 │   ├── db.ts                              — Neon SQL helpers (original)
-│   ├── db-v5.ts                           — v5 CRUD helpers (817 lines)
-│   ├── form-registry.ts                   — 13 form schemas (1,541 lines)
+│   ├── db-v5.ts                           — v5 CRUD helpers (817+ lines, includes changelog functions)
+│   ├── form-registry.ts                   — 13 form schemas (1,541+ lines, FORMS_BY_STAGE for 11 stages)
 │   ├── getstream.ts                       — Server client + helpers (236 lines)
 │   ├── getstream-setup.ts                 — Channel type definitions
 │   ├── llm.ts                             — OpenAI SDK client → Ollama via Cloudflare Tunnel
@@ -349,7 +433,7 @@ src/
 ├── providers/
 │   └── ChatProvider.tsx                   — GetStream StreamChat client wrapper
 └── types/
-    └── index.ts                           — Shared TypeScript types (539 lines)
+    └── index.ts                           — Shared TypeScript types (expanded: PAC, 11 stages, changelog)
 ```
 
 ## Dependencies (production)
