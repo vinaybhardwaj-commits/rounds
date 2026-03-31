@@ -755,6 +755,7 @@ export async function getOverdueReadinessItems() {
     escalated: boolean;
     escalation_level: number;
     last_escalated_at: string | null;
+    flagged_reason: string | null;
     patient_thread_id: string | null;
     form_submission_id: string;
     form_type: string;
@@ -766,10 +767,49 @@ export async function getOverdueReadinessItems() {
      FROM readiness_items ri
      JOIN form_submissions fs ON ri.form_submission_id = fs.id
      LEFT JOIN patient_threads pt ON ri.patient_thread_id = pt.id
-     WHERE ri.status = 'pending'
+     WHERE ri.status IN ('pending', 'flagged')
        AND ri.due_by IS NOT NULL
        AND ri.due_by < NOW()
      ORDER BY ri.due_by ASC`,
+    []
+  );
+}
+
+/**
+ * Get completed (confirmed) readiness items for the "Task Completed" accordion.
+ * Only returns items whose patient is still active (not archived).
+ */
+export async function getCompletedReadinessItems() {
+  return query<{
+    id: string;
+    item_name: string;
+    item_category: string;
+    responsible_role: string;
+    responsible_user_id: string | null;
+    status: string;
+    due_by: string | null;
+    confirmed_by: string | null;
+    confirmed_at: string | null;
+    confirmed_by_name: string | null;
+    patient_thread_id: string | null;
+    form_submission_id: string;
+    form_type: string;
+    patient_name: string | null;
+  }>(
+    `SELECT ri.id, ri.item_name, ri.item_category, ri.responsible_role,
+            ri.responsible_user_id, ri.status, ri.due_by,
+            ri.confirmed_by, ri.confirmed_at,
+            p.full_name AS confirmed_by_name,
+            fs.form_type, fs.patient_thread_id,
+            pt.patient_name
+     FROM readiness_items ri
+     JOIN form_submissions fs ON ri.form_submission_id = fs.id
+     LEFT JOIN patient_threads pt ON ri.patient_thread_id = pt.id
+     LEFT JOIN profiles p ON ri.confirmed_by = p.id
+     WHERE ri.status = 'confirmed'
+       AND ri.due_by IS NOT NULL
+       AND (pt.archived_at IS NULL OR pt.id IS NULL)
+     ORDER BY ri.confirmed_at DESC`,
     []
   );
 }
