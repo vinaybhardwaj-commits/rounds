@@ -21,22 +21,10 @@ import {
 } from '@/lib/getstream';
 import { postPatientActivity } from '@/lib/patient-activity';
 import type { PatientStage } from '@/types';
-import { PATIENT_STAGE_LABELS } from '@/types';
+import { PATIENT_STAGE_LABELS, VALID_STAGE_TRANSITIONS } from '@/types';
 
-// Valid stage transitions (forward progression + some backward corrections)
-const VALID_TRANSITIONS: Record<string, string[]> = {
-  opd: ['pre_admission', 'admitted'],                          // can go direct to admitted
-  pre_admission: ['admitted', 'opd'],                          // can go back to OPD
-  admitted: ['pre_op', 'medical_management', 'discharge'],     // pre-op, medical mgmt, or discharge
-  medical_management: ['discharge', 'admitted'],               // discharge or back to admitted
-  pre_op: ['surgery', 'admitted'],                             // surgery or back if postponed
-  surgery: ['post_op'],
-  post_op: ['discharge', 'surgery'],                           // discharge or re-operation
-  discharge: ['post_discharge', 'post_op_care', 'long_term_followup', 'admitted'], // multiple post-discharge paths + re-admit
-  post_discharge: [],                                          // terminal
-  post_op_care: ['discharge'],                                 // back to discharge
-  long_term_followup: ['discharge'],                           // back to discharge
-};
+// Alias for local use
+const VALID_TRANSITIONS = VALID_STAGE_TRANSITIONS;
 
 // Stage → roles to auto-add to the channel
 function getStageRoles(stage: string): string[] {

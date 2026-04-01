@@ -190,6 +190,21 @@ export const PATIENT_STAGE_LABELS: Record<PatientStage, string> = {
   long_term_followup: 'Long Term Follow-up',
 };
 
+// Valid stage transitions (shared between API route + slash commands)
+export const VALID_STAGE_TRANSITIONS: Record<PatientStage, PatientStage[]> = {
+  opd: ['pre_admission', 'admitted'],
+  pre_admission: ['admitted', 'opd'],
+  admitted: ['pre_op', 'medical_management', 'discharge'],
+  medical_management: ['discharge', 'admitted'],
+  pre_op: ['surgery', 'admitted'],
+  surgery: ['post_op'],
+  post_op: ['discharge', 'surgery'],
+  discharge: ['post_discharge', 'post_op_care', 'long_term_followup', 'admitted'],
+  post_discharge: [],
+  post_op_care: ['discharge'],
+  long_term_followup: ['discharge'],
+};
+
 export const PATIENT_STAGE_COLORS: Record<PatientStage, string> = {
   opd: '#6B7280',
   pre_admission: '#8B5CF6',

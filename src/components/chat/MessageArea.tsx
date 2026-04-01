@@ -34,6 +34,7 @@ import { MessageTypeBadge } from './MessageTypeBadge';
 import { DeleteMessageModal } from './DeleteMessageModal';
 import FormCard from '@/components/forms/FormCard';
 import type { MessageType, MessagePriority, FormType, PatientStage } from '@/types';
+import { PATIENT_STAGE_LABELS, VALID_STAGE_TRANSITIONS } from '@/types';
 import { FORM_TYPE_LABELS, FORMS_BY_STAGE } from '@/lib/form-registry';
 
 // --- Types ---
@@ -198,6 +199,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
   const [mentionStartPos, setMentionStartPos] = useState(0);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [pendingMentions, setPendingMentions] = useState<{ id: string; name: string }[]>([]);
+  const [advancingStage, setAdvancingStage] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1037,7 +1039,8 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
             {showSlashMenu && channel && (
               <SlashCommandMenu
                 channel={channel}
-                onSelect={(formType, patientId) => {
+                advancingStage={advancingStage}
+                onSelectForm={(formType, patientId) => {
                   setShowSlashMenu(false);
                   setMessageText('');
                   const params = new URLSearchParams();
@@ -1046,6 +1049,47 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                   if (channel.type) params.set('channel_type', channel.type);
                   if (channel.id) params.set('channel_id', channel.id);
                   router.push(`/forms/new?${params.toString()}`);
+                }}
+                onAdvanceStage={async (patientId, newStage) => {
+                  setShowSlashMenu(false);
+                  setMessageText('');
+                  setAdvancingStage(true);
+                  try {
+                    const res = await fetch(`/api/patients/${patientId}/stage`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ stage: newStage }),
+                    });
+                    const data = await res.json();
+                    if (!data.success) {
+                      alert(`Stage change failed: ${data.error}`);
+                    }
+                  } catch (err) {
+                    alert(`Stage change error: ${err}`);
+                  } finally {
+                    setAdvancingStage(false);
+                  }
+                }}
+                onArchive={async (patientId) => {
+                  setShowSlashMenu(false);
+                  setMessageText('');
+                  if (!confirm('Archive this patient? They will be moved to the post-discharge archive.')) return;
+                  try {
+                    const res = await fetch('/api/patients/archive', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        patientThreadId: patientId,
+                        archiveType: 'post_discharge',
+                      }),
+                    });
+                    const data = await res.json();
+                    if (!data.success) {
+                      alert(`Archive failed: ${data.error}`);
+                    }
+                  } catch (err) {
+                    alert(`Archive error: ${err}`);
+                  }
                 }}
                 onClose={() => {
                   setShowSlashMenu(false);
@@ -1118,7 +1162,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                 }
                 handleKeyDown(e);
               }}
-              placeholder={`Message #${channelName.toLowerCase()} — type @ to mention, / for forms`}
+              placeholder={`Message #${channelName.toLowerCase()} — type @ to mention, / for commands`}
               rows={1}
               className="w-full resize-none bg-gray-100 rounded-lg px-3 py-2 text-sm outline-none focus:bg-gray-50 focus:ring-1 focus:ring-even-blue/30 transition-colors max-h-32"
               style={{ minHeight: '36px' }}
@@ -1142,19 +1186,32 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
 }
 
 // ── Slash Command Menu ──
+// Shows stage transitions (advance/move back) + forms + archive
+// in patient thread channels. Only forms in non-patient channels.
 function SlashCommandMenu({
   channel,
-  onSelect,
+  advancingStage,
+  onSelectForm,
+  onAdvanceStage,
+  onArchive,
   onClose,
 }: {
   channel: Channel;
-  onSelect: (formType: FormType, patientId?: string) => void;
+  advancingStage: boolean;
+  onSelectForm: (formType: FormType, patientId?: string) => void;
+  onAdvanceStage: (patientId: string, newStage: string) => void;
+  onArchive: (patientId: string) => void;
   onClose: () => void;
 }) {
   const channelData = channel.data as Record<string, unknown> | undefined;
   const currentStage = (channelData?.current_stage as PatientStage) || null;
   const patientId = (channelData?.patient_thread_id as string) || undefined;
   const isPatientThread = channel.type === 'patient-thread';
+
+  // Get valid next stages for this patient
+  const nextStages: PatientStage[] = isPatientThread && currentStage
+    ? (VALID_STAGE_TRANSITIONS[currentStage] || [])
+    : [];
 
   // Build form list: stage-specific + any-stage
   const forms: FormType[] = [];
@@ -1163,44 +1220,85 @@ function SlashCommandMenu({
     const anyForms = FORMS_BY_STAGE['any'] || [];
     forms.push(...stageForms, ...anyForms);
   } else {
-    // Not a patient thread — show the general forms
     const anyForms = FORMS_BY_STAGE['any'] || [];
     forms.push(...anyForms);
   }
 
-  // Also show all forms if this is a patient channel (user might need any form)
+  // Extra forms (not in current stage)
   const allForms = Object.keys(FORM_TYPE_LABELS) as FormType[];
-  const extraForms = allForms.filter((f) => !forms.includes(f));
+  const extraForms = isPatientThread ? allForms.filter((f) => !forms.includes(f)) : [];
+
+  // Stage transition icon/color logic
+  const getStageIcon = (target: PatientStage): string => {
+    if (!currentStage) return '→';
+    const currentIdx = Object.keys(PATIENT_STAGE_LABELS).indexOf(currentStage);
+    const targetIdx = Object.keys(PATIENT_STAGE_LABELS).indexOf(target);
+    return targetIdx > currentIdx ? '→' : '←';
+  };
 
   return (
-    <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto z-20">
-      <div className="px-3 py-2 border-b border-gray-100">
-        <p className="text-xs font-semibold text-gray-500">
-          {isPatientThread && currentStage
-            ? `Forms for ${currentStage.replace('_', ' ').toUpperCase()} stage`
-            : 'Available Forms'}
-        </p>
-      </div>
-      {forms.length > 0 && (
-        <div className="py-1">
-          {forms.map((formType) => (
-            <button
-              key={formType}
-              onClick={() => onSelect(formType, patientId)}
-              className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-left transition-colors"
-            >
-              <ClipboardList size={14} className="text-even-blue shrink-0" />
-              <span className="text-sm text-even-navy">
-                {FORM_TYPE_LABELS[formType]}
-              </span>
-              <span className="ml-auto text-[10px] text-purple-500 font-medium">
-                Stage
-              </span>
-            </button>
-          ))}
-        </div>
+    <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-80 overflow-y-auto z-20">
+      {/* Stage Transitions */}
+      {isPatientThread && nextStages.length > 0 && patientId && (
+        <>
+          <div className="px-3 py-2 border-b border-gray-100">
+            <p className="text-xs font-semibold text-gray-500">
+              Move Patient {currentStage ? `from ${PATIENT_STAGE_LABELS[currentStage]}` : ''}
+            </p>
+          </div>
+          <div className="py-1">
+            {nextStages.map((stage) => (
+              <button
+                key={stage}
+                onClick={() => onAdvanceStage(patientId, stage)}
+                disabled={advancingStage}
+                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-blue-50 text-left transition-colors disabled:opacity-50"
+              >
+                <span className="text-base shrink-0">{getStageIcon(stage)}</span>
+                <span className="text-sm font-medium text-even-navy">
+                  {PATIENT_STAGE_LABELS[stage]}
+                </span>
+                <span className="ml-auto text-[10px] text-blue-500 font-medium">
+                  Stage
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
       )}
-      {isPatientThread && extraForms.length > 0 && (
+
+      {/* Forms */}
+      {forms.length > 0 && (
+        <>
+          <div className="px-3 py-2 border-t border-gray-100">
+            <p className="text-xs font-semibold text-gray-500">
+              {isPatientThread && currentStage
+                ? `Forms for ${PATIENT_STAGE_LABELS[currentStage]}`
+                : 'Available Forms'}
+            </p>
+          </div>
+          <div className="py-1">
+            {forms.map((formType) => (
+              <button
+                key={formType}
+                onClick={() => onSelectForm(formType, patientId)}
+                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-left transition-colors"
+              >
+                <ClipboardList size={14} className="text-even-blue shrink-0" />
+                <span className="text-sm text-even-navy">
+                  {FORM_TYPE_LABELS[formType]}
+                </span>
+                <span className="ml-auto text-[10px] text-purple-500 font-medium">
+                  Form
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Extra forms for patient threads */}
+      {extraForms.length > 0 && (
         <>
           <div className="px-3 py-1.5 border-t border-gray-100">
             <p className="text-[10px] text-gray-400 uppercase tracking-wider">
@@ -1211,7 +1309,7 @@ function SlashCommandMenu({
             {extraForms.map((formType) => (
               <button
                 key={formType}
-                onClick={() => onSelect(formType, patientId)}
+                onClick={() => onSelectForm(formType, patientId)}
                 className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-left transition-colors"
               >
                 <ClipboardList size={14} className="text-gray-400 shrink-0" />
@@ -1223,6 +1321,27 @@ function SlashCommandMenu({
           </div>
         </>
       )}
+
+      {/* Archive action (patient threads only) */}
+      {isPatientThread && patientId && (
+        <>
+          <div className="px-3 py-1.5 border-t border-gray-100">
+            <p className="text-[10px] text-gray-400 uppercase tracking-wider">
+              Actions
+            </p>
+          </div>
+          <div className="py-1">
+            <button
+              onClick={() => onArchive(patientId)}
+              className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-red-50 text-left transition-colors"
+            >
+              <Trash2 size={14} className="text-red-400 shrink-0" />
+              <span className="text-sm text-red-600">Archive Patient</span>
+            </button>
+          </div>
+        </>
+      )}
+
       <div className="px-3 py-2 border-t border-gray-100">
         <button
           onClick={onClose}
