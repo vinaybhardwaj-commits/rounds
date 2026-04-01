@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Building2, Upload, Shield, UserCheck, Calendar, AlertTriangle, Activity, UserPlus, ClipboardList } from 'lucide-react';
+import { Users, Building2, Upload, Shield, UserCheck, Calendar, AlertTriangle, Activity, UserPlus, ClipboardList, Link2 } from 'lucide-react';
 import Link from 'next/link';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 
@@ -147,6 +147,13 @@ export default function AdminDashboard() {
               {stats.openEscalations > 0 && (
                 <span className="ml-auto bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">{stats.openEscalations}</span>
               )}
+            </Link>
+            <Link href="/admin/leadsquared" className="flex items-center gap-3 px-4 py-3 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors">
+              <Link2 size={18} className="text-indigo-600" />
+              <div>
+                <div className="text-sm font-medium">LeadSquared Integration</div>
+                <div className="text-xs text-gray-500">Sync logs, API call traceability, patient imports from LSQ</div>
+              </div>
             </Link>
           </div>
         </div>
