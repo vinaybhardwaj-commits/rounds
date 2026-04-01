@@ -49,8 +49,10 @@ function AppShellInner({ userRole }: { userRole: string }) {
   // Overdue count for Tasks badge
   const [overdueCount, setOverdueCount] = useState(0);
 
-  // Track tab history for back button handling (non-default tabs only)
-  const tabHistoryRef = useRef<TabId[]>(['patients']);
+  // Suppress popstate handling during programmatic history changes
+  const suppressPopStateRef = useRef(false);
+  // Track whether we've replaced the initial history entry
+  const initializedRef = useRef(false);
 
   // Unread count is now computed by ChannelSidebar from active (non-archived) channels only,
   // passed up via onUnreadCountChange callback through ChatShell.
@@ -85,56 +87,100 @@ function AppShellInner({ userRole }: { userRole: string }) {
     return b;
   }, [unreadCount, overdueCount]);
 
-  // Handle browser back button: navigate through tab history instead of leaving the app
+  // ── Browser History Management ──
+  // Every navigation state = { tab, patientId? } pushed to browser history.
+  // Back button restores previous state instead of leaving the app.
+
+  // Replace the initial history entry with our SPA state on mount
+  useEffect(() => {
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      window.history.replaceState(
+        { tab: 'patients', patientId: null, _rounds: true },
+        '',
+        window.location.href
+      );
+    }
+  }, []);
+
+  // Handle browser back/forward buttons
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
-      const previousTab = event.state?.tab;
-      if (previousTab && previousTab !== activeTab) {
-        setActiveTab(previousTab);
+      if (suppressPopStateRef.current) return;
+
+      const state = event.state;
+      if (state?._rounds) {
+        // Restore SPA state from history
+        suppressPopStateRef.current = true;
+        if (state.tab && state.tab !== activeTab) {
+          setActiveTab(state.tab);
+        }
+        setSelectedPatientId(state.patientId || null);
+        suppressPopStateRef.current = false;
+      } else {
+        // No SPA state — user tried to go before the app.
+        // Push them back into the app to prevent leaving.
+        window.history.pushState(
+          { tab: activeTab, patientId: selectedPatientId, _rounds: true },
+          '',
+          window.location.href
+        );
       }
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [activeTab]);
-
-  // Push browser history state when tab changes (but only for non-default tabs)
-  useEffect(() => {
-    // Only push history for non-default tabs to prevent navigating away from SPA on back
-    if (activeTab !== 'patients') {
-      window.history.pushState({ tab: activeTab }, '', window.location.href);
-    }
-  }, [activeTab]);
+  }, [activeTab, selectedPatientId]);
 
   // Clear pending channel after ChatShell picks it up
   const handleChannelNavigated = useCallback(() => {
     setPendingChannelId(null);
   }, []);
 
-  // When patient is tapped, open the detail view
-  const handleOpenPatient = useCallback((patient: { id: string }) => {
-    setSelectedPatientId(patient.id);
+  // Helper: push a new SPA state entry into browser history
+  const pushNavState = useCallback((tab: TabId, patientId: string | null = null) => {
+    window.history.pushState(
+      { tab, patientId, _rounds: true },
+      '',
+      window.location.href
+    );
   }, []);
 
-  // Close patient detail view
+  // Tab change handler — wraps setActiveTab with history push
+  const handleTabChange = useCallback((tab: TabId) => {
+    if (tab === activeTab) return;
+    pushNavState(tab, tab === 'patients' ? selectedPatientId : null);
+    setActiveTab(tab);
+  }, [activeTab, selectedPatientId, pushNavState]);
+
+  // When patient is tapped, open the detail view
+  const handleOpenPatient = useCallback((patient: { id: string }) => {
+    pushNavState('patients', patient.id);
+    setSelectedPatientId(patient.id);
+  }, [pushNavState]);
+
+  // Close patient detail view — use browser back so history stays consistent
   const handleBackFromDetail = useCallback(() => {
-    setSelectedPatientId(null);
+    // If there's history to go back to, use it (keeps history stack clean)
+    // The popstate handler will set selectedPatientId to null
+    window.history.back();
   }, []);
 
   // From detail view: open a channel in Chat tab
-  // Keep selectedPatientId so user returns to detail view when switching back to Patients tab
   const handleOpenChannelFromDetail = useCallback((channelId: string) => {
     if (!channelId) return;
     setPendingChannelId(channelId);
+    pushNavState('chat', null);
     setActiveTab('chat');
-  }, []);
+  }, [pushNavState]);
 
   // When patient is tapped in list (fallback: navigate directly to channel)
   const handleNavigateToChannel = useCallback((channelId: string) => {
     if (!channelId) return;
     setPendingChannelId(channelId);
+    pushNavState('chat', null);
     setActiveTab('chat');
-  }, []);
+  }, [pushNavState]);
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-even-white">
@@ -175,6 +221,7 @@ function AppShellInner({ userRole }: { userRole: string }) {
         <div className={activeTab === 'tasks' ? 'h-full' : 'hidden'}>
           <TasksView
             onNavigateToPatient={(patientThreadId) => {
+              pushNavState('patients', patientThreadId);
               setSelectedPatientId(patientThreadId);
               setActiveTab('patients');
             }}
@@ -190,7 +237,7 @@ function AppShellInner({ userRole }: { userRole: string }) {
       {/* Bottom Tab Bar */}
       <BottomTabBar
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={handleTabChange}
         badges={badges}
       />
     </div>
