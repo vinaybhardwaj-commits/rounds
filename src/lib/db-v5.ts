@@ -120,6 +120,26 @@ export async function listPatientThreads(filters?: {
   );
 }
 
+/**
+ * Get total counts of active patients by stage.
+ * Returns { total, opd, pre_admission, admitted, ... }
+ */
+export async function getPatientStageCounts(): Promise<Record<string, number>> {
+  const rows = await query<{ stage: string; count: string }>(
+    `SELECT current_stage as stage, COUNT(*) as count
+     FROM patient_threads
+     WHERE archived_at IS NULL
+     GROUP BY current_stage`
+  );
+  const counts: Record<string, number> = { total: 0 };
+  for (const row of rows as Array<{ stage: string; count: string }>) {
+    const c = parseInt(row.count, 10);
+    counts[row.stage] = c;
+    counts.total += c;
+  }
+  return counts;
+}
+
 export async function updatePatientThread(
   id: string,
   updates: Partial<{

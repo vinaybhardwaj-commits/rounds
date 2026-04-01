@@ -39,6 +39,9 @@ interface PatientThread {
   room_number: string | null;
   room_category: string | null;
   financial_category: string | null;
+  // LSQ fields
+  lsq_lead_id?: string | null;
+  lsq_last_synced_at?: string | null;
   // Archive fields
   archived_at?: string | null;
   archive_type?: string | null;
@@ -114,9 +117,11 @@ function formatArchiveDate(d: string): string {
 export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsViewProps) {
   const [patients, setPatients] = useState<PatientThread[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('');
   const [formStatuses, setFormStatuses] = useState<Record<string, Record<string, string>>>({});
+  const [serverStageCounts, setServerStageCounts] = useState<Record<string, number>>({});
 
   // Archive state
   const [archivedPostDC, setArchivedPostDC] = useState<PatientThread[]>([]);
@@ -153,17 +158,41 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
   const fetchPatients = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ limit: '200' });
+      // Use a high limit for the "All" tab to avoid truncation
+      const limit = stageFilter ? '500' : '1000';
+      const params = new URLSearchParams({ limit });
       if (stageFilter) params.set('stage', stageFilter);
       const res = await fetch(`/api/patients?${params.toString()}`);
       const data = await res.json();
-      if (data.success) setPatients(data.data || []);
+      if (data.success) {
+        setPatients(data.data || []);
+        if (data.stageCounts) setServerStageCounts(data.stageCounts);
+      }
     } catch (err) {
       console.error('Failed to fetch patients:', err);
     } finally {
       setLoading(false);
     }
   }, [stageFilter]);
+
+  const loadMore = useCallback(async () => {
+    setLoadingMore(true);
+    try {
+      const limit = '200';
+      const offset = String(patients.length);
+      const params = new URLSearchParams({ limit, offset });
+      if (stageFilter) params.set('stage', stageFilter);
+      const res = await fetch(`/api/patients?${params.toString()}`);
+      const data = await res.json();
+      if (data.success && data.data?.length > 0) {
+        setPatients(prev => [...prev, ...data.data]);
+      }
+    } catch (err) {
+      console.error('Failed to load more patients:', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [stageFilter, patients.length]);
 
   const fetchArchived = useCallback(async () => {
     try {
@@ -203,13 +232,16 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
       )
     : patients;
 
+  // Use server-provided counts (accurate totals) with client fallback
   const stageCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
+    if (Object.keys(serverStageCounts).length > 0) return serverStageCounts;
+    const counts: Record<string, number> = { total: 0 };
     for (const p of patients) {
       counts[p.current_stage] = (counts[p.current_stage] || 0) + 1;
+      counts.total++;
     }
     return counts;
-  }, [patients]);
+  }, [patients, serverStageCounts]);
 
   // ----- Actions -----
 
@@ -337,6 +369,12 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
                 style={{ backgroundColor: isGreyed ? '#9CA3AF' : stageColor }}>
                 {PATIENT_STAGE_LABELS[patient.current_stage]}
               </span>
+              {patient.lsq_lead_id && (
+                <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-600"
+                  title={`Imported from LeadSquared${patient.lsq_last_synced_at ? ` · Last synced: ${new Date(patient.lsq_last_synced_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}`}>
+                  LSQ
+                </span>
+              )}
             </div>
             <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
               {patient.uhid && <span>{patient.uhid}</span>}
@@ -431,7 +469,7 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
             className={`shrink-0 text-xs px-3 py-1 rounded-full font-medium transition-colors ${
               !stageFilter ? 'bg-even-blue text-white' : 'bg-gray-100 text-gray-500'
             }`}>
-            All{patients.length > 0 ? ` (${patients.length})` : ''}
+            All{(stageCounts.total || patients.length) > 0 ? ` (${stageCounts.total || patients.length})` : ''}
           </button>
           {(Object.entries(PATIENT_STAGE_LABELS) as [PatientStage, string][]).map(([key, label]) => {
             const count = stageCounts[key] || 0;
@@ -478,6 +516,23 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
             {filtered.length > 0 && (
               <div className="space-y-2">
                 {filtered.map(patient => renderPatientCard(patient))}
+                {/* Load more button if there are more patients than currently shown */}
+                {!search && (() => {
+                  const expectedTotal = stageFilter ? (stageCounts[stageFilter] || 0) : (stageCounts.total || 0);
+                  if (patients.length < expectedTotal) {
+                    return (
+                      <button
+                        onClick={loadMore}
+                        disabled={loadingMore}
+                        className="w-full py-3 text-sm font-medium text-even-blue bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors flex items-center justify-center gap-2"
+                      >
+                        {loadingMore ? <Loader2 size={14} className="animate-spin" /> : null}
+                        {loadingMore ? 'Loading...' : `Load more (${patients.length} of ${expectedTotal})`}
+                      </button>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
             )}
             {filtered.length === 0 && (search || stageFilter) && (

@@ -11,6 +11,7 @@ import { getCurrentUser } from '@/lib/auth';
 import {
   createPatientThread,
   listPatientThreads,
+  getPatientStageCounts,
   updatePatientThread,
   findProfilesByRole,
   getDepartmentHead,
@@ -34,14 +35,18 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    const patients = await listPatientThreads({
-      stage: stage || undefined,
-      department_id: department_id || undefined,
-      limit,
-      offset,
-    });
+    // Fetch patients and stage counts in parallel
+    const [patients, stageCounts] = await Promise.all([
+      listPatientThreads({
+        stage: stage || undefined,
+        department_id: department_id || undefined,
+        limit,
+        offset,
+      }),
+      getPatientStageCounts(),
+    ]);
 
-    return NextResponse.json({ success: true, data: patients });
+    return NextResponse.json({ success: true, data: patients, stageCounts });
   } catch (error) {
     console.error('GET /api/patients error:', error);
     return NextResponse.json(
