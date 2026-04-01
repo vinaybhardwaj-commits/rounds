@@ -123,32 +123,54 @@ export function ChannelSidebar({
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // Fetch and group channels
+  // Fetch and group channels — query each type separately so department
+  // and cross-functional channels aren't crowded out by patient threads
   const loadChannels = useCallback(async () => {
     if (!client) return;
 
     setLoading(true);
     try {
-      const filter = { members: { $in: [client.userID!] } };
+      const userId = client.userID!;
       const sort = [{ last_message_at: -1 as const }];
-      const channels = await client.queryChannels(filter, sort, {
-        watch: true,
-        state: true,
-        limit: 100,
-      });
+      const opts = { watch: true, state: true };
+
+      // Query each channel type in parallel with appropriate limits
+      const [deptChannels, cfChannels, ptChannels, directChannels, broadcastChannels] =
+        await Promise.all([
+          client.queryChannels(
+            { type: 'department', members: { $in: [userId] } }, sort, { ...opts, limit: 30 }
+          ).catch(() => [] as Channel[]),
+          client.queryChannels(
+            { type: 'cross-functional', members: { $in: [userId] } }, sort, { ...opts, limit: 20 }
+          ).catch(() => [] as Channel[]),
+          client.queryChannels(
+            { type: 'patient-thread', members: { $in: [userId] } }, sort, { ...opts, limit: 200 }
+          ).catch(() => [] as Channel[]),
+          client.queryChannels(
+            { type: 'direct', members: { $in: [userId] } }, sort, { ...opts, limit: 30 }
+          ).catch(() => [] as Channel[]),
+          client.queryChannels(
+            { type: 'ops-broadcast', members: { $in: [userId] } }, sort, { ...opts, limit: 5 }
+          ).catch(() => [] as Channel[]),
+        ]);
 
       const groups: Record<string, Channel[]> = {};
       const archivedPostDC: Channel[] = [];
       const archivedRemoved: Channel[] = [];
 
-      for (const ch of channels) {
-        const type = ch.type || 'messaging';
+      // Assign non-patient channels directly
+      if (deptChannels.length > 0) groups['department'] = deptChannels;
+      if (cfChannels.length > 0) groups['cross-functional'] = cfChannels;
+      if (directChannels.length > 0) groups['direct'] = directChannels;
+      if (broadcastChannels.length > 0) groups['ops-broadcast'] = broadcastChannels;
+
+      // Split patient threads into active vs archived
+      for (const ch of ptChannels) {
         const chData = ch.data as Record<string, unknown> | undefined;
         const isArchived = chData?.archived === true;
         const archiveType = chData?.archive_type as string | undefined;
 
-        // Split patient-thread channels into active vs archived
-        if (type === 'patient-thread' && isArchived) {
+        if (isArchived) {
           if (archiveType === 'removed') {
             archivedRemoved.push(ch);
           } else {
@@ -157,8 +179,8 @@ export function ChannelSidebar({
           continue;
         }
 
-        if (!groups[type]) groups[type] = [];
-        groups[type].push(ch);
+        if (!groups['patient-thread']) groups['patient-thread'] = [];
+        groups['patient-thread'].push(ch);
       }
 
       const orderedTypes = [

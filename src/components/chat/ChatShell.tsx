@@ -184,6 +184,7 @@ export function ChatShell({
         isOpen={newMessageOpen}
         onClose={() => setNewMessageOpen(false)}
         onChannelCreated={handleDMCreated}
+        isAdmin={isAdmin}
       />
 
       <SearchOverlay
