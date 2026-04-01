@@ -214,9 +214,11 @@ export async function sendShiftHandoffMessage(
  */
 export async function autoJoinDefaultChannels(
   userId: string,
-  departmentSlug?: string | null
+  departmentSlug?: string | null,
+  role?: string | null
 ): Promise<void> {
   const client = getStreamServerClient();
+  const isSuperAdmin = role === 'super_admin';
 
   // Always join hospital broadcast
   try {
@@ -226,8 +228,25 @@ export async function autoJoinDefaultChannels(
     // Channel may not exist yet or user already a member — fine
   }
 
-  // Join department channel if department is known
-  if (departmentSlug) {
+  // Super admins join ALL department channels; regular staff join only their own
+  if (isSuperAdmin) {
+    try {
+      const deptChannels = await client.queryChannels(
+        { type: 'department' },
+        { last_message_at: -1 },
+        { limit: 50 }
+      );
+      for (const ch of deptChannels) {
+        try {
+          await ch.addMembers([userId]);
+        } catch {
+          // Non-fatal per channel
+        }
+      }
+    } catch {
+      // Query failed — non-fatal
+    }
+  } else if (departmentSlug) {
     try {
       const deptChannel = client.channel('department', departmentSlug);
       await deptChannel.addMembers([userId]);

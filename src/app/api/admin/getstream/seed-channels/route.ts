@@ -117,17 +117,21 @@ export async function POST() {
       SELECT id, name, slug FROM departments WHERE is_active = true ORDER BY name
     ` as Record<string, unknown>[];
 
-    // Fetch all active staff grouped by department
+    // Fetch all active staff grouped by department (include role for super_admin detection)
     const allStaff = await sql`
-      SELECT id, department_id FROM profiles WHERE status = 'active'
+      SELECT id, department_id, role FROM profiles WHERE status = 'active'
     ` as Record<string, unknown>[];
 
     // Build department → member IDs map
     const deptMembers: Record<string, string[]> = {};
     const allStaffIds: string[] = [];
+    const superAdminIds: string[] = [];
     for (const s of allStaff) {
       const pid = s.id as string;
       allStaffIds.push(pid);
+      if (s.role === 'super_admin') {
+        superAdminIds.push(pid);
+      }
       if (s.department_id) {
         const did = s.department_id as string;
         if (!deptMembers[did]) deptMembers[did] = [];
@@ -149,8 +153,10 @@ export async function POST() {
         callerUserId
       );
 
-      // Also add all staff assigned to this department
-      const memberIds = deptMembers[dept.id as string] || [];
+      // Add all staff assigned to this department + super_admins (they see everything)
+      const deptStaff = deptMembers[dept.id as string] || [];
+      const memberSet = new Set([...deptStaff, ...superAdminIds]);
+      const memberIds = Array.from(memberSet);
       if (memberIds.length > 0) {
         try {
           const channel = client.channel('department', dept.slug as string);
@@ -164,7 +170,7 @@ export async function POST() {
         }
       }
 
-      results.push(`[dept] ${result} (${memberIds.length} staff)`);
+      results.push(`[dept] ${result} (${deptStaff.length} dept staff + ${superAdminIds.length} admins)`);
     }
 
     // 3. Create/ensure cross-functional channels + add ALL active staff

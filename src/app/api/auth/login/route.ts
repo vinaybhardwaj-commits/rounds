@@ -147,10 +147,11 @@ export async function POST(request: NextRequest) {
       });
       streamToken = generateStreamToken(profile.id as string);
 
-      // Auto-join default channels (department + broadcast)
+      // Auto-join default channels (department + broadcast + all depts for super_admin)
       await autoJoinDefaultChannels(
         profile.id as string,
-        profile.department_slug as string | null
+        profile.department_slug as string | null,
+        profile.role as string | null
       );
     } catch (streamError) {
       // Log but don't fail login — chat is degraded, not broken
