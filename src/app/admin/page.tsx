@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Building2, Upload, Shield, UserCheck, Calendar, AlertTriangle, Activity, UserPlus, ClipboardList, Link2 } from 'lucide-react';
+import { Users, Building2, Upload, Shield, UserCheck, Calendar, AlertTriangle, Activity, UserPlus, ClipboardList, Link2, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 
@@ -153,6 +153,13 @@ export default function AdminDashboard() {
               <div>
                 <div className="text-sm font-medium">LeadSquared Integration</div>
                 <div className="text-xs text-gray-500">Sync logs, API call traceability, patient imports from LSQ</div>
+              </div>
+            </Link>
+            <Link href="/admin/chat-system" className="flex items-center gap-3 px-4 py-3 bg-cyan-50 rounded-lg hover:bg-cyan-100 transition-colors">
+              <MessageSquare size={18} className="text-cyan-600" />
+              <div>
+                <div className="text-sm font-medium">Chat System Setup</div>
+                <div className="text-xs text-gray-500">Seed department channels, backfill patient chats, create group chats</div>
               </div>
             </Link>
           </div>

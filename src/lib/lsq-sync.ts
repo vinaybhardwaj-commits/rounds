@@ -15,6 +15,7 @@ import {
   type LSQLeadRaw,
   type NormalizedLead,
 } from './leadsquared';
+import { createPatientChannel, sendSystemMessage } from './getstream';
 import { postPatientActivity } from './patient-activity';
 
 // ============================================
@@ -199,7 +200,41 @@ export async function upsertLeadAsPatient(
       normalized.signupUrl,
     ]
   );
-  return { action: 'created', id: insertResult?.id || null };
+
+  const newId = insertResult?.id || null;
+
+  // Auto-create GetStream channel for the new patient
+  if (newId) {
+    try {
+      const channelId = await createPatientChannel({
+        patientThreadId: newId,
+        patientName: normalized.patientName,
+        uhid: normalized.uhid || null,
+        currentStage: normalized.roundsStage,
+        departmentId: null,
+        createdById: 'rounds-system', // system-created, no human creator
+        memberIds: [],                // members added on login via autoJoinDefaultChannels
+      });
+
+      // Store the channel ID on the patient thread
+      await query(
+        `UPDATE patient_threads SET getstream_channel_id = $1 WHERE id = $2`,
+        [channelId, newId]
+      );
+
+      // Post welcome message
+      await sendSystemMessage(
+        'patient-thread',
+        channelId,
+        `🔗 Patient imported from LeadSquared: ${normalized.patientName}${normalized.uhid ? ` (UHID: ${normalized.uhid})` : ''}. Stage: ${normalized.roundsStage.replace(/_/g, ' ').toUpperCase()}.`
+      );
+    } catch (chErr) {
+      // Channel creation failure is non-fatal — DB record is created
+      console.error(`[LSQ Sync] Failed to create GetStream channel for ${newId}:`, chErr);
+    }
+  }
+
+  return { action: 'created', id: newId };
 }
 
 /**
@@ -298,12 +333,23 @@ export async function syncLeadsByStage(
         switch (action) {
           case 'created':
             result.leadsCreated++;
+            // Look up channel ID that was just created in upsertLeadAsPatient
+            let newChannelId: string | null = null;
+            if (newPatientId) {
+              try {
+                const chRow = await queryOne<{ getstream_channel_id: string }>(
+                  `SELECT getstream_channel_id FROM patient_threads WHERE id = $1`,
+                  [newPatientId]
+                );
+                newChannelId = chRow?.getstream_channel_id || null;
+              } catch { /* non-fatal */ }
+            }
             // Post activity for newly imported patients
             postPatientActivity({
               type: 'patient_imported',
               patientThreadId: newPatientId || '',
               patientName: normalized.patientName,
-              patientChannelId: null, // LSQ imports don't have a channel yet
+              patientChannelId: newChannelId, // channel now exists from upsertLeadAsPatient
               actor: { profileId: 'rounds-system', name: 'LeadSquared Sync' },
               data: {
                 stageLabel: normalized.roundsStage === 'pre_admission' ? 'Pre-Admission' : 'OPD',
@@ -388,11 +434,22 @@ export async function syncSingleLead(
     switch (action) {
       case 'created':
         result.leadsCreated = 1;
+        // Look up channel ID that was just created
+        let singleChannelId: string | null = null;
+        if (newPatientId) {
+          try {
+            const chRow = await queryOne<{ getstream_channel_id: string }>(
+              `SELECT getstream_channel_id FROM patient_threads WHERE id = $1`,
+              [newPatientId]
+            );
+            singleChannelId = chRow?.getstream_channel_id || null;
+          } catch { /* non-fatal */ }
+        }
         postPatientActivity({
           type: 'patient_imported',
           patientThreadId: newPatientId || '',
           patientName: normalized.patientName,
-          patientChannelId: null,
+          patientChannelId: singleChannelId,
           actor: { profileId: 'rounds-system', name: 'LeadSquared Sync' },
           data: {
             stageLabel: normalized.roundsStage === 'pre_admission' ? 'Pre-Admission' : 'OPD',

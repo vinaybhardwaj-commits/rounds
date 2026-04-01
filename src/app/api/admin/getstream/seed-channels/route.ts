@@ -115,9 +115,27 @@ export async function POST() {
     // 1. Fetch all active departments from our DB
     const departments = await sql`
       SELECT id, name, slug FROM departments WHERE is_active = true ORDER BY name
-    `;
+    ` as Record<string, unknown>[];
 
-    // 2. Create/ensure department channels
+    // Fetch all active staff grouped by department
+    const allStaff = await sql`
+      SELECT id, department_id FROM profiles WHERE status = 'active'
+    ` as Record<string, unknown>[];
+
+    // Build department → member IDs map
+    const deptMembers: Record<string, string[]> = {};
+    const allStaffIds: string[] = [];
+    for (const s of allStaff) {
+      const pid = s.id as string;
+      allStaffIds.push(pid);
+      if (s.department_id) {
+        const did = s.department_id as string;
+        if (!deptMembers[did]) deptMembers[did] = [];
+        deptMembers[did].push(pid);
+      }
+    }
+
+    // 2. Create/ensure department channels + add ALL department staff
     for (const dept of departments) {
       const result = await ensureChannelWithMember(
         client,
@@ -130,10 +148,26 @@ export async function POST() {
         },
         callerUserId
       );
-      results.push(`[dept] ${result}`);
+
+      // Also add all staff assigned to this department
+      const memberIds = deptMembers[dept.id as string] || [];
+      if (memberIds.length > 0) {
+        try {
+          const channel = client.channel('department', dept.slug as string);
+          // Batch add in groups of 100
+          for (let i = 0; i < memberIds.length; i += 100) {
+            const batch = memberIds.slice(i, i + 100);
+            await channel.addMembers(batch);
+          }
+        } catch {
+          // Non-fatal — members may already exist
+        }
+      }
+
+      results.push(`[dept] ${result} (${memberIds.length} staff)`);
     }
 
-    // 3. Create/ensure cross-functional channels
+    // 3. Create/ensure cross-functional channels + add ALL active staff
     for (const cf of CROSS_FUNCTIONAL_CHANNELS) {
       const result = await ensureChannelWithMember(
         client,
@@ -142,10 +176,24 @@ export async function POST() {
         { name: cf.name, description: cf.description },
         callerUserId
       );
-      results.push(`[cross] ${result}`);
+
+      // Add all active staff to cross-functional channels
+      if (allStaffIds.length > 0) {
+        try {
+          const channel = client.channel('cross-functional', cf.id);
+          for (let i = 0; i < allStaffIds.length; i += 100) {
+            const batch = allStaffIds.slice(i, i + 100);
+            await channel.addMembers(batch);
+          }
+        } catch {
+          // Non-fatal
+        }
+      }
+
+      results.push(`[cross] ${result} (${allStaffIds.length} staff)`);
     }
 
-    // 4. Create/ensure ops broadcast channel
+    // 4. Create/ensure ops broadcast channel + add ALL active staff
     const broadcastResult = await ensureChannelWithMember(
       client,
       'ops-broadcast',
@@ -153,7 +201,20 @@ export async function POST() {
       { name: OPS_BROADCAST.name, description: OPS_BROADCAST.description },
       callerUserId
     );
-    results.push(`[broadcast] ${broadcastResult}`);
+
+    if (allStaffIds.length > 0) {
+      try {
+        const channel = client.channel('ops-broadcast', OPS_BROADCAST.id);
+        for (let i = 0; i < allStaffIds.length; i += 100) {
+          const batch = allStaffIds.slice(i, i + 100);
+          await channel.addMembers(batch);
+        }
+      } catch {
+        // Non-fatal
+      }
+    }
+
+    results.push(`[broadcast] ${broadcastResult} (${allStaffIds.length} staff)`);
 
     return NextResponse.json({
       success: true,
