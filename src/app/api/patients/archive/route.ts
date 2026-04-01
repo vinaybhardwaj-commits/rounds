@@ -12,6 +12,7 @@ import {
   getPatientThread,
 } from '@/lib/db-v5';
 import { updatePatientChannel, sendSystemMessage } from '@/lib/getstream';
+import { postPatientActivity } from '@/lib/patient-activity';
 
 const VALID_REMOVAL_REASONS = [
   'duplicate_entry',
@@ -111,18 +112,22 @@ export async function POST(request: NextRequest) {
           archived: true,
           archive_type,
         });
-        // Post a system message noting the archive
-        const reasonLabel = reason ? REASON_LABELS[reason] || reason : 'Post-Discharge';
-        await sendSystemMessage(
-          'patient-thread',
-          channelId,
-          `Patient ${archive_type === 'post_discharge' ? 'moved to post-discharge archive' : `removed: ${reasonLabel}`}${reason_detail ? ` — ${reason_detail}` : ''}`
-        );
       } catch (gsErr) {
         console.error('Failed to freeze GetStream channel:', gsErr);
         // Non-fatal — DB archive succeeded
       }
     }
+
+    // Post dual activity (patient thread + department)
+    const reasonLabel = reason ? REASON_LABELS[reason] || reason : null;
+    await postPatientActivity({
+      type: 'patient_archived',
+      patientThreadId: patient_thread_id,
+      patientName: (patient as Record<string, unknown>).patient_name as string,
+      patientChannelId: channelId || null,
+      actor: { profileId: user.profileId, name: user.email },
+      data: { archiveType: archive_type, reasonLabel, reasonDetail: reason_detail || null },
+    });
 
     return NextResponse.json({
       success: true,
@@ -170,11 +175,20 @@ export async function PATCH(request: NextRequest) {
           archived: false,
           archive_type: null,
         });
-        await sendSystemMessage('patient-thread', channelId, 'Patient restored to active list');
       } catch (gsErr) {
         console.error('Failed to unfreeze GetStream channel:', gsErr);
       }
     }
+
+    // Post dual activity (patient thread + department)
+    await postPatientActivity({
+      type: 'patient_restored',
+      patientThreadId: patient_thread_id,
+      patientName: (patient as Record<string, unknown>).patient_name as string,
+      patientChannelId: channelId || null,
+      actor: { profileId: user.profileId, name: user.email },
+      data: {},
+    });
 
     return NextResponse.json({
       success: true,

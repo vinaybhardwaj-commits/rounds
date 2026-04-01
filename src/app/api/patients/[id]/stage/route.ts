@@ -18,8 +18,8 @@ import { query } from '@/lib/db';
 import {
   updatePatientChannel,
   addUsersToChannel,
-  sendSystemMessage,
 } from '@/lib/getstream';
+import { postPatientActivity } from '@/lib/patient-activity';
 import type { PatientStage } from '@/types';
 import { PATIENT_STAGE_LABELS } from '@/types';
 
@@ -180,17 +180,17 @@ export async function PATCH(
         }
       }
 
-      // Post stage transition system message
-      try {
-        await sendSystemMessage(
-          'patient-thread',
-          channelId,
-          `📍 Stage transition: ${fromLabel} → ${toLabel}${newMembersAdded > 0 ? `. ${newMembersAdded} staff added to channel.` : ''}`
-        );
-      } catch {
-        // Non-fatal
-      }
     }
+
+    // Post dual activity message (patient thread + department)
+    await postPatientActivity({
+      type: 'stage_change',
+      patientThreadId: id,
+      patientName: (patient as Record<string, unknown>).patient_name as string,
+      patientChannelId: channelId,
+      actor: { profileId: user.profileId, name: user.email },
+      data: { fromLabel, toLabel, membersAdded: newMembersAdded > 0 ? newMembersAdded : undefined },
+    });
 
     // Auto-archive when reaching post_discharge
     let autoArchived = false;

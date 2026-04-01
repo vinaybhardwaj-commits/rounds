@@ -15,6 +15,7 @@ import {
   type LSQLeadRaw,
   type NormalizedLead,
 } from './leadsquared';
+import { postPatientActivity } from './patient-activity';
 
 // ============================================
 // TYPES
@@ -52,7 +53,7 @@ export async function upsertLeadAsPatient(
     surgeryRecommended?: boolean;
     remarks?: string | null;
   }
-): Promise<'created' | 'updated' | 'skipped'> {
+): Promise<{ action: 'created' | 'updated' | 'skipped'; id: string | null }> {
   // Check if this lead already exists in Rounds
   const existing = await queryOne<{ id: string; lsq_lead_stage: string }>(
     `SELECT id, lsq_lead_stage FROM patient_threads WHERE lsq_lead_id = $1`,
@@ -130,11 +131,11 @@ export async function upsertLeadAsPatient(
         normalized.surgeryOrderValue ? 'cash' : null, // Default financial category
       ]
     );
-    return 'updated';
+    return { action: 'updated', id: existing.id };
   }
 
   // Create new patient_thread
-  await query(
+  const insertResult = await queryOne<{ id: string }>(
     `INSERT INTO patient_threads (
       patient_name, lsq_lead_id, lsq_prospect_auto_id,
       phone, whatsapp_number, email,
@@ -161,7 +162,7 @@ export async function upsertLeadAsPatient(
       NOW(),
       $28, $29,
       $30, $31, $32, $33
-    )`,
+    ) RETURNING id`,
     [
       normalized.patientName,
       normalized.lsqLeadId,
@@ -198,7 +199,7 @@ export async function upsertLeadAsPatient(
       normalized.signupUrl,
     ]
   );
-  return 'created';
+  return { action: 'created', id: insertResult?.id || null };
 }
 
 /**
@@ -292,10 +293,25 @@ export async function syncLeadsByStage(
           enrichedData = await enrichLeadFromActivities(rawLead.ProspectID);
         }
 
-        const action = await upsertLeadAsPatient(normalized, enrichedData);
+        const { action, id: newPatientId } = await upsertLeadAsPatient(normalized, enrichedData);
 
         switch (action) {
-          case 'created': result.leadsCreated++; break;
+          case 'created':
+            result.leadsCreated++;
+            // Post activity for newly imported patients
+            postPatientActivity({
+              type: 'patient_imported',
+              patientThreadId: newPatientId || '',
+              patientName: normalized.patientName,
+              patientChannelId: null, // LSQ imports don't have a channel yet
+              actor: { profileId: 'rounds-system', name: 'LeadSquared Sync' },
+              data: {
+                stageLabel: normalized.roundsStage === 'pre_admission' ? 'Pre-Admission' : 'OPD',
+                ailment: normalized.ailment,
+                lsqLeadId: normalized.lsqLeadId,
+              },
+            }).catch(() => { /* non-blocking */ });
+            break;
           case 'updated': result.leadsUpdated++; break;
           case 'skipped': result.leadsSkipped++; break;
         }
@@ -367,10 +383,24 @@ export async function syncSingleLead(
 
     const normalized = normalizeLead(rawLead);
     const enrichedData = await enrichLeadFromActivities(rawLead.ProspectID);
-    const action = await upsertLeadAsPatient(normalized, enrichedData);
+    const { action, id: newPatientId } = await upsertLeadAsPatient(normalized, enrichedData);
 
     switch (action) {
-      case 'created': result.leadsCreated = 1; break;
+      case 'created':
+        result.leadsCreated = 1;
+        postPatientActivity({
+          type: 'patient_imported',
+          patientThreadId: newPatientId || '',
+          patientName: normalized.patientName,
+          patientChannelId: null,
+          actor: { profileId: 'rounds-system', name: 'LeadSquared Sync' },
+          data: {
+            stageLabel: normalized.roundsStage === 'pre_admission' ? 'Pre-Admission' : 'OPD',
+            ailment: normalized.ailment,
+            lsqLeadId: normalized.lsqLeadId,
+          },
+        }).catch(() => { /* non-blocking */ });
+        break;
       case 'updated': result.leadsUpdated = 1; break;
       case 'skipped': result.leadsSkipped = 1; break;
     }

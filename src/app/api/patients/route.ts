@@ -20,7 +20,9 @@ import {
   createPatientChannel,
   sendSystemMessage,
 } from '@/lib/getstream';
+import { postPatientActivity } from '@/lib/patient-activity';
 import type { PatientStage } from '@/types';
+import { PATIENT_STAGE_LABELS } from '@/types';
 
 export async function GET(request: NextRequest) {
   try {
@@ -155,6 +157,17 @@ export async function POST(request: NextRequest) {
       // Channel creation failure is non-fatal — the DB record is created
       console.error('Failed to create GetStream channel for patient thread:', err);
     }
+
+    // Post dual activity (patient thread + department)
+    const stageLabel = PATIENT_STAGE_LABELS[stage as PatientStage] || stage;
+    await postPatientActivity({
+      type: 'patient_created',
+      patientThreadId: patientThreadId,
+      patientName: patient_name,
+      patientChannelId: getstreamChannelId,
+      actor: { profileId: user.profileId, name: user.email },
+      data: { stageLabel },
+    });
 
     return NextResponse.json(
       {
