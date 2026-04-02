@@ -1396,6 +1396,36 @@ function SlashCommandMenu({
               <span className="text-sm font-medium text-even-navy">Start / View Claim</span>
               <span className="ml-auto text-[10px] text-blue-500 font-medium">Claim</span>
             </button>
+            <button
+              onClick={async () => {
+                const sumStr = prompt('Sum Insured (₹):');
+                if (!sumStr) return;
+                const sumInsured = Number(sumStr);
+                if (!sumInsured || sumInsured <= 0) { alert('Invalid sum insured'); return; }
+                const roomCategory = prompt('Room category (general / semi_private / private / suite / icu / nicu):');
+                if (!roomCategory) return;
+                try {
+                  const res = await fetch('/api/billing/roomcalc', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sumInsured, roomCategory }),
+                  });
+                  const data = await res.json();
+                  if (data.success) {
+                    alert(data.data.message.replace(/\*\*/g, ''));
+                  } else {
+                    alert(`Error: ${data.error}`);
+                  }
+                } catch (err) {
+                  alert(`Room calc error: ${err}`);
+                }
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-blue-50 text-left transition-colors"
+            >
+              <span className="text-base shrink-0">🏠</span>
+              <span className="text-sm font-medium text-even-navy">Room Rent Calculator</span>
+              <span className="ml-auto text-[10px] text-blue-500 font-medium">Quick Calc</span>
+            </button>
             {[
               { eventType: 'pre_auth_submitted' as ClaimEventType, label: 'Log Pre-Auth Submission', emoji: '📤' },
               { eventType: 'pre_auth_queried' as ClaimEventType, label: 'Log Insurer Query', emoji: '❓' },
@@ -1408,10 +1438,10 @@ function SlashCommandMenu({
               { eventType: 'final_approved' as ClaimEventType, label: 'Log Final Approval', emoji: '🟢' },
               { eventType: 'final_rejected' as ClaimEventType, label: 'Log Rejection', emoji: '🔴' },
               { eventType: 'note_added' as ClaimEventType, label: 'Add Claim Note', emoji: '📝' },
-            ].map(({ eventType, label, emoji }) => (
+            ].map(({ eventType: evtType, label, emoji }) => (
               <button
-                key={eventType}
-                onClick={() => onClaimAction(patientId, eventType)}
+                key={evtType}
+                onClick={() => onClaimAction(patientId, evtType)}
                 className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-amber-50 text-left transition-colors"
               >
                 <span className="text-base shrink-0">{emoji}</span>

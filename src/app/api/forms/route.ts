@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { createFormSubmission, listFormSubmissions, createReadinessItem } from '@/lib/db-v5';
-import { query as sqlQuery } from '@/lib/db';
+import { query as sqlQuery, queryOne } from '@/lib/db';
 import {
   FORM_REGISTRY,
   FORM_TYPE_LABELS,
@@ -17,7 +17,9 @@ import {
 } from '@/lib/form-registry';
 import { sendSystemMessage } from '@/lib/getstream';
 import { postPatientActivity } from '@/lib/patient-activity';
+import { getOrCreateClaim, logClaimEvent, postClaimMessage } from '@/lib/insurance-claims';
 import type { FormType, FormStatus } from '@/types';
+import { ROOM_RENT_ELIGIBILITY_PCT } from '@/types';
 
 export async function GET(request: NextRequest) {
   try {
@@ -154,6 +156,157 @@ export async function POST(request: NextRequest) {
         } catch (err) {
           console.error(`Failed to create readiness item "${def.itemName}":`, err);
           // Don't fail the whole submission for a readiness item error
+        }
+      }
+    }
+
+    // ── Financial Counseling → Insurance Claim Hook ──
+    // When financial_counseling is submitted with payment_mode = 'insurance',
+    // create/update the insurance_claims row and admission_tracker billing fields.
+    if (form_type === 'financial_counseling' && status !== 'draft' && body.patient_thread_id) {
+      const fd = form_data as Record<string, unknown>;
+      if (fd.payment_mode === 'insurance') {
+        try {
+          // Get or create insurance claim
+          const claim = await getOrCreateClaim(body.patient_thread_id, user.profileId);
+
+          // Calculate room rent eligibility and proportional deduction
+          const sumInsured = fd.sum_insured ? Number(fd.sum_insured) : null;
+          const roomCategory = (fd.room_category as string) || null;
+          const actualRoomRent = fd.actual_room_rent ? Number(fd.actual_room_rent) : null;
+          const isIcu = roomCategory === 'icu' || roomCategory === 'nicu';
+          const eligibilityPct = isIcu ? ROOM_RENT_ELIGIBILITY_PCT.icu : ROOM_RENT_ELIGIBILITY_PCT.standard;
+          const roomRentEligibility = sumInsured ? Math.round(sumInsured * eligibilityPct) : null;
+          const hasWaiver = !!fd.has_room_rent_waiver;
+
+          let proportionalDeductionPct: number | null = null;
+          if (!hasWaiver && roomRentEligibility && actualRoomRent && actualRoomRent > roomRentEligibility) {
+            proportionalDeductionPct = Math.round(((actualRoomRent - roomRentEligibility) / actualRoomRent) * 10000) / 100;
+          }
+
+          // Update the insurance claim with counseling data
+          const claimSets: string[] = [];
+          const claimParams: unknown[] = [claim.id];
+          let cIdx = 2;
+
+          const setField = (col: string, val: unknown) => {
+            if (val != null && val !== '') {
+              claimSets.push(`${col} = $${cIdx}`);
+              claimParams.push(val);
+              cIdx++;
+            }
+          };
+
+          setField('insurer_name', fd.insurance_provider);
+          setField('tpa_name', fd.tpa_name === 'Direct' ? null : fd.tpa_name);
+          setField('submission_channel', fd.submission_channel || (fd.tpa_name === 'Direct' ? 'direct' : 'tpa'));
+          setField('portal_used', fd.portal_used);
+          setField('policy_number', fd.policy_number);
+          setField('sum_insured', sumInsured);
+          setField('room_rent_eligibility', roomRentEligibility);
+          setField('room_category_selected', roomCategory);
+          setField('actual_room_rent', actualRoomRent);
+          setField('proportional_deduction_pct', proportionalDeductionPct);
+          setField('has_room_rent_waiver', hasWaiver);
+          setField('co_pay_pct', fd.co_pay_pct ? Number(fd.co_pay_pct) : null);
+          setField('estimated_cost', fd.estimated_cost ? Number(fd.estimated_cost) : null);
+
+          if (claimSets.length > 0) {
+            await sqlQuery(
+              `UPDATE insurance_claims SET ${claimSets.join(', ')} WHERE id = $1`,
+              claimParams
+            );
+          }
+
+          // Update admission_tracker billing fields
+          const atSets: string[] = [];
+          const atParams: unknown[] = [body.patient_thread_id];
+          let aIdx = 2;
+
+          const setAt = (col: string, val: unknown) => {
+            if (val != null) {
+              atSets.push(`${col} = $${aIdx}`);
+              atParams.push(val);
+              aIdx++;
+            }
+          };
+
+          setAt('insurance_claim_id', claim.id);
+          setAt('insurer_name', fd.insurance_provider);
+          setAt('submission_channel', fd.submission_channel || (fd.tpa_name === 'Direct' ? 'direct' : 'tpa'));
+          setAt('sum_insured', sumInsured);
+          setAt('room_rent_eligibility', roomRentEligibility);
+          setAt('proportional_deduction_risk', proportionalDeductionPct);
+
+          if (atSets.length > 0) {
+            await sqlQuery(
+              `UPDATE admission_tracker SET ${atSets.join(', ')}
+               WHERE patient_thread_id = $1 AND current_status != 'discharged'`,
+              atParams
+            );
+          }
+
+          // Log counseling_completed event on the claim
+          const profile = await queryOne<{ full_name: string }>(
+            `SELECT full_name FROM profiles WHERE id = $1`,
+            [user.profileId]
+          );
+          const actorName = profile?.full_name || user.email;
+
+          // Build description for system message
+          let counselingDesc = `Insurer: ${fd.insurance_provider || 'Unknown'}`;
+          if (fd.tpa_name && fd.tpa_name !== 'Direct') counselingDesc += ` via ${fd.tpa_name}`;
+          if (sumInsured) counselingDesc += ` | Sum Insured: ₹${sumInsured.toLocaleString('en-IN')}`;
+          if (roomCategory && actualRoomRent) {
+            counselingDesc += `\nRoom: ${roomCategory} (₹${actualRoomRent.toLocaleString('en-IN')}/day)`;
+            if (roomRentEligibility) counselingDesc += ` | Eligibility: ₹${roomRentEligibility.toLocaleString('en-IN')}/day`;
+          }
+          if (proportionalDeductionPct && proportionalDeductionPct > 0) {
+            counselingDesc += `\n⚠️ Proportional deduction risk: ${proportionalDeductionPct}%`;
+            if (fd.estimated_cost) {
+              const extraCost = Math.round(Number(fd.estimated_cost) * proportionalDeductionPct / 100);
+              counselingDesc += ` (on ₹${Number(fd.estimated_cost).toLocaleString('en-IN')} bill → extra ₹${extraCost.toLocaleString('en-IN')})`;
+            }
+          }
+          if (fd.co_pay_pct && Number(fd.co_pay_pct) > 0) counselingDesc += `\nCo-pay: ${fd.co_pay_pct}%`;
+          if (fd.deposit_collected && fd.deposit_collected_amount) {
+            counselingDesc += `\nDeposit: ₹${Number(fd.deposit_collected_amount).toLocaleString('en-IN')} (Collected)`;
+          }
+
+          await logClaimEvent(
+            claim.id,
+            body.patient_thread_id,
+            'counseling_completed',
+            counselingDesc,
+            user.profileId,
+            actorName,
+            { amount: fd.estimated_cost ? Number(fd.estimated_cost) : undefined },
+          );
+
+          // Post system message to patient thread
+          const patient = await queryOne<{
+            patient_name: string;
+            getstream_channel_id: string | null;
+          }>(
+            `SELECT patient_name, getstream_channel_id FROM patient_threads WHERE id = $1`,
+            [body.patient_thread_id]
+          );
+
+          if (patient) {
+            const sysMsg = `📋 **Financial counseling complete** by ${actorName}\n${counselingDesc}`;
+            if (patient.getstream_channel_id) {
+              try {
+                await sendSystemMessage('patient-thread', patient.getstream_channel_id, sysMsg);
+              } catch { /* non-fatal */ }
+            }
+            try {
+              await sendSystemMessage('department', 'billing',
+                `📋 ${patient.patient_name}: Financial counseling complete — by ${actorName}`);
+            } catch { /* non-fatal */ }
+          }
+        } catch (err) {
+          console.error('[FinancialCounseling] Claim hook error:', err);
+          // Non-fatal — form submission still succeeds
         }
       }
     }
