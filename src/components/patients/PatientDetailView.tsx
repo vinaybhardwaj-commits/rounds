@@ -172,6 +172,19 @@ export function PatientDetailView({
     totalElapsedMinutes: number | null;
   } | null>(null);
 
+  // Insurance claim state
+  const [insuranceClaim, setInsuranceClaim] = useState<Record<string, unknown> | null>(null);
+  const [claimSummary, setClaimSummary] = useState<{
+    statusLabel: string;
+    statusColor: string;
+    headroom: number | null;
+    enhancementSoonWarning: boolean;
+    proportionalDeductionRisk: boolean;
+    recoveryPct: number | null;
+    runningBill: number | null;
+  } | null>(null);
+  const [claimTimeline, setClaimTimeline] = useState<Record<string, unknown>[]>([]);
+
   // Inline edit state
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -210,8 +223,27 @@ export function PatientDetailView({
     }
   }, [patientId]);
 
+  const fetchClaimStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/patients/${patientId}/claim`);
+      const data = await res.json();
+      if (data.success && data.data) {
+        setInsuranceClaim(data.data.claim);
+        setClaimSummary(data.data.summary);
+        setClaimTimeline(data.data.timeline || []);
+      } else {
+        setInsuranceClaim(null);
+        setClaimSummary(null);
+        setClaimTimeline([]);
+      }
+    } catch {
+      // Non-fatal
+    }
+  }, [patientId]);
+
   useEffect(() => { fetchPatient(); }, [fetchPatient]);
   useEffect(() => { fetchDischargeStatus(); }, [fetchDischargeStatus]);
+  useEffect(() => { fetchClaimStatus(); }, [fetchClaimStatus]);
 
   // Fetch departments and consultants for inline edit
   useEffect(() => {
@@ -781,6 +813,153 @@ export function PatientDetailView({
                       'final_approval': 'Insurer Approval',
                     } as Record<string, string>)[(dischargeMilestone as Record<string, unknown>).bottleneck_step as string] || (dischargeMilestone as Record<string, unknown>).bottleneck_step
                   } ({(dischargeMilestone as Record<string, unknown>).bottleneck_minutes}m)
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Insurance Claim ── */}
+        {insuranceClaim && claimSummary && (
+          <div className="mx-4 mb-4">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              Insurance Claim
+              <span
+                className="ml-2 text-xs font-bold normal-case px-1.5 py-0.5 rounded-full"
+                style={{
+                  color: claimSummary.statusColor,
+                  backgroundColor: `${claimSummary.statusColor}15`,
+                }}
+              >
+                {claimSummary.statusLabel}
+              </span>
+            </h3>
+            <div className="bg-white rounded-xl border border-gray-100 p-3">
+              {/* Insurer info line */}
+              <div className="text-xs text-gray-600 mb-2">
+                {(insuranceClaim as Record<string, unknown>).insurer_name && (
+                  <span className="font-medium">
+                    {(insuranceClaim as Record<string, unknown>).insurer_name as string}
+                  </span>
+                )}
+                {(insuranceClaim as Record<string, unknown>).tpa_name && (
+                  <span> via {(insuranceClaim as Record<string, unknown>).tpa_name as string}</span>
+                )}
+                {(insuranceClaim as Record<string, unknown>).claim_number && (
+                  <span className="ml-2 text-gray-400">
+                    #{(insuranceClaim as Record<string, unknown>).claim_number as string}
+                  </span>
+                )}
+              </div>
+
+              {/* Financial summary grid */}
+              <div className="space-y-1.5 text-xs">
+                {(insuranceClaim as Record<string, unknown>).estimated_cost != null && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Estimated</span>
+                    <span className="font-medium">₹{Number((insuranceClaim as Record<string, unknown>).estimated_cost).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {(insuranceClaim as Record<string, unknown>).cumulative_approved_amount != null && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Approved</span>
+                    <span className="font-medium text-green-600">
+                      ₹{Number((insuranceClaim as Record<string, unknown>).cumulative_approved_amount).toLocaleString('en-IN')}
+                      {(insuranceClaim as Record<string, unknown>).estimated_cost ? (
+                        <span className="text-gray-400 ml-1">
+                          ({Math.round(
+                            (Number((insuranceClaim as Record<string, unknown>).cumulative_approved_amount) /
+                            Number((insuranceClaim as Record<string, unknown>).estimated_cost)) * 100
+                          )}%)
+                        </span>
+                      ) : null}
+                    </span>
+                  </div>
+                )}
+                {claimSummary.runningBill != null && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Running Bill</span>
+                    <span className="font-medium">₹{claimSummary.runningBill.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {claimSummary.headroom != null && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Headroom</span>
+                    <span className={`font-medium ${claimSummary.headroom < 0 ? 'text-red-600' : claimSummary.enhancementSoonWarning ? 'text-amber-600' : 'text-green-600'}`}>
+                      ₹{Math.abs(claimSummary.headroom).toLocaleString('en-IN')}
+                      {claimSummary.enhancementSoonWarning && ' ⚠️ Enhancement soon'}
+                      {claimSummary.headroom < 0 && ' ⚠️ Over approved'}
+                    </span>
+                  </div>
+                )}
+                {(insuranceClaim as Record<string, unknown>).final_bill_amount != null && (
+                  <div className="flex justify-between border-t border-gray-100 pt-1.5 mt-1.5">
+                    <span className="text-gray-500">Final Bill</span>
+                    <span className="font-medium">₹{Number((insuranceClaim as Record<string, unknown>).final_bill_amount).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {(insuranceClaim as Record<string, unknown>).final_approved_amount != null && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Settled</span>
+                    <span className="font-medium text-green-600">
+                      ₹{Number((insuranceClaim as Record<string, unknown>).final_approved_amount).toLocaleString('en-IN')}
+                      {claimSummary.recoveryPct != null && (
+                        <span className="text-gray-400 ml-1">({claimSummary.recoveryPct}% recovery)</span>
+                      )}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Risk indicators */}
+              {(claimSummary.proportionalDeductionRisk || (insuranceClaim as Record<string, unknown>).co_pay_pct) && (
+                <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+                  {claimSummary.proportionalDeductionRisk && (insuranceClaim as Record<string, unknown>).proportional_deduction_pct != null && (
+                    <div className="text-[10px] text-red-500">
+                      ⚠️ Room risk: {Number((insuranceClaim as Record<string, unknown>).proportional_deduction_pct)}% proportional deduction
+                    </div>
+                  )}
+                  {(insuranceClaim as Record<string, unknown>).co_pay_pct != null && Number((insuranceClaim as Record<string, unknown>).co_pay_pct) > 0 && (
+                    <div className="text-[10px] text-gray-500">
+                      Co-pay: {Number((insuranceClaim as Record<string, unknown>).co_pay_pct)}%
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAT info */}
+              {(insuranceClaim as Record<string, unknown>).pre_auth_tat_minutes != null && (
+                <div className="mt-2 pt-2 border-t border-gray-100 text-[10px] text-gray-500">
+                  Pre-auth TAT: {Math.floor(Number((insuranceClaim as Record<string, unknown>).pre_auth_tat_minutes) / 60)}h {Number((insuranceClaim as Record<string, unknown>).pre_auth_tat_minutes) % 60}m
+                  {(insuranceClaim as Record<string, unknown>).final_settlement_tat_minutes != null && (
+                    <span className="ml-3">
+                      Settlement TAT: {Math.floor(Number((insuranceClaim as Record<string, unknown>).final_settlement_tat_minutes) / 60)}h {Number((insuranceClaim as Record<string, unknown>).final_settlement_tat_minutes) % 60}m
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Recent timeline */}
+              {claimTimeline.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-gray-100">
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Recent Events</p>
+                  <div className="space-y-1">
+                    {claimTimeline.slice(-4).reverse().map((evt) => {
+                      const evtTime = evt.created_at
+                        ? new Date(evt.created_at as string).toLocaleString('en-IN', {
+                            day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                          })
+                        : '';
+                      return (
+                        <div key={evt.id as string} className="flex items-start gap-1.5 text-[11px]">
+                          <span className="text-gray-400 shrink-0 w-[85px]">{evtTime}</span>
+                          <span className="text-gray-700 truncate">
+                            {evt.performed_by_name as string || 'System'}: {evt.description as string}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>

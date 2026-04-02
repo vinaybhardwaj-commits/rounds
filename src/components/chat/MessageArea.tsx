@@ -33,8 +33,8 @@ import { useChatContext } from '@/providers/ChatProvider';
 import { MessageTypeBadge } from './MessageTypeBadge';
 import { DeleteMessageModal } from './DeleteMessageModal';
 import FormCard from '@/components/forms/FormCard';
-import type { MessageType, MessagePriority, FormType, PatientStage, DischargeMilestoneStep } from '@/types';
-import { PATIENT_STAGE_LABELS, VALID_STAGE_TRANSITIONS, DISCHARGE_MILESTONE_LABELS } from '@/types';
+import type { MessageType, MessagePriority, FormType, PatientStage, DischargeMilestoneStep, ClaimEventType } from '@/types';
+import { PATIENT_STAGE_LABELS, VALID_STAGE_TRANSITIONS, DISCHARGE_MILESTONE_LABELS, CLAIM_STATUS_LABELS } from '@/types';
 import { FORM_TYPE_LABELS, FORMS_BY_STAGE } from '@/lib/form-registry';
 
 // --- Types ---
@@ -1094,6 +1094,51 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                     alert(`Discharge action error: ${err}`);
                   }
                 }}
+                onClaimAction={async (patientId, eventType, description, amount, portalReference) => {
+                  setShowSlashMenu(false);
+                  setMessageText('');
+                  try {
+                    if (eventType === '__create') {
+                      // Create/load claim
+                      const res = await fetch(`/api/patients/${patientId}/claim`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                      });
+                      const data = await res.json();
+                      if (!data.success) alert(`Claim creation failed: ${data.error}`);
+                    } else {
+                      // Log a claim event — prompt for description if not provided
+                      const desc = description || prompt(`Enter details for this event:`);
+                      if (!desc) return;
+                      const amt = amount ?? (
+                        ['pre_auth_submitted', 'pre_auth_approved', 'pre_auth_partial',
+                         'enhancement_submitted', 'enhancement_approved',
+                         'final_bill_prepared', 'final_submitted', 'final_approved'].includes(eventType)
+                          ? Number(prompt('Amount (₹):') || '0') || undefined
+                          : undefined
+                      );
+                      const ref = portalReference ?? (
+                        ['pre_auth_submitted'].includes(eventType)
+                          ? prompt('Claim/reference number (optional):') || undefined
+                          : undefined
+                      );
+                      const res = await fetch(`/api/patients/${patientId}/claim`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          eventType,
+                          description: desc,
+                          amount: amt,
+                          portalReference: ref,
+                        }),
+                      });
+                      const data = await res.json();
+                      if (!data.success) alert(`Claim event failed: ${data.error}`);
+                    }
+                  } catch (err) {
+                    alert(`Claim action error: ${err}`);
+                  }
+                }}
                 onArchive={async (patientId) => {
                   setShowSlashMenu(false);
                   setMessageText('');
@@ -1218,6 +1263,7 @@ function SlashCommandMenu({
   onSelectForm,
   onAdvanceStage,
   onDischargeAction,
+  onClaimAction,
   onArchive,
   onClose,
 }: {
@@ -1226,6 +1272,7 @@ function SlashCommandMenu({
   onSelectForm: (formType: FormType, patientId?: string) => void;
   onAdvanceStage: (patientId: string, newStage: string) => void;
   onDischargeAction: (patientId: string, action: 'start' | 'step', step?: DischargeMilestoneStep) => void;
+  onClaimAction: (patientId: string, eventType: ClaimEventType | '__create', description?: string, amount?: number, portalReference?: string) => void;
   onArchive: (patientId: string) => void;
   onClose: () => void;
 }) {
@@ -1326,6 +1373,50 @@ function SlashCommandMenu({
                 <span className="ml-auto text-[10px] text-green-600 font-medium">
                   Discharge
                 </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Insurance Claim Actions */}
+      {isPatientThread && patientId && (
+        <>
+          <div className="px-3 py-2 border-t border-gray-100">
+            <p className="text-xs font-semibold text-gray-500">
+              Insurance Claim
+            </p>
+          </div>
+          <div className="py-1">
+            <button
+              onClick={() => onClaimAction(patientId, '__create')}
+              className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-blue-50 text-left transition-colors"
+            >
+              <span className="text-base shrink-0">🏥</span>
+              <span className="text-sm font-medium text-even-navy">Start / View Claim</span>
+              <span className="ml-auto text-[10px] text-blue-500 font-medium">Claim</span>
+            </button>
+            {[
+              { eventType: 'pre_auth_submitted' as ClaimEventType, label: 'Log Pre-Auth Submission', emoji: '📤' },
+              { eventType: 'pre_auth_queried' as ClaimEventType, label: 'Log Insurer Query', emoji: '❓' },
+              { eventType: 'pre_auth_query_responded' as ClaimEventType, label: 'Log Query Response', emoji: '💬' },
+              { eventType: 'pre_auth_approved' as ClaimEventType, label: 'Log Pre-Auth Approval', emoji: '✅' },
+              { eventType: 'pre_auth_denied' as ClaimEventType, label: 'Log Pre-Auth Denial', emoji: '❌' },
+              { eventType: 'enhancement_submitted' as ClaimEventType, label: 'Submit Enhancement', emoji: '📤' },
+              { eventType: 'enhancement_approved' as ClaimEventType, label: 'Log Enhancement Approval', emoji: '✅' },
+              { eventType: 'final_submitted' as ClaimEventType, label: 'Submit Final Bill', emoji: '📤' },
+              { eventType: 'final_approved' as ClaimEventType, label: 'Log Final Approval', emoji: '🟢' },
+              { eventType: 'final_rejected' as ClaimEventType, label: 'Log Rejection', emoji: '🔴' },
+              { eventType: 'note_added' as ClaimEventType, label: 'Add Claim Note', emoji: '📝' },
+            ].map(({ eventType, label, emoji }) => (
+              <button
+                key={eventType}
+                onClick={() => onClaimAction(patientId, eventType)}
+                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-amber-50 text-left transition-colors"
+              >
+                <span className="text-base shrink-0">{emoji}</span>
+                <span className="text-sm font-medium text-even-navy">{label}</span>
+                <span className="ml-auto text-[10px] text-amber-600 font-medium">Claim</span>
               </button>
             ))}
           </div>
