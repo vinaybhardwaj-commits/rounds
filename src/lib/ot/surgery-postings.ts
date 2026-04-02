@@ -422,9 +422,16 @@ export async function addDynamicItem(
   const posting = postingRows[0] as SurgeryPosting;
 
   const rawDate = posting.scheduled_date;
-  const dateStr = typeof rawDate === 'string' && rawDate.length > 10 ? rawDate.slice(0, 10) : String(rawDate).slice(0, 10);
+  let dateStr: string;
+  if (rawDate instanceof Date) {
+    dateStr = rawDate.toISOString().slice(0, 10);
+  } else if (typeof rawDate === 'string' && rawDate.length > 10) {
+    dateStr = rawDate.slice(0, 10);
+  } else {
+    dateStr = String(rawDate);
+  }
   const rawTime = posting.scheduled_time || '08:00';
-  const timeStr = rawTime.length > 5 ? rawTime.slice(0, 5) : rawTime;
+  const timeStr = typeof rawTime === 'string' && rawTime.length > 5 ? rawTime.slice(0, 5) : String(rawTime).slice(0, 5);
   const baseDate = new Date(`${dateStr}T${timeStr}:00+05:30`);
   const dueBy = new Date(baseDate.getTime() - 12 * 60 * 60 * 1000); // 12h before
 

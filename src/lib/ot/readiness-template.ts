@@ -225,14 +225,19 @@ export function generateReadinessItems(
 
   // Compute base datetime for due_by calculation
   // If no time set, assume 08:00 AM
-  // scheduled_date from Postgres may be YYYY-MM-DD or full ISO timestamp
+  // scheduled_date from Neon may be: Date object, ISO string, or YYYY-MM-DD
   const rawDate = posting.scheduled_date;
-  const dateStr = typeof rawDate === 'string' && rawDate.length > 10
-    ? rawDate.slice(0, 10)
-    : String(rawDate).slice(0, 10);
+  let dateStr: string;
+  if (rawDate instanceof Date) {
+    dateStr = rawDate.toISOString().slice(0, 10);
+  } else if (typeof rawDate === 'string' && rawDate.length > 10) {
+    dateStr = rawDate.slice(0, 10);
+  } else {
+    dateStr = String(rawDate);
+  }
   // scheduled_time may be HH:MM or HH:MM:SS — normalize to HH:MM
   const rawTime = posting.scheduled_time || '08:00';
-  const timeStr = rawTime.length > 5 ? rawTime.slice(0, 5) : rawTime;
+  const timeStr = typeof rawTime === 'string' && rawTime.length > 5 ? rawTime.slice(0, 5) : String(rawTime).slice(0, 5);
   const baseDate = new Date(`${dateStr}T${timeStr}:00+05:30`); // IST
 
   for (const tmpl of OT_READINESS_TEMPLATE) {
