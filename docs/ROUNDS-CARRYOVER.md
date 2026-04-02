@@ -2,8 +2,8 @@
 
 **Purpose**: Paste this at the start of a new thread to restore full build context for continuing Rounds development. This captures everything a new session needs to pick up where we left off.
 
-**Last updated**: 1 April 2026
-**Current step**: Steps 0 through 9.4 ALL COMPLETE — Phase 10 (Insurance + Files + Patient Tabs) specified in PRD addendum, not yet built
+**Last updated**: 2 April 2026
+**Current state**: Steps 0–9.4 + Billing Integration (Phases 1–5) ALL COMPLETE. Phase 10 (Files + Patient Tabs) specified in PRD addendum, not yet built.
 
 ---
 
@@ -23,7 +23,7 @@ Rounds is an AI-organized hospital communication and patient workflow platform f
 |-------|-----------|-------|
 | Frontend | React 18 + Tailwind CSS 3 | Custom chat UI, no stream-chat-react |
 | Messaging | GetStream Chat (`stream-chat` v9.38) | 5 channel types, 25 seeded channels |
-| Database | Neon PostgreSQL (`@neondatabase/serverless`) | 18 tables, HTTP driver (no multi-statement) |
+| Database | Neon PostgreSQL (`@neondatabase/serverless`) | 21 tables, HTTP driver (no multi-statement) |
 | Auth | Custom JWT (`jose` v6 + `bcryptjs`) | Email + 4-digit PIN, NOT NextAuth/OAuth |
 | Hosting | Vercel (project: `rounds-sqxh`) | Auto-deploy from `main` branch |
 | AI | Local Ollama via Cloudflare Tunnel | `openai` npm SDK → `LLM_BASE_URL` |
@@ -83,6 +83,22 @@ const response = await llm.chat.completions.create({ model: MODEL_PRIMARY, ... }
 ### ChatShell uses h-full, NOT h-screen
 ChatShell lives inside AppShell's flex layout. It must use `h-full` to fill its container. Using `h-screen` would cause it to overflow past the bottom tab bar.
 
+### Insurance Claims — EVENT_STATUS_MAP Pattern
+All claim status transitions are driven by a single `EVENT_STATUS_MAP` in `src/lib/insurance-claims.ts`. The function `logClaimEvent()` is the ONLY entry point for mutating insurance claims — it inserts an immutable event row, looks up the new status from the map, and updates the claim in one transaction.
+
+### Form Post-Submission Hooks
+`/api/forms` POST has two non-fatal hooks after form submission:
+1. **Financial counseling → claim bridge**: When `financial_counseling` + `payment_mode === 'insurance'`, creates/updates insurance claim with room rent eligibility, proportional deduction risk, and billing fields.
+2. **Feedback attribution**: When `post_discharge_followup` is submitted, calls `calculateMilestoneAttribution()` and merges attribution data into the form's JSONB.
+Both hooks are try/catch wrapped — form submission succeeds even if the hook fails.
+
+### Billing Business Constants
+```typescript
+ROOM_RENT_ELIGIBILITY_PCT = { standard: 0.01, icu: 0.015 } // 1% / 1.5% of sum insured
+IRDA_TAT = { pre_auth: 480, final_approval: 240, follow_up_alert: 180 } // minutes
+DEFAULT_ENHANCEMENT_THRESHOLD = 50000 // ₹50K gap triggers alert
+```
+
 ### Auto-Deploy
 Push to `main` → Vercel auto-builds and deploys. No manual deployment needed. Build takes ~60 seconds.
 
@@ -111,7 +127,7 @@ git remote set-url origin https://x-access-token:<PAT>@github.com/vinaybhardwaj-
 
 ---
 
-## 5. Database Schema (18 tables)
+## 5. Database Schema (21 tables)
 
 ### Original 8 tables (Steps 0–1):
 - `profiles` — staff accounts (id UUID, email, full_name, role, status, department_id, PIN hash)
@@ -138,8 +154,14 @@ git remote set-url origin https://x-access-token:<PAT>@github.com/vinaybhardwaj-
 ### Step 9 tables (1 table):
 - `patient_changelog` — immutable change audit trail per patient (patient_thread_id, changed_by, field_name, old_value, new_value, change_type, metadata JSONB). 3 indexes: patient_thread_id, changed_by, created_at DESC
 
+### Billing Integration tables (3 tables, added 2 Apr 2026):
+- `insurance_claims` — 40+ column claim lifecycle tracking: insurer/TPA, room rent eligibility, proportional deduction, pre-auth/enhancement/final amounts + TATs, recovery rate, revenue leakage. Linked to patient_threads + admission_tracker.
+- `claim_events` — immutable event log with 24 event types (ClaimEventType). Each event has type, description, amount, portal_reference, document_urls, performer info. Append-only — claim_status on insurance_claims is the derived "current state".
+- `discharge_milestones` — 9-step discharge tracking: discharge_ordered → pharmacy_clearance → lab_clearance → discharge_summary → billing_closure → final_bill_submitted → final_approval → patient_settled → patient_departed. Per-step timestamps + TAT columns + bottleneck identification.
+- `admission_tracker` extended with 8 billing columns: insurance_claim_id, insurer_name, submission_channel, sum_insured, room_rent_eligibility, proportional_deduction_risk, running_bill_amount, cumulative_approved_amount, enhancement_alert_threshold (default ₹50K)
+
 ### 13 Form Types:
-marketing_cc_handoff, admission_advice, financial_counseling, ot_billing_clearance, admission_checklist, surgery_posting, pre_op_nursing_checklist, who_safety_checklist, nursing_shift_handoff, discharge_readiness, post_discharge_followup, daily_department_update, pac_clearance
+marketing_cc_handoff, admission_advice, financial_counseling (v2: 6 sections with TPA/room rent/deduction data), ot_billing_clearance, admission_checklist, surgery_posting, pre_op_nursing_checklist, who_safety_checklist, nursing_shift_handoff, discharge_readiness, post_discharge_followup (v2: 5 segmented discharge ratings), daily_department_update, pac_clearance
 
 ---
 
@@ -154,7 +176,7 @@ marketing_cc_handoff, admission_advice, financial_counseling, ot_billing_clearan
 
 ---
 
-## 7. API Routes (~46 total)
+## 7. API Routes (66 route files total)
 
 ### Auth (5 routes):
 - `POST /api/auth/login` — email+PIN → JWT cookie + GetStream token + auto-join channels
@@ -177,18 +199,27 @@ marketing_cc_handoff, admission_advice, financial_counseling, ot_billing_clearan
 - `POST /api/profiles/import` — CSV bulk import
 - `POST /api/webhooks/getstream` — GetStream event webhook
 
-### Patient Workflow (16 routes):
+### Patient Workflow (16+ routes):
 - `GET/POST /api/patients` — list (stage+dept filters, include_archived param) / create patient thread (auto-creates GetStream channel)
 - `GET/PATCH /api/patients/[id]` — get (with form history) / partial update
 - `PATCH /api/patients/[id]/stage` — stage transition with validation, channel update, member auto-add, changelog logging
 - `PATCH /api/patients/[id]/fields` — inline field editing (uhid, ip_number, consulting_doctor, department_id) with changelog logging
 - `PATCH /api/patients/[id]/pac-status` — PAC status update with changelog logging
-- `GET/POST /api/forms` — list (type+patient+status filters) / submit form (server validation, readiness auto-gen, dual chat posting to patient channel + department channel)
+- `GET/POST/PATCH /api/patients/[id]/claim` — insurance claim lifecycle (get+timeline+summary / create / log event)
+- `GET/POST/PATCH /api/patients/[id]/discharge` — discharge milestones (status / start / advance step)
+- `GET/POST/PATCH /api/patients/[id]/enhance` — enhancement (status / doctor case summary / update running bill)
+- `GET/POST /api/forms` — list / submit form (server validation, readiness auto-gen, dual chat posting, financial counseling→claim hook, feedback attribution hook)
 - `GET /api/forms/[id]` — get form + readiness items + aggregate
 - `GET /api/readiness/[formId]` — readiness items for a form
 - `PATCH /api/readiness/items/[itemId]` — confirm/flag readiness item
 - `GET /api/readiness/overdue` — all overdue readiness items (used by TasksView badge)
 - `GET /api/admission-tracker` + `POST` — list active admissions / create new admission
+
+### Billing (4 routes):
+- `POST /api/billing/roomcalc` — room rent eligibility calculator (sumInsured, roomCategory → eligibility, deduction %, recommendation)
+- `GET/POST /api/billing/check-enhancements` — scan all patients for threshold breach (GET=dry run, POST=fire alerts)
+- `GET /api/billing/metrics` — full BI dashboard (revenue, speed, satisfaction) with `?from=&to=` date filters
+- `GET /api/billing/insurer-performance` — per-insurer benchmarks with date filters
 
 ### Duty Roster (4 routes):
 - `GET/POST /api/duty-roster` — list / create (admin-only)
@@ -224,6 +255,8 @@ AppShell (outer, wraps ChatProvider)
     │   ├── Inline editable fields (UHID, IP Number, Doctor, Department)
     │   ├── PAC Status selector (4 states)
     │   ├── Form history with GapAnalysisCard links
+    │   ├── Insurance Claim panel (status, financials grid, risk indicators, TATs, timeline)
+    │   ├── Discharge Progress panel (9-step milestone tracker)
     │   ├── PredictionCard (AI: LOS, discharge readiness, risk)
     │   └── "Open Channel" link
     ├── Patients Tab (default) — PatientsView.tsx
@@ -296,6 +329,12 @@ AppShell (outer, wraps ChatProvider)
 | 9.2 | Patient detail enhancements (inline edit, 11 stages, PAC, changelog) | ✅ Done | `ccf9625`+`9353cdb`+`610534e` |
 | 9.3 | Admin Changelog page (fishbone timeline) | ✅ Done | `ccf9625` |
 | 9.4 | Standalone Forms module (5th bottom tab, dual chat posting) | ✅ Done | `3eee752` |
+| B.1 | Discharge timeline tracker (9-step milestones + TATs) | ✅ Done | `3108e0f` |
+| B.1.5 | Billing DB migration (3 tables + admission_tracker extensions) | ✅ Done | `534332d` |
+| B.2 | Insurance claim lifecycle tracker (24 events, STATUS_MAP) | ✅ Done | `530d2d9` |
+| B.3 | Financial counseling enhancement + room rent calculator | ✅ Done | `b0ce33b` |
+| B.4 | Enhancement alert system (auto-detect threshold breach) | ✅ Done | `d6258d6` |
+| B.5 | Feedback attribution + billing intelligence dashboard | ✅ Done | `d1fc4d3` |
 
 ---
 
@@ -315,10 +354,16 @@ AppShell (outer, wraps ChatProvider)
 - **Test data cleanup**: "Test Patient Alpha" in production DB.
 - **Stage-aware nudges**: Banner in patient channels suggesting next required form (deferred from 6.2b).
 
+### Billing Integration follow-ups:
+- **Billing dashboard UI**: `/api/billing/metrics` and `/api/billing/insurer-performance` endpoints exist but have no frontend. Could build "Billing Intelligence" admin page.
+- **Enhancement cron**: `/api/billing/check-enhancements` is manual. Add to Vercel cron for periodic scanning.
+- **Monthly summary auto-post**: Design doc specifies monthly department channel summaries — not yet built.
+- **Billing design doc**: `ROUNDS-BILLING-INTEGRATION-DESIGN.md` was created in a prior thread but may not be in the repo. Context seed at `docs/context-seeds/2026-04-02-billing-integration-phases-1-5.md` captures all decisions.
+
 ### Phase 10 — PRD Addendum (specified, not yet built):
-Full PRD document at `Rounds-PRD-Addendum-Insurance-Files-Tabs.docx`. Four implementation phases:
+Full PRD document at `Rounds-PRD-Addendum-Insurance-Files-Tabs.docx`. Note: Phase 10b (Insurance Module) was partially superseded by the Billing Integration — the claim lifecycle, TPA workflow, and event tracking are already built. Phase 10 now primarily covers:
 1. **Foundation** (Phase 10a): `files` + `patient_files` tables, Vercel Blob storage, tabbed PatientDetailView (Overview | Files | Insurance), file upload/download/link UI
-2. **Insurance Module** (Phase 10b): `insurance_policies` + `patient_insurance` + `insurance_events` tables, TPA workflow with 17 event types, policy management UI in Insurance tab
+2. **Insurance Module** (Phase 10b): `insurance_policies` + `patient_insurance` tables for policy-level management (separate from claim-level tracking which is done). Policy details UI.
 3. **Chat-to-Files** (Phase 10c): Auto-link chat file attachments to patient's file store
 4. **AI Enhancements** (Phase 10d): AI-powered file analysis, insurance document parsing, auto-tagging
 
@@ -335,7 +380,7 @@ Full PRD document at `Rounds-PRD-Addendum-Insurance-Files-Tabs.docx`. Four imple
 
 ---
 
-## 12. File Tree (~95 source files)
+## 12. File Tree (~141 source files)
 
 ```
 middleware.ts                              — Edge auth middleware
@@ -358,23 +403,25 @@ src/
 │   │   └── profiles/, users/, departments/ — Staff management
 │   ├── auth/                              — Login, signup, pending (3 pages)
 │   ├── forms/                             — Form picker, new, [id] view (3 pages)
-│   └── api/                               — ~46 API routes (see section 7)
+│   └── api/                               — 66 API route files (see section 7)
 │       ├── admin/{approvals, getstream/setup, getstream/seed-channels, migrate, changelog, changelog/[patientId]}
 │       ├── auth/{login, logout, me, signup, stream-token}
 │       ├── {departments, profiles, profiles/import, profiles/me, webhooks/getstream}
-│       ├── patients/, patients/[id]/, patients/[id]/stage/, patients/[id]/fields/, patients/[id]/pac-status/
+│       ├── patients/, patients/[id]/, patients/[id]/{stage,fields,pac-status,claim,discharge,enhance,files}
+│       ├── patients/{archive,form-status,import}
 │       ├── forms/, forms/[id]/
-│       ├── readiness/[formId]/, readiness/items/[itemId]/, readiness/overdue/
+│       ├── readiness/{[formId],items/[itemId],overdue,completed}
 │       ├── admission-tracker/
-│       ├── duty-roster/, duty-roster/[id]/, duty-roster/resolve/, duty-roster/handoff/
-│       ├── escalation/cron/, escalation/log/
-│       ├── push/vapid-key/, push/subscribe/, push/send/
-│       └── ai/gap-analysis/, ai/briefing/, ai/predict/
+│       ├── billing/{roomcalc,check-enhancements,metrics,insurer-performance}
+│       ├── duty-roster/, duty-roster/{[id],resolve,handoff}
+│       ├── escalation/{cron,log}
+│       ├── push/{vapid-key,subscribe,send}
+│       └── ai/{gap-analysis,briefing,predict}
 ├── components/
 │   ├── AppShell.tsx                       — Main app wrapper (outer + inner for GetStream badges)
 │   ├── admin/                             — CSVImport, DepartmentList, ProfilesTable
 │   ├── ai/                                — GapAnalysisCard, DailyBriefing, PredictionCard
-│   ├── chat/                              — ChatShell, ChannelSidebar, MessageArea (+SlashCommandMenu), ThreadPanel, SearchOverlay, NewMessageDialog, MessageTypeBadge
+│   ├── chat/                              — ChatShell, ChannelSidebar, MessageArea (+SlashCommandMenu with insurance claims + enhancement actions), ThreadPanel, SearchOverlay, NewMessageDialog, MessageTypeBadge
 │   ├── forms/                             — FormRenderer, FormCard, FormsView (~500 lines, standalone form-centric module)
 │   ├── layout/                            — AuthProvider, Header, Sidebar, BottomTabBar (5 tabs)
 │   ├── patients/                          — PatientsView, PatientDetailView (inline edit, PAC status, 11 stages)
@@ -385,12 +432,17 @@ src/
 │   ├── auth.ts                            — JWT create/verify, getCurrentUser
 │   ├── db.ts                              — Neon SQL helpers (original)
 │   ├── db-v5.ts                           — v5 CRUD helpers (817+ lines, includes changelog functions)
-│   ├── form-registry.ts                   — 13 form schemas (1,541+ lines, FORMS_BY_STAGE updated for 11 stages)
+│   ├── form-registry.ts                   — 13 form schemas (1,645 lines, FORMS_BY_STAGE for 11 stages)
 │   ├── getstream.ts                       — Server client + helpers (236 lines)
 │   ├── getstream-setup.ts                 — Channel type definitions
 │   ├── llm.ts                             — OpenAI SDK client → Ollama via Cloudflare Tunnel
 │   ├── ai.ts                              — AI functions (gap analysis, briefing, predictions)
-│   └── push.ts                            — web-push helpers (sendPushToUser, broadcast)
+│   ├── push.ts                            — web-push helpers (sendPushToUser, broadcast)
+│   ├── patient-activity.ts                — Dual-post patient activity to thread + department
+│   ├── discharge-milestones.ts            — 9-step discharge tracking with TAT calculation (420 lines)
+│   ├── insurance-claims.ts                — Claim lifecycle, EVENT_STATUS_MAP, system messages (692 lines)
+│   ├── enhancement-alerts.ts              — Auto-detect threshold breach, fire alerts (286 lines)
+│   └── billing-metrics.ts                 — Revenue/speed/satisfaction BI aggregations (539 lines)
 ├── providers/
 │   └── ChatProvider.tsx                   — GetStream StreamChat client wrapper
 └── types/
@@ -451,7 +503,7 @@ curl -c /tmp/cookies.txt -X POST https://rounds-sqxh.vercel.app/api/auth/login \
 
 ## 15. Instruction to AI Assistant
 
-You are continuing work on the Rounds app. **Steps 0–9.4 are complete. Phase 10 (Insurance + Files + Patient Tabs) is specified in a PRD addendum but not yet built.**
+You are continuing work on the Rounds app. **Steps 0–9.4 + Billing Integration (Phases 1–5) are ALL complete. Phase 10 (Files + Patient Tabs) is specified in a PRD addendum but not yet built.**
 
 The user (V) prefers:
 - Ask clarifying questions before starting work
@@ -462,14 +514,25 @@ The user (V) prefers:
 - Use `h-full` not `h-screen` inside AppShell's tab layout
 - AI uses local Ollama via Cloudflare Tunnel (`src/lib/llm.ts`), NOT cloud APIs
 - Forms data must be immutable once submitted — new submission rather than edit
+- Insurance claim mutations go through `logClaimEvent()` only (single entry point)
+- Form post-submission hooks are non-fatal (try/catch, form submission succeeds regardless)
 
 Current focus areas:
-1. **Testing**: End-to-end workflow testing on Vercel with real staff accounts
-2. **UI/UX polish**: Mobile usability, edge cases, visual refinements
-3. **Infrastructure setup**: Cloudflare Tunnel on Mac Mini, Vercel env vars for LLM + VAPID
-4. **Phase 10 planning**: Insurance lifecycle, file management (Vercel Blob), tabbed PatientDetailView — see PRD addendum
+1. **Billing testing**: Full insurance claim lifecycle test (counseling → pre-auth → enhancement → discharge → final → feedback → metrics)
+2. **Billing dashboard UI**: Build admin page for `/api/billing/metrics` and `/api/billing/insurer-performance`
+3. **Enhancement cron**: Add `/api/billing/check-enhancements` to Vercel cron
+4. **Monthly summaries**: Auto-post monthly department performance summaries
+5. **Infrastructure**: Cloudflare Tunnel on Mac Mini, Vercel env vars for LLM + VAPID
+6. **Phase 10**: Files + Patient Tabs — PRD addendum complete, build not started
+
+Key billing integration files to read first:
+- `src/lib/insurance-claims.ts` — Core claim logic, EVENT_STATUS_MAP, logClaimEvent()
+- `src/lib/discharge-milestones.ts` — 9-step discharge tracking
+- `src/lib/enhancement-alerts.ts` — Threshold detection + alerting
+- `src/lib/billing-metrics.ts` — BI aggregation layer
+- `src/types/index.ts` — ClaimStatus, ClaimEventType, IRDA_TAT, ROOM_RENT_ELIGIBILITY_PCT constants
+- `docs/context-seeds/2026-04-02-billing-integration-phases-1-5.md` — Full build context for all 5 phases
 
 The build order document is at: `docs/ROUNDS-BUILD-ORDER.md`
 The context seeds are at: `docs/context-seeds/`
-The full ops suite documentation is at: `EHRC-OPS-SUITE-DOCUMENTATION.md`
 The PRD addendum is at: `Rounds-PRD-Addendum-Insurance-Files-Tabs.docx` (in workspace folder)
