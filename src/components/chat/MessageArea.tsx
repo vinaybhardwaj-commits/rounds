@@ -1530,6 +1530,105 @@ function SlashCommandMenu({
                 </span>
               </button>
             )}
+            {/* Enhancement actions — for admitted insurance patients */}
+            {currentStage && ['admitted', 'medical_management', 'pre_op', 'post_op', 'post_op_care'].includes(currentStage) && (
+              <>
+                <button
+                  onClick={async () => {
+                    const diagnosis = prompt('Current diagnosis:');
+                    if (!diagnosis) return;
+                    const treatment = prompt('Ongoing treatment:');
+                    if (!treatment) return;
+                    const reason = prompt('Reason for cost extension:');
+                    if (!reason) return;
+                    const estimate = Number(prompt('Revised cost estimate (₹):') || '0');
+                    if (!estimate) return;
+                    try {
+                      const res = await fetch(`/api/patients/${patientId}/enhance`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          currentDiagnosis: diagnosis,
+                          ongoingTreatment: treatment,
+                          reasonForExtension: reason,
+                          revisedEstimate: estimate,
+                        }),
+                      });
+                      const data = await res.json();
+                      if (!data.success) alert(`Enhancement failed: ${data.error}`);
+                    } catch (err) {
+                      alert(`Enhancement error: ${err}`);
+                    }
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-amber-50 text-left transition-colors"
+                >
+                  <span className="text-base shrink-0">👨‍⚕️</span>
+                  <span className="text-sm font-medium text-amber-700">Submit Case Summary (Enhancement)</span>
+                  <span className="ml-auto text-[10px] text-amber-600 font-medium">
+                    Doctor
+                  </span>
+                </button>
+                <button
+                  onClick={async () => {
+                    const billStr = prompt('Current running bill amount (₹):');
+                    if (!billStr) return;
+                    const runningBill = Number(billStr);
+                    if (!runningBill || runningBill < 0) { alert('Invalid amount'); return; }
+                    try {
+                      const res = await fetch(`/api/patients/${patientId}/enhance`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ runningBill }),
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        const msg = data.data?.needsEnhancement
+                          ? `Bill updated to ₹${runningBill.toLocaleString('en-IN')} — Enhancement alert fired!`
+                          : `Bill updated to ₹${runningBill.toLocaleString('en-IN')}`;
+                        alert(msg);
+                      } else {
+                        alert(`Update failed: ${data.error}`);
+                      }
+                    } catch (err) {
+                      alert(`Update error: ${err}`);
+                    }
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-amber-50 text-left transition-colors"
+                >
+                  <span className="text-base shrink-0">💰</span>
+                  <span className="text-sm font-medium text-amber-700">Update Running Bill</span>
+                  <span className="ml-auto text-[10px] text-amber-600 font-medium">
+                    Billing
+                  </span>
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('/api/billing/check-enhancements', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ patientThreadId: patientId }),
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        alert(data.message);
+                      } else {
+                        alert(`Check failed: ${data.error}`);
+                      }
+                    } catch (err) {
+                      alert(`Check error: ${err}`);
+                    }
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-amber-50 text-left transition-colors"
+                >
+                  <span className="text-base shrink-0">🔔</span>
+                  <span className="text-sm font-medium text-amber-700">Check Enhancement Need</span>
+                  <span className="ml-auto text-[10px] text-amber-600 font-medium">
+                    Alert
+                  </span>
+                </button>
+              </>
+            )}
             <button
               onClick={() => onArchive(patientId)}
               className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-red-50 text-left transition-colors"
