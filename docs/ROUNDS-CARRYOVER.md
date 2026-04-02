@@ -3,7 +3,7 @@
 **Purpose**: Paste this at the start of a new thread to restore full build context for continuing Rounds development. This captures everything a new session needs to pick up where we left off.
 
 **Last updated**: 2 April 2026
-**Current state**: Steps 0–9.4 + Billing Integration (Phases 1–5) ALL COMPLETE. Phase 10 (Files + Patient Tabs) specified in PRD addendum, not yet built.
+**Current state**: Steps 0–9.4 + Billing Integration (Phases 1–5) ALL COMPLETE. OT Surgery Readiness PRD v2 complete, ready for build (OT.1–OT.5). Phase 10 (Files + Patient Tabs) specified in PRD addendum, not yet built.
 
 ---
 
@@ -22,8 +22,8 @@ Rounds is an AI-organized hospital communication and patient workflow platform f
 | Layer | Technology | Notes |
 |-------|-----------|-------|
 | Frontend | React 18 + Tailwind CSS 3 | Custom chat UI, no stream-chat-react |
-| Messaging | GetStream Chat (`stream-chat` v9.38) | 5 channel types, 25 seeded channels |
-| Database | Neon PostgreSQL (`@neondatabase/serverless`) | 21 tables, HTTP driver (no multi-statement) |
+| Messaging | GetStream Chat (`stream-chat` v9.38) | 5 channel types, 25 seeded channels (→26 after OT build) |
+| Database | Neon PostgreSQL (`@neondatabase/serverless`) | 21 tables (→25 after OT migration), HTTP driver (no multi-statement) |
 | Auth | Custom JWT (`jose` v6 + `bcryptjs`) | Email + 4-digit PIN, NOT NextAuth/OAuth |
 | Hosting | Vercel (project: `rounds-sqxh`) | Auto-deploy from `main` branch |
 | AI | Local Ollama via Cloudflare Tunnel | `openai` npm SDK → `LLM_BASE_URL` |
@@ -99,6 +99,19 @@ IRDA_TAT = { pre_auth: 480, final_approval: 240, follow_up_alert: 180 } // minut
 DEFAULT_ENHANCEMENT_THRESHOLD = 50000 // ₹50K gap triggers alert
 ```
 
+### OT Surgery Readiness — Key Patterns (PRD complete, build pending)
+- **Surgery posting is a first-class entity** — writes to `surgery_postings` table, NOT `form_submissions`. The old `surgery_posting` form type is deprecated.
+- **OT readiness items are separate from `readiness_items`** — uses `ot_readiness_items` (different table, different FK to `surgery_postings`, different statuses including `blocked`, has audit log).
+- **`#ot-schedule` channel uses existing `cross-functional` type** — no new GetStream channel type.
+- **Progressive disclosure** — Surgery Panel collapsed by default, readiness categories are accordions, equipment detail is role-gated.
+- **Action-first pattern** — OT Items sub-tab in Tasks shows items with one-tap Confirm buttons. Banner on Patients tab when user has pending items.
+- **3-step posting wizard** — Patient+Procedure → Team+Schedule → Review+Post. Only 7 required fields. Smart defaults from `PROCEDURE_DEFAULTS` map.
+- **PAC bottom sheet** — standalone component invocable from OT Items (1 tap), Surgery Panel button, or slash command. All three → same component.
+- **Bulk confirm** — `/api/ot/readiness/bulk-confirm` endpoint. Audit log action = `'bulk_confirmed'`. Single status recompute after all updates.
+- **Role-aware equipment display** — SCM/OT coordinator see full vendor+ETA detail. Others see green/yellow/red status dots. Display logic, not data model separation.
+- **Full PRD**: `docs/ROUNDS-OT-SURGERY-READINESS-PRD.md`
+- **Context seed**: `docs/context-seeds/2026-04-02-ot-surgery-readiness-prd-v2.md`
+
 ### Auto-Deploy
 Push to `main` → Vercel auto-builds and deploys. No manual deployment needed. Build takes ~60 seconds.
 
@@ -127,7 +140,7 @@ git remote set-url origin https://x-access-token:<PAT>@github.com/vinaybhardwaj-
 
 ---
 
-## 5. Database Schema (21 tables)
+## 5. Database Schema (21 tables → 25 after OT migration)
 
 ### Original 8 tables (Steps 0–1):
 - `profiles` — staff accounts (id UUID, email, full_name, role, status, department_id, PIN hash)
@@ -160,6 +173,12 @@ git remote set-url origin https://x-access-token:<PAT>@github.com/vinaybhardwaj-
 - `discharge_milestones` — 9-step discharge tracking: discharge_ordered → pharmacy_clearance → lab_clearance → discharge_summary → billing_closure → final_bill_submitted → final_approval → patient_settled → patient_departed. Per-step timestamps + TAT columns + bottleneck identification.
 - `admission_tracker` extended with 8 billing columns: insurance_claim_id, insurer_name, submission_channel, sum_insured, room_rent_eligibility, proportional_deduction_risk, running_bill_amount, cumulative_approved_amount, enhancement_alert_threshold (default ₹50K)
 
+### OT Surgery Readiness tables (4 tables, PRD complete, migration pending):
+- `surgery_postings` — one row per posted surgery. Required: patient_name, procedure_name, procedure_side, primary_surgeon_name, anaesthesiologist_name, scheduled_date, ot_room. Progressive: wound_class, anaesthesia_type, scrub_nurse, etc. Flags: implant_required, blood_required, is_insured → drive conditional readiness items. PAC: asa_score, is_high_risk. Status: posted → confirmed → in_progress → completed | cancelled | postponed.
+- `ot_readiness_items` — auto-generated from 22-item conditional template. 7 categories: clinical, financial, logistics, nursing, team, specialist_clearance, equipment. Status: pending/confirmed/not_applicable/flagged/blocked. Escalation: due_by, escalation_level 0/1/2. UNIQUE(surgery_posting_id, item_key). FK to surgery_postings CASCADE.
+- `ot_readiness_audit_log` — immutable log of every status change. Actions: created, confirmed, flagged, blocked, escalated, reset, marked_na, added, bulk_confirmed.
+- `ot_equipment_items` — structured tracking for implants, rental equipment, special instruments, consumables. Status: requested → vendor_confirmed → in_transit → delivered → in_ot → verified → returned. Vendor details, ETA, rental cost. FK to surgery_postings CASCADE + parent ot_readiness_items.
+
 ### 13 Form Types:
 marketing_cc_handoff, admission_advice, financial_counseling (v2: 6 sections with TPA/room rent/deduction data), ot_billing_clearance, admission_checklist, surgery_posting, pre_op_nursing_checklist, who_safety_checklist, nursing_shift_handoff, discharge_readiness, post_discharge_followup (v2: 5 segmented discharge ratings), daily_department_update, pac_clearance
 
@@ -170,13 +189,13 @@ marketing_cc_handoff, admission_advice, financial_counseling (v2: 6 sections wit
 - **Org**: EHRC | **App ID**: 1563440 | **Region**: US Ohio
 - **API Key** (public): `ekbhy4vctj9g`
 - **5 Channel Types**: department, cross-functional, patient-thread, direct, ops-broadcast
-- **25 Seeded Channels**: 19 department (one per EHRC dept, including Marketing & Administration added in Step 9) + 5 cross-functional (ops-daily-huddle, admission-coordination, discharge-coordination, surgery-coordination, emergency-escalation) + 1 broadcast (hospital-broadcast)
+- **25 Seeded Channels** (→26 after OT build): 19 department + 5 cross-functional (ops-daily-huddle, admission-coordination, discharge-coordination, surgery-coordination, emergency-escalation) + 1 broadcast (hospital-broadcast). OT build adds: `#ot-schedule` (cross-functional type).
 - **Auto-join on login**: Users auto-added to `hospital-broadcast` + their department channel
 - **Patient channels**: `pt-{first8chars-of-uuid}`, auto-created with members on patient thread creation
 
 ---
 
-## 7. API Routes (66 route files total)
+## 7. API Routes (66 route files total → ~82 after OT build)
 
 ### Auth (5 routes):
 - `POST /api/auth/login` — email+PIN → JWT cookie + GetStream token + auto-join channels
@@ -221,6 +240,21 @@ marketing_cc_handoff, admission_advice, financial_counseling (v2: 6 sections wit
 - `GET /api/billing/metrics` — full BI dashboard (revenue, speed, satisfaction) with `?from=&to=` date filters
 - `GET /api/billing/insurer-performance` — per-insurer benchmarks with date filters
 
+### OT Surgery Readiness (16 routes — PRD complete, build pending):
+- `POST/GET /api/ot/postings` — create (+ auto-generate readiness items + apply procedure defaults) / list
+- `GET/PATCH/DELETE /api/ot/postings/[id]` — get (+items+equipment) / update / soft cancel
+- `PATCH /api/ot/readiness/[item_id]` — confirm, flag, block, mark N/A, reset
+- `POST /api/ot/readiness/add` — add dynamic item (specialist clearance or equipment)
+- `GET /api/ot/readiness/mine` — my pending items (role-filtered, supports `?count_only=true`)
+- `POST /api/ot/readiness/bulk-confirm` — bulk confirm multiple items (coordinators)
+- `GET /api/ot/readiness/overdue` — overdue OT items (merged into Tasks overdue view)
+- `PATCH /api/ot/equipment/[id]` — update equipment status
+- `GET /api/ot/schedule` — daily schedule (?date, ?range=week, ?ot_room)
+- `GET /api/ot/schedule/stats` — summary stats for dashboard header
+- `POST /api/ot/escalation/check` — cron: check overdue, escalate
+- `POST /api/ot/schedule/digest` — cron: 6 AM daily summary
+- `POST /api/ot/postings/cleanup` — cron: stale posting cleanup
+
 ### Duty Roster (4 routes):
 - `GET/POST /api/duty-roster` — list / create (admin-only)
 - `DELETE /api/duty-roster/[id]` — remove entry (admin-only)
@@ -256,10 +290,12 @@ AppShell (outer, wraps ChatProvider)
     │   ├── PAC Status selector (4 states)
     │   ├── Form history with GapAnalysisCard links
     │   ├── Insurance Claim panel (status, financials grid, risk indicators, TATs, timeline)
+    │   ├── Surgery Panel [OT — build pending] (collapsed summary + expanded accordion, readiness donut, role-gated actions, PAC bottom sheet)
     │   ├── Discharge Progress panel (9-step milestone tracker)
     │   ├── PredictionCard (AI: LOS, discharge readiness, risk)
     │   └── "Open Channel" link
     ├── Patients Tab (default) — PatientsView.tsx
+    │   ├── OT Action Banner [OT — build pending] ("3 OT items need your action" → links to Tasks > OT Items)
     │   ├── Search bar
     │   ├── Stage filter pills (scrollable)
     │   ├── Patient cards (stage-colored left border)
@@ -274,8 +310,9 @@ AppShell (outer, wraps ChatProvider)
     │   └── Success screen (Submit Another / View Submitted)
     ├── Tasks Tab — TasksView.tsx
     │   ├── Briefing sub-tab (AI daily briefing — default)
-    │   ├── Overdue Items sub-tab
-    │   └── Escalations sub-tab
+    │   ├── OT Items sub-tab [OT — build pending] (action-first cards, one-tap confirm, bulk confirm for coordinators)
+    │   ├── Overdue Items sub-tab (+ merged OT overdue items)
+    │   └── Escalations sub-tab (+ merged OT escalations)
     ├── Me Tab — ProfileView.tsx
     │   ├── Profile card
     │   ├── Admin Dashboard link (admin only)
@@ -283,7 +320,10 @@ AppShell (outer, wraps ChatProvider)
     └── BottomTabBar (5 tabs, badges: unread chat count + overdue tasks count)
 ```
 
-### Admin Pages (7):
+### Admin Pages (7 + OT Dashboard at top-level):
+
+**Top-level pages (not admin-gated):**
+- `/ot-schedule` [OT — build pending] — OT Schedule Dashboard: 3-column desktop / single-scroll mobile, case cards with readiness donuts, date navigation, sequencing warnings, "+ Post Surgery" wizard
 - `/admin` — Dashboard: user stats, roster count, open escalations, active admissions, quick actions (including Patient Changelog link)
 - `/admin/admissions` — 3-tab: Stage Board (Kanban), Surgery Schedule, Discharge Readiness
 - `/admin/changelog` — Patient Changelog: searchable patient list + fishbone timeline (horizontal desktop / vertical mobile) merging DB changelog, form submissions, and GetStream messages
@@ -335,6 +375,12 @@ AppShell (outer, wraps ChatProvider)
 | B.3 | Financial counseling enhancement + room rent calculator | ✅ Done | `b0ce33b` |
 | B.4 | Enhancement alert system (auto-detect threshold breach) | ✅ Done | `d6258d6` |
 | B.5 | Feedback attribution + billing intelligence dashboard | ✅ Done | `d1fc4d3` |
+| OT PRD | OT Surgery Readiness PRD v1 + v2 (UX revision) | ✅ Done | `b66bb61`+`0bc214d` |
+| OT.1 | Database + Core API + Procedure Defaults | ⏳ Next | — |
+| OT.2 | PatientDetailView Surgery Panel + PAC Bottom Sheet | ⏳ Pending | — |
+| OT.3 | OT Schedule Dashboard + Tasks Integration + Banner + Wizard | ⏳ Pending | — |
+| OT.4 | Chat Integration + Escalation + Onboarding | ⏳ Pending | — |
+| OT.5 | Polish + Equipment Vendor Workflow | ⏳ Pending | — |
 
 ---
 
@@ -360,6 +406,15 @@ AppShell (outer, wraps ChatProvider)
 - **Monthly summary auto-post**: Design doc specifies monthly department channel summaries — not yet built.
 - **Billing design doc**: `ROUNDS-BILLING-INTEGRATION-DESIGN.md` was created in a prior thread but may not be in the repo. Context seed at `docs/context-seeds/2026-04-02-billing-integration-phases-1-5.md` captures all decisions.
 
+### OT Surgery Readiness (PRD complete, build next):
+- **Build OT.1–OT.5**: See `docs/ROUNDS-OT-SURGERY-READINESS-PRD.md` for full spec
+- **Context seed**: `docs/context-seeds/2026-04-02-ot-surgery-readiness-prd-v2.md`
+- **4 new tables**: surgery_postings, ot_readiness_items, ot_readiness_audit_log, ot_equipment_items
+- **16 new API routes** under `/api/ot/`
+- **Key files to create**: `src/lib/ot/procedure-defaults.ts`, `readiness-template.ts`, `readiness-status.ts`, `surgery-postings.ts`
+- **UI components**: SurgeryPanel, ReadinessDonut, PACBottomSheet, OTDashboard, SurgeryWizard, OTItemsTab, OTActionBanner
+- **FORMS_BY_STAGE change**: remove `surgery_posting` from `pre_op` (keep schema for backwards compat)
+
 ### Phase 10 — PRD Addendum (specified, not yet built):
 Full PRD document at `Rounds-PRD-Addendum-Insurance-Files-Tabs.docx`. Note: Phase 10b (Insurance Module) was partially superseded by the Billing Integration — the claim lifecycle, TPA workflow, and event tracking are already built. Phase 10 now primarily covers:
 1. **Foundation** (Phase 10a): `files` + `patient_files` tables, Vercel Blob storage, tabbed PatientDetailView (Overview | Files | Insurance), file upload/download/link UI
@@ -380,7 +435,7 @@ Full PRD document at `Rounds-PRD-Addendum-Insurance-Files-Tabs.docx`. Note: Phas
 
 ---
 
-## 12. File Tree (~141 source files)
+## 12. File Tree (~141 source files → ~170+ after OT build)
 
 ```
 middleware.ts                              — Edge auth middleware
@@ -401,9 +456,10 @@ src/
 │   │   ├── escalations/page.tsx           — Escalation log + resolve
 │   │   ├── approvals/page.tsx             — User approvals
 │   │   └── profiles/, users/, departments/ — Staff management
+│   ├── ot-schedule/page.tsx               — [OT — pending] Top-level OT dashboard
 │   ├── auth/                              — Login, signup, pending (3 pages)
 │   ├── forms/                             — Form picker, new, [id] view (3 pages)
-│   └── api/                               — 66 API route files (see section 7)
+│   └── api/                               — 66 API route files → ~82 after OT (see section 7)
 │       ├── admin/{approvals, getstream/setup, getstream/seed-channels, migrate, changelog, changelog/[patientId]}
 │       ├── auth/{login, logout, me, signup, stream-token}
 │       ├── {departments, profiles, profiles/import, profiles/me, webhooks/getstream}
@@ -413,6 +469,12 @@ src/
 │       ├── readiness/{[formId],items/[itemId],overdue,completed}
 │       ├── admission-tracker/
 │       ├── billing/{roomcalc,check-enhancements,metrics,insurer-performance}
+│       ├── ot/                            — [OT — pending] 16 route files
+│       │   ├── postings/, postings/[id]/, postings/cleanup/
+│       │   ├── readiness/{[item_id],add,mine,bulk-confirm,overdue}
+│       │   ├── equipment/[id]/
+│       │   ├── schedule/, schedule/{stats,digest}
+│       │   └── escalation/check/
 │       ├── duty-roster/, duty-roster/{[id],resolve,handoff}
 │       ├── escalation/{cron,log}
 │       ├── push/{vapid-key,subscribe,send}
@@ -427,7 +489,8 @@ src/
 │   ├── patients/                          — PatientsView, PatientDetailView (inline edit, PAC status, 11 stages)
 │   ├── profile/                           — ProfileView
 │   ├── pwa/                               — InstallPrompt, ServiceWorkerRegistration
-│   └── tasks/                             — TasksView (Briefing/Overdue/Escalations tabs)
+│   ├── ot/                                — [OT — pending] SurgeryPanel, ReadinessDonut, PACBottomSheet, OTDashboard, SurgeryWizard, CaseCard, OTActionBanner, etc.
+│   └── tasks/                             — TasksView (Briefing/OT Items/Overdue/Escalations tabs)
 ├── lib/
 │   ├── auth.ts                            — JWT create/verify, getCurrentUser
 │   ├── db.ts                              — Neon SQL helpers (original)
@@ -442,7 +505,12 @@ src/
 │   ├── discharge-milestones.ts            — 9-step discharge tracking with TAT calculation (420 lines)
 │   ├── insurance-claims.ts                — Claim lifecycle, EVENT_STATUS_MAP, system messages (692 lines)
 │   ├── enhancement-alerts.ts              — Auto-detect threshold breach, fire alerts (286 lines)
-│   └── billing-metrics.ts                 — Revenue/speed/satisfaction BI aggregations (539 lines)
+│   ├── billing-metrics.ts                 — Revenue/speed/satisfaction BI aggregations (539 lines)
+│   └── ot/                                — [OT — pending]
+│       ├── procedure-defaults.ts          — 26 procedure→defaults mappings + fuzzy matcher
+│       ├── readiness-template.ts          — 22-item conditional readiness template
+│       ├── readiness-status.ts            — Status computation + color maps
+│       └── surgery-postings.ts            — Core business logic (create, update, cancel, recompute)
 ├── providers/
 │   └── ChatProvider.tsx                   — GetStream StreamChat client wrapper
 └── types/
@@ -503,7 +571,7 @@ curl -c /tmp/cookies.txt -X POST https://rounds-sqxh.vercel.app/api/auth/login \
 
 ## 15. Instruction to AI Assistant
 
-You are continuing work on the Rounds app. **Steps 0–9.4 + Billing Integration (Phases 1–5) are ALL complete. Phase 10 (Files + Patient Tabs) is specified in a PRD addendum but not yet built.**
+You are continuing work on the Rounds app. **Steps 0–9.4 + Billing Integration (Phases 1–5) are ALL complete. OT Surgery Readiness PRD v2 is complete and ready for build (OT.1–OT.5). Phase 10 (Files + Patient Tabs) is specified in a PRD addendum but not yet built.**
 
 The user (V) prefers:
 - Ask clarifying questions before starting work
@@ -518,19 +586,21 @@ The user (V) prefers:
 - Form post-submission hooks are non-fatal (try/catch, form submission succeeds regardless)
 
 Current focus areas:
-1. **Billing testing**: Full insurance claim lifecycle test (counseling → pre-auth → enhancement → discharge → final → feedback → metrics)
-2. **Billing dashboard UI**: Build admin page for `/api/billing/metrics` and `/api/billing/insurer-performance`
-3. **Enhancement cron**: Add `/api/billing/check-enhancements` to Vercel cron
-4. **Monthly summaries**: Auto-post monthly department performance summaries
+1. **OT Surgery Readiness build**: Phase OT.1 is next (database + core API + procedure defaults). Full PRD at `docs/ROUNDS-OT-SURGERY-READINESS-PRD.md`, context seed at `docs/context-seeds/2026-04-02-ot-surgery-readiness-prd-v2.md`.
+2. **Billing testing**: Full insurance claim lifecycle test (counseling → pre-auth → enhancement → discharge → final → feedback → metrics)
+3. **Billing dashboard UI**: Build admin page for `/api/billing/metrics` and `/api/billing/insurer-performance`
+4. **Enhancement cron**: Add `/api/billing/check-enhancements` to Vercel cron
 5. **Infrastructure**: Cloudflare Tunnel on Mac Mini, Vercel env vars for LLM + VAPID
 6. **Phase 10**: Files + Patient Tabs — PRD addendum complete, build not started
 
-Key billing integration files to read first:
+Key OT files to read first:
+- `docs/ROUNDS-OT-SURGERY-READINESS-PRD.md` — Full PRD with 14 design decisions, data model, API routes, UI specs, build phases
+- `docs/context-seeds/2026-04-02-ot-surgery-readiness-prd-v2.md` — Compact context seed with all key decisions and patterns
+
+Key billing integration files:
 - `src/lib/insurance-claims.ts` — Core claim logic, EVENT_STATUS_MAP, logClaimEvent()
 - `src/lib/discharge-milestones.ts` — 9-step discharge tracking
-- `src/lib/enhancement-alerts.ts` — Threshold detection + alerting
 - `src/lib/billing-metrics.ts` — BI aggregation layer
-- `src/types/index.ts` — ClaimStatus, ClaimEventType, IRDA_TAT, ROOM_RENT_ELIGIBILITY_PCT constants
 - `docs/context-seeds/2026-04-02-billing-integration-phases-1-5.md` — Full build context for all 5 phases
 
 The build order document is at: `docs/ROUNDS-BUILD-ORDER.md`
