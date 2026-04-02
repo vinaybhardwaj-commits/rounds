@@ -421,8 +421,10 @@ export async function addDynamicItem(
   if (postingRows.length === 0) throw new Error('Surgery posting not found');
   const posting = postingRows[0] as SurgeryPosting;
 
-  const dateStr = posting.scheduled_date;
-  const timeStr = posting.scheduled_time || '08:00';
+  const rawDate = posting.scheduled_date;
+  const dateStr = typeof rawDate === 'string' && rawDate.length > 10 ? rawDate.slice(0, 10) : String(rawDate).slice(0, 10);
+  const rawTime = posting.scheduled_time || '08:00';
+  const timeStr = rawTime.length > 5 ? rawTime.slice(0, 5) : rawTime;
   const baseDate = new Date(`${dateStr}T${timeStr}:00+05:30`);
   const dueBy = new Date(baseDate.getTime() - 12 * 60 * 60 * 1000); // 12h before
 

@@ -225,8 +225,14 @@ export function generateReadinessItems(
 
   // Compute base datetime for due_by calculation
   // If no time set, assume 08:00 AM
-  const dateStr = posting.scheduled_date;
-  const timeStr = posting.scheduled_time || '08:00';
+  // scheduled_date from Postgres may be YYYY-MM-DD or full ISO timestamp
+  const rawDate = posting.scheduled_date;
+  const dateStr = typeof rawDate === 'string' && rawDate.length > 10
+    ? rawDate.slice(0, 10)
+    : String(rawDate).slice(0, 10);
+  // scheduled_time may be HH:MM or HH:MM:SS — normalize to HH:MM
+  const rawTime = posting.scheduled_time || '08:00';
+  const timeStr = rawTime.length > 5 ? rawTime.slice(0, 5) : rawTime;
   const baseDate = new Date(`${dateStr}T${timeStr}:00+05:30`); // IST
 
   for (const tmpl of OT_READINESS_TEMPLATE) {
