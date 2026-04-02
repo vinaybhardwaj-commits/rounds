@@ -325,11 +325,151 @@ export async function POST() {
     await run('idx_pt_archived', `CREATE INDEX IF NOT EXISTS idx_patient_threads_archived ON patient_threads(archive_type, archived_at DESC) WHERE archived_at IS NOT NULL`);
     await run('pt_archive_migration', `INSERT INTO _migrations (name) VALUES ('v11-patient-soft-delete') ON CONFLICT (name) DO NOTHING`);
 
+    // ── Step 12: Billing Integration (Phase 1) ──
+
+    // 12a. insurance_claims table
+    await run('insurance_claims', `
+      CREATE TABLE IF NOT EXISTS insurance_claims (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_thread_id UUID NOT NULL REFERENCES patient_threads(id) ON DELETE CASCADE,
+        admission_tracker_id UUID REFERENCES admission_tracker(id) ON DELETE SET NULL,
+        insurer_name VARCHAR(200),
+        tpa_name VARCHAR(200),
+        submission_channel VARCHAR(20) NOT NULL DEFAULT 'tpa',
+        portal_used VARCHAR(50),
+        policy_number VARCHAR(100),
+        claim_number VARCHAR(100),
+        patient_card_photo_url TEXT,
+        sum_insured NUMERIC(12,2),
+        room_rent_eligibility NUMERIC(10,2),
+        room_category_selected VARCHAR(20),
+        actual_room_rent NUMERIC(10,2),
+        proportional_deduction_pct NUMERIC(5,2),
+        co_pay_pct NUMERIC(5,2),
+        has_room_rent_waiver BOOLEAN DEFAULT false,
+        estimated_cost NUMERIC(12,2),
+        pre_auth_submitted_at TIMESTAMPTZ,
+        pre_auth_approved_at TIMESTAMPTZ,
+        pre_auth_amount NUMERIC(12,2),
+        pre_auth_status VARCHAR(20) NOT NULL DEFAULT 'not_started',
+        pre_auth_tat_minutes INTEGER,
+        total_enhancements INTEGER DEFAULT 0,
+        latest_enhancement_amount NUMERIC(12,2),
+        cumulative_approved_amount NUMERIC(12,2),
+        final_bill_amount NUMERIC(12,2),
+        final_submitted_at TIMESTAMPTZ,
+        final_approved_at TIMESTAMPTZ,
+        final_approved_amount NUMERIC(12,2),
+        final_settlement_tat_minutes INTEGER,
+        hospital_discount NUMERIC(12,2),
+        non_payable_deductions NUMERIC(12,2),
+        patient_liability NUMERIC(12,2),
+        claim_status VARCHAR(30) NOT NULL DEFAULT 'counseling',
+        recovery_rate NUMERIC(5,2),
+        revenue_leakage NUMERIC(12,2),
+        leakage_reason TEXT,
+        created_by UUID REFERENCES profiles(id),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run('idx_claims_patient', `CREATE INDEX IF NOT EXISTS idx_claims_patient ON insurance_claims(patient_thread_id)`);
+    await run('idx_claims_admission', `CREATE INDEX IF NOT EXISTS idx_claims_admission ON insurance_claims(admission_tracker_id) WHERE admission_tracker_id IS NOT NULL`);
+    await run('idx_claims_status', `CREATE INDEX IF NOT EXISTS idx_claims_status ON insurance_claims(claim_status)`);
+    await run('idx_claims_insurer', `CREATE INDEX IF NOT EXISTS idx_claims_insurer ON insurance_claims(insurer_name) WHERE insurer_name IS NOT NULL`);
+    await run('idx_claims_created', `CREATE INDEX IF NOT EXISTS idx_claims_created ON insurance_claims(created_at DESC)`);
+
+    // 12b. claim_events table
+    await run('claim_events', `
+      CREATE TABLE IF NOT EXISTS claim_events (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        insurance_claim_id UUID NOT NULL REFERENCES insurance_claims(id) ON DELETE CASCADE,
+        patient_thread_id UUID NOT NULL REFERENCES patient_threads(id) ON DELETE CASCADE,
+        event_type VARCHAR(40) NOT NULL,
+        description TEXT NOT NULL,
+        amount NUMERIC(12,2),
+        portal_reference VARCHAR(200),
+        document_urls TEXT[],
+        insurer_response_needed BOOLEAN DEFAULT false,
+        insurer_response_deadline TIMESTAMPTZ,
+        performed_by UUID REFERENCES profiles(id),
+        performed_by_name VARCHAR(200),
+        getstream_message_id VARCHAR(100),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run('idx_claim_events_claim', `CREATE INDEX IF NOT EXISTS idx_claim_events_claim ON claim_events(insurance_claim_id)`);
+    await run('idx_claim_events_patient', `CREATE INDEX IF NOT EXISTS idx_claim_events_patient ON claim_events(patient_thread_id)`);
+    await run('idx_claim_events_type', `CREATE INDEX IF NOT EXISTS idx_claim_events_type ON claim_events(event_type)`);
+    await run('idx_claim_events_created', `CREATE INDEX IF NOT EXISTS idx_claim_events_created ON claim_events(created_at DESC)`);
+
+    // 12c. discharge_milestones table
+    await run('discharge_milestones', `
+      CREATE TABLE IF NOT EXISTS discharge_milestones (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_thread_id UUID NOT NULL REFERENCES patient_threads(id) ON DELETE CASCADE,
+        admission_tracker_id UUID REFERENCES admission_tracker(id) ON DELETE SET NULL,
+        insurance_claim_id UUID REFERENCES insurance_claims(id) ON DELETE SET NULL,
+        discharge_ordered_at TIMESTAMPTZ,
+        discharge_ordered_by UUID REFERENCES profiles(id),
+        pharmacy_clearance_at TIMESTAMPTZ,
+        pharmacy_cleared_by UUID REFERENCES profiles(id),
+        lab_clearance_at TIMESTAMPTZ,
+        lab_cleared_by UUID REFERENCES profiles(id),
+        discharge_summary_at TIMESTAMPTZ,
+        discharge_summary_by UUID REFERENCES profiles(id),
+        billing_closure_at TIMESTAMPTZ,
+        billing_closed_by UUID REFERENCES profiles(id),
+        final_bill_submitted_at TIMESTAMPTZ,
+        final_bill_submitted_by UUID REFERENCES profiles(id),
+        final_approval_at TIMESTAMPTZ,
+        final_approval_logged_by UUID REFERENCES profiles(id),
+        patient_settled_at TIMESTAMPTZ,
+        patient_settled_by UUID REFERENCES profiles(id),
+        patient_departed_at TIMESTAMPTZ,
+        tat_order_to_pharmacy INTEGER,
+        tat_order_to_summary INTEGER,
+        tat_summary_to_billing INTEGER,
+        tat_billing_to_submission INTEGER,
+        tat_submission_to_approval INTEGER,
+        tat_order_to_departure INTEGER,
+        is_complete BOOLEAN DEFAULT false,
+        is_cancelled BOOLEAN DEFAULT false,
+        cancellation_reason TEXT,
+        bottleneck_step VARCHAR(40),
+        bottleneck_minutes INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run('idx_discharge_ms_patient', `CREATE INDEX IF NOT EXISTS idx_discharge_ms_patient ON discharge_milestones(patient_thread_id)`);
+    await run('idx_discharge_ms_active', `CREATE INDEX IF NOT EXISTS idx_discharge_ms_active ON discharge_milestones(is_complete, created_at DESC) WHERE is_complete = false AND is_cancelled = false`);
+    await run('idx_discharge_ms_created', `CREATE INDEX IF NOT EXISTS idx_discharge_ms_created ON discharge_milestones(created_at DESC)`);
+
+    // 12d. Extend admission_tracker with billing columns
+    await run('at_insurance_claim_id', `ALTER TABLE admission_tracker ADD COLUMN IF NOT EXISTS insurance_claim_id UUID REFERENCES insurance_claims(id)`);
+    await run('at_insurer_name', `ALTER TABLE admission_tracker ADD COLUMN IF NOT EXISTS insurer_name VARCHAR(200)`);
+    await run('at_submission_channel', `ALTER TABLE admission_tracker ADD COLUMN IF NOT EXISTS submission_channel VARCHAR(20) DEFAULT 'tpa'`);
+    await run('at_sum_insured', `ALTER TABLE admission_tracker ADD COLUMN IF NOT EXISTS sum_insured NUMERIC(12,2)`);
+    await run('at_room_rent_eligibility', `ALTER TABLE admission_tracker ADD COLUMN IF NOT EXISTS room_rent_eligibility NUMERIC(10,2)`);
+    await run('at_proportional_deduction_risk', `ALTER TABLE admission_tracker ADD COLUMN IF NOT EXISTS proportional_deduction_risk NUMERIC(5,2)`);
+    await run('at_running_bill_amount', `ALTER TABLE admission_tracker ADD COLUMN IF NOT EXISTS running_bill_amount NUMERIC(12,2)`);
+    await run('at_cumulative_approved_amount', `ALTER TABLE admission_tracker ADD COLUMN IF NOT EXISTS cumulative_approved_amount NUMERIC(12,2)`);
+    await run('at_enhancement_alert_threshold', `ALTER TABLE admission_tracker ADD COLUMN IF NOT EXISTS enhancement_alert_threshold NUMERIC(12,2) DEFAULT 50000`);
+
+    // 12e. Triggers for new billing tables
+    for (const tbl of ['insurance_claims', 'discharge_milestones']) {
+      await run(`trigger_${tbl}_drop`, `DROP TRIGGER IF EXISTS set_updated_at ON ${tbl}`);
+      await run(`trigger_${tbl}_create`, `CREATE TRIGGER set_updated_at BEFORE UPDATE ON ${tbl} FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at()`);
+    }
+
+    await run('billing_migration_record', `INSERT INTO _migrations (name) VALUES ('billing-integration-v1') ON CONFLICT (name) DO NOTHING`);
+
     // 9. Verify
     const tables = await sql`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
-      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages')
+      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages','insurance_claims','claim_events','discharge_milestones')
       ORDER BY table_name
     `;
 
@@ -346,7 +486,7 @@ export async function POST() {
         tables_found: tables.map((t) => t.table_name),
         log: results,
       },
-      message: `Migration complete. ${successCount} executed, ${skipCount} skipped, ${errorCount} errors. ${tables.length}/8 tables found.`,
+      message: `Migration complete. ${successCount} executed, ${skipCount} skipped, ${errorCount} errors. ${tables.length}/11 tables found.`,
     });
   } catch (error) {
     console.error('POST /api/admin/migrate error:', error);
