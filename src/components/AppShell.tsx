@@ -50,6 +50,8 @@ function AppShellInner({ userId, userRole }: { userId: string; userRole: string 
   const [overdueCount, setOverdueCount] = useState(0);
   // OT pending count for Tasks badge
   const [otPendingCount, setOtPendingCount] = useState(0);
+  // Which sub-tab to open in Tasks (set by OT banner click)
+  const [tasksInitialTab, setTasksInitialTab] = useState<'briefing' | 'overdue' | 'escalations' | 'ot_items' | undefined>(undefined);
 
   // Suppress popstate handling during programmatic history changes
   const suppressPopStateRef = useRef(false);
@@ -212,6 +214,7 @@ function AppShellInner({ userId, userRole }: { userId: string; userRole: string 
               onOpenPatient={handleOpenPatient}
               onNavigateToChannel={handleNavigateToChannel}
               onViewOTItems={() => {
+                setTasksInitialTab('ot_items');
                 pushNavState('tasks', null);
                 setActiveTab('tasks');
               }}
@@ -239,6 +242,7 @@ function AppShellInner({ userId, userRole }: { userId: string; userRole: string 
           <TasksView
             userRole={userRole}
             userId={userId}
+            initialTab={tasksInitialTab}
             onNavigateToPatient={(patientThreadId) => {
               pushNavState('patients', patientThreadId);
               setSelectedPatientId(patientThreadId);

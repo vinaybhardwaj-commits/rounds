@@ -78,10 +78,16 @@ interface TasksViewProps {
   onNavigateToPatient?: (patientThreadId: string) => void;
   userRole?: string;
   userId?: string;
+  initialTab?: TaskTab;
 }
 
-export function TasksView({ onNavigateToPatient, userRole = '', userId = '' }: TasksViewProps) {
-  const [tab, setTab] = useState<TaskTab>('briefing');
+export function TasksView({ onNavigateToPatient, userRole = '', userId = '', initialTab }: TasksViewProps) {
+  const [tab, setTab] = useState<TaskTab>(initialTab || 'briefing');
+
+  // Sync when initialTab changes (e.g. banner click)
+  useEffect(() => {
+    if (initialTab) setTab(initialTab);
+  }, [initialTab]);
   const [overdueItems, setOverdueItems] = useState<ReadinessItem[]>([]);
   const [completedItems, setCompletedItems] = useState<CompletedItem[]>([]);
   const [escalations, setEscalations] = useState<EscalationEntry[]>([]);
