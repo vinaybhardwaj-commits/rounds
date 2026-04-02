@@ -46,7 +46,7 @@ export function OTItemsTab({ userRole, userId, onNavigateToPatient }: OTItemsTab
       const res = await fetch('/api/ot/readiness/mine');
       const data = await res.json();
       if (data.success) {
-        setItems(data.data || []);
+        setItems(data.data?.items || data.data || []);
       }
     } catch (err) {
       console.error('[OTItemsTab] fetch error:', err);
