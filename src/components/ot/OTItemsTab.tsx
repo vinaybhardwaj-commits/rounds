@@ -370,7 +370,7 @@ function OTItemCard({
             {item.patient_name && <span>{item.patient_name}</span>}
             {item.scheduled_time && (
               <span className="flex items-center gap-0.5">
-                <Clock size={9} /> {item.scheduled_time}
+                <Clock size={9} /> {String(item.scheduled_time).slice(0, 5)}
               </span>
             )}
             {item.ot_room && <span>OT{item.ot_room}</span>}
