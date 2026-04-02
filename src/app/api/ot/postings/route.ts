@@ -33,8 +33,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('POST /api/ot/postings error:', error);
     const message = error instanceof Error ? error.message : 'Failed to create posting';
-    const stack = error instanceof Error ? error.stack?.split('\n').slice(0, 5).join(' | ') : '';
-    return NextResponse.json({ success: false, error: message, debug_stack: stack }, { status: 500 });
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
 
