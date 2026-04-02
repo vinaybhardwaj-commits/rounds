@@ -33,7 +33,13 @@ export function OTActionBanner({ onViewOTItems }: OTActionBannerProps) {
   useEffect(() => {
     fetchCount();
     const interval = setInterval(fetchCount, 120_000); // Refresh every 2 min
-    return () => clearInterval(interval);
+    // Re-fetch when OT items change (confirm/bulk-confirm)
+    const handleOtChange = () => fetchCount();
+    window.addEventListener('ot-items-changed', handleOtChange);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('ot-items-changed', handleOtChange);
+    };
   }, [fetchCount]);
 
   if (count === 0) return null;

@@ -89,7 +89,13 @@ function AppShellInner({ userId, userRole }: { userId: string; userRole: string 
     fetchCounts();
     // Refresh every 2 minutes
     const interval = setInterval(fetchCounts, 120_000);
-    return () => clearInterval(interval);
+    // Re-fetch immediately when OT items change (confirm/bulk-confirm)
+    const handleOtChange = () => fetchCounts();
+    window.addEventListener('ot-items-changed', handleOtChange);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('ot-items-changed', handleOtChange);
+    };
   }, []);
 
   const badges = useMemo(() => {

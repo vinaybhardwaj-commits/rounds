@@ -85,6 +85,8 @@ export function OTItemsTab({ userRole, userId, onNavigateToPatient }: OTItemsTab
       if (data.success) {
         // Remove from local list
         setItems(prev => prev.filter(i => i.id !== itemId));
+        // Notify AppShell to refresh badge count
+        window.dispatchEvent(new Event('ot-items-changed'));
       }
     } catch (err) {
       console.error('[OTItemsTab] confirm error:', err);
@@ -122,6 +124,8 @@ export function OTItemsTab({ userRole, userId, onNavigateToPatient }: OTItemsTab
       setItems(prev => prev.filter(i => !selectedIds.has(i.id)));
       setSelectedIds(new Set());
       setBulkMode(false);
+      // Notify AppShell to refresh badge count
+      window.dispatchEvent(new Event('ot-items-changed'));
     } catch (err) {
       console.error('[OTItemsTab] bulk confirm error:', err);
     } finally {
