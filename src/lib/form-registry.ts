@@ -1256,12 +1256,40 @@ export const DISCHARGE_READINESS: FormSchema = {
 export const POST_DISCHARGE_FOLLOWUP: FormSchema = {
   formType: 'post_discharge_followup',
   title: 'Post-Discharge Follow-up',
-  description: 'Track post-discharge follow-up calls and patient recovery status.',
-  version: 1,
+  description: 'Track post-discharge follow-up, patient recovery, and segmented discharge experience feedback.',
+  version: 2,
   stages: ['post_discharge'],
   submitterRoles: ['nurse', 'ip_coordinator', 'clinical_care', 'super_admin'],
   requiresPatient: true,
   sections: [
+    {
+      id: 'discharge_experience',
+      title: 'Discharge Experience Feedback',
+      description: 'Rate each aspect of the discharge process (1–5). Used for departmental attribution and improvement.',
+      fields: [
+        { key: 'rating_clinical_handoff', label: 'Clinical Handoff', type: 'select', options: [
+          { value: '1', label: '1 — Very Poor' }, { value: '2', label: '2 — Poor' },
+          { value: '3', label: '3 — Adequate' }, { value: '4', label: '4 — Good' }, { value: '5', label: '5 — Excellent' },
+        ], width: 'half', helpText: 'How timely was the doctor\'s discharge order and summary?' },
+        { key: 'rating_department_clearance', label: 'Department Clearance', type: 'select', options: [
+          { value: '1', label: '1 — Very Poor' }, { value: '2', label: '2 — Poor' },
+          { value: '3', label: '3 — Adequate' }, { value: '4', label: '4 — Good' }, { value: '5', label: '5 — Excellent' },
+        ], width: 'half', helpText: 'Were pharmacy/lab clearances completed promptly?' },
+        { key: 'rating_billing_documentation', label: 'Billing & Documentation', type: 'select', options: [
+          { value: '1', label: '1 — Very Poor' }, { value: '2', label: '2 — Poor' },
+          { value: '3', label: '3 — Adequate' }, { value: '4', label: '4 — Good' }, { value: '5', label: '5 — Excellent' },
+        ], width: 'half', helpText: 'Was the final bill prepared and explained clearly?' },
+        { key: 'rating_insurance_processing', label: 'Insurance Processing', type: 'select', options: [
+          { value: '1', label: '1 — Very Poor' }, { value: '2', label: '2 — Poor' },
+          { value: '3', label: '3 — Adequate' }, { value: '4', label: '4 — Good' }, { value: '5', label: '5 — Excellent' },
+        ], width: 'half', helpText: 'Was the insurance approval communicated well?' },
+        { key: 'rating_overall_speed', label: 'Overall Discharge Speed', type: 'select', options: [
+          { value: '1', label: '1 — Very Poor' }, { value: '2', label: '2 — Poor' },
+          { value: '3', label: '3 — Adequate' }, { value: '4', label: '4 — Good' }, { value: '5', label: '5 — Excellent' },
+        ], width: 'half', helpText: 'Total time from discharge order to leaving the hospital' },
+        { key: 'discharge_improvement_suggestion', label: 'What could we improve about the discharge process?', type: 'textarea', placeholder: 'Any suggestions for making discharge faster or more comfortable' },
+      ],
+    },
     {
       id: 'contact_details',
       title: 'Follow-up Contact',

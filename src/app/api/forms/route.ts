@@ -18,6 +18,7 @@ import {
 import { sendSystemMessage } from '@/lib/getstream';
 import { postPatientActivity } from '@/lib/patient-activity';
 import { getOrCreateClaim, logClaimEvent, postClaimMessage } from '@/lib/insurance-claims';
+import { calculateMilestoneAttribution } from '@/lib/billing-metrics';
 import type { FormType, FormStatus } from '@/types';
 import { ROOM_RENT_ELIGIBILITY_PCT } from '@/types';
 
@@ -308,6 +309,30 @@ export async function POST(request: NextRequest) {
           console.error('[FinancialCounseling] Claim hook error:', err);
           // Non-fatal — form submission still succeeds
         }
+      }
+    }
+
+    // ── Post-Discharge Followup → Feedback Attribution Hook ──
+    // When post_discharge_followup is submitted, cross-reference ratings
+    // with actual discharge_milestones to calculate milestone attribution.
+    if (form_type === 'post_discharge_followup' && status !== 'draft' && body.patient_thread_id) {
+      try {
+        const attribution = await calculateMilestoneAttribution(body.patient_thread_id);
+        if (attribution) {
+          // Store attribution alongside ratings in form_data
+          await sqlQuery(
+            `UPDATE form_submissions
+             SET form_data = form_data || $2::jsonb
+             WHERE id = $1`,
+            [
+              formId,
+              JSON.stringify({ milestone_attribution: attribution }),
+            ]
+          );
+        }
+      } catch (err) {
+        console.error('[FeedbackAttribution] Attribution hook error:', err);
+        // Non-fatal — form submission still succeeds
       }
     }
 
