@@ -409,10 +409,10 @@ export function TasksView({ onNavigateToPatient, userRole = '', userId = '', ini
         </div>
 
         {/* Tab pills */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 overflow-x-auto no-scrollbar">
           <button
             onClick={() => setTab('briefing')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            className={`shrink-0 whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
               tab === 'briefing'
                 ? 'bg-purple-100 text-purple-700'
                 : 'bg-gray-100 text-gray-500'
@@ -422,7 +422,7 @@ export function TasksView({ onNavigateToPatient, userRole = '', userId = '', ini
           </button>
           <button
             onClick={() => setTab('overdue')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            className={`shrink-0 whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
               tab === 'overdue'
                 ? 'bg-amber-100 text-amber-700'
                 : 'bg-gray-100 text-gray-500'
@@ -435,7 +435,7 @@ export function TasksView({ onNavigateToPatient, userRole = '', userId = '', ini
           </button>
           <button
             onClick={() => setTab('escalations')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            className={`shrink-0 whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
               tab === 'escalations'
                 ? 'bg-red-100 text-red-700'
                 : 'bg-gray-100 text-gray-500'
@@ -448,7 +448,7 @@ export function TasksView({ onNavigateToPatient, userRole = '', userId = '', ini
           </button>
           <button
             onClick={() => setTab('ot_items')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            className={`shrink-0 whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
               tab === 'ot_items'
                 ? 'bg-blue-100 text-blue-700'
                 : 'bg-gray-100 text-gray-500'

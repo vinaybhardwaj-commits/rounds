@@ -367,7 +367,7 @@ function OTItemCard({
           <p className="text-xs font-medium text-gray-900">{item.item_label}</p>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-gray-500">
             {item.procedure_name && <span className="truncate">{item.procedure_name}</span>}
-            {item.patient_name && <span>{item.patient_name}</span>}
+            {item.patient_name && <span className="truncate max-w-[120px]">{item.patient_name}</span>}
             {item.scheduled_time && (
               <span className="flex items-center gap-0.5">
                 <Clock size={9} /> {String(item.scheduled_time).slice(0, 5)}
