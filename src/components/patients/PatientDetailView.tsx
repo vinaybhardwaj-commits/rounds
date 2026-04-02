@@ -38,6 +38,7 @@ import {
 } from '@/types';
 import { FORM_TYPE_LABELS, FORMS_BY_STAGE } from '@/lib/form-registry';
 import { PredictionCard } from '@/components/ai/PredictionCard';
+import { SurgeryPanel } from '@/components/ot/SurgeryPanel';
 import { PatientFilesTab } from './PatientFilesTab';
 
 type DetailTab = 'overview' | 'files';
@@ -123,6 +124,8 @@ interface PatientDetailViewProps {
   patientId: string;
   onBack: () => void;
   onOpenChannel?: (channelId: string) => void;
+  userRole?: string;
+  userId?: string;
 }
 
 // ── Status badge colors ──
@@ -153,6 +156,8 @@ export function PatientDetailView({
   patientId,
   onBack,
   onOpenChannel,
+  userRole = '',
+  userId = '',
 }: PatientDetailViewProps) {
   const [patient, setPatient] = useState<PatientDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -964,6 +969,15 @@ export function PatientDetailView({
               )}
             </div>
           </div>
+        )}
+
+        {/* ── Surgery Panel (OT Readiness) ── */}
+        {patient && userRole && userId && (
+          <SurgeryPanel
+            patientThreadId={patient.id}
+            userRole={userRole}
+            userId={userId}
+          />
         )}
 
         {/* ── Advance Stage ── */}

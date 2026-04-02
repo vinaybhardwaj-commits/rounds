@@ -465,11 +465,159 @@ export async function POST() {
 
     await run('billing_migration_record', `INSERT INTO _migrations (name) VALUES ('billing-integration-v1') ON CONFLICT (name) DO NOTHING`);
 
+    // ── Step 13: OT Surgery Readiness (Phase OT.1) ──
+
+    // 13a. surgery_postings table
+    await run('surgery_postings', `
+      CREATE TABLE IF NOT EXISTS surgery_postings (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_name VARCHAR(255) NOT NULL,
+        patient_thread_id UUID REFERENCES patient_threads(id),
+        uhid VARCHAR(50),
+        ip_number VARCHAR(50),
+        age INTEGER,
+        gender VARCHAR(10),
+        procedure_name VARCHAR(500) NOT NULL,
+        procedure_side VARCHAR(20) NOT NULL,
+        case_type VARCHAR(20) NOT NULL DEFAULT 'Elective',
+        wound_class VARCHAR(20),
+        case_complexity VARCHAR(20),
+        estimated_duration_minutes INTEGER,
+        anaesthesia_type VARCHAR(20),
+        implant_required BOOLEAN DEFAULT false,
+        blood_required BOOLEAN DEFAULT false,
+        is_insured BOOLEAN DEFAULT false,
+        asa_score INTEGER,
+        asa_confirmed_by UUID REFERENCES profiles(id),
+        asa_confirmed_at TIMESTAMPTZ,
+        pac_notes TEXT,
+        is_high_risk BOOLEAN DEFAULT false,
+        primary_surgeon_name VARCHAR(255) NOT NULL,
+        primary_surgeon_id UUID REFERENCES profiles(id),
+        assistant_surgeon_name VARCHAR(255),
+        anaesthesiologist_name VARCHAR(255) NOT NULL,
+        anaesthesiologist_id UUID REFERENCES profiles(id),
+        scrub_nurse_name VARCHAR(255),
+        circulating_nurse_name VARCHAR(255),
+        ot_technician_name VARCHAR(255),
+        scheduled_date DATE NOT NULL,
+        scheduled_time TIME,
+        ot_room INTEGER NOT NULL,
+        slot_order INTEGER,
+        post_op_destination VARCHAR(20) NOT NULL DEFAULT 'PACU',
+        icu_bed_required BOOLEAN DEFAULT false,
+        overall_readiness VARCHAR(20) NOT NULL DEFAULT 'not_ready',
+        status VARCHAR(20) NOT NULL DEFAULT 'posted',
+        cancellation_reason TEXT,
+        postponed_to DATE,
+        posted_by UUID NOT NULL REFERENCES profiles(id),
+        posted_via VARCHAR(20) DEFAULT 'wizard',
+        getstream_message_id VARCHAR(255),
+        notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run('idx_sp_date_room', `CREATE INDEX IF NOT EXISTS idx_sp_date_room ON surgery_postings(scheduled_date, ot_room)`);
+    await run('idx_sp_status', `CREATE INDEX IF NOT EXISTS idx_sp_status ON surgery_postings(status)`);
+    await run('idx_sp_patient', `CREATE INDEX IF NOT EXISTS idx_sp_patient ON surgery_postings(patient_thread_id) WHERE patient_thread_id IS NOT NULL`);
+    await run('idx_sp_surgeon', `CREATE INDEX IF NOT EXISTS idx_sp_surgeon ON surgery_postings(primary_surgeon_id) WHERE primary_surgeon_id IS NOT NULL`);
+    await run('idx_sp_readiness', `CREATE INDEX IF NOT EXISTS idx_sp_readiness ON surgery_postings(overall_readiness) WHERE status = 'posted'`);
+
+    // 13b. ot_readiness_items table
+    await run('ot_readiness_items', `
+      CREATE TABLE IF NOT EXISTS ot_readiness_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        surgery_posting_id UUID NOT NULL REFERENCES surgery_postings(id) ON DELETE CASCADE,
+        item_key VARCHAR(80) NOT NULL,
+        item_label VARCHAR(255) NOT NULL,
+        item_category VARCHAR(30) NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_dynamic BOOLEAN DEFAULT false,
+        responsible_role VARCHAR(50) NOT NULL,
+        responsible_user_id UUID REFERENCES profiles(id),
+        responsible_user_name VARCHAR(255),
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        status_detail VARCHAR(500),
+        confirmed_by UUID REFERENCES profiles(id),
+        confirmed_by_name VARCHAR(255),
+        confirmed_at TIMESTAMPTZ,
+        confirmation_notes TEXT,
+        asa_score_given INTEGER,
+        due_by TIMESTAMPTZ,
+        escalated BOOLEAN NOT NULL DEFAULT false,
+        escalated_at TIMESTAMPTZ,
+        escalated_to UUID REFERENCES profiles(id),
+        escalation_level INTEGER DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(surgery_posting_id, item_key)
+      )
+    `);
+    await run('idx_ori_posting', `CREATE INDEX IF NOT EXISTS idx_ori_posting ON ot_readiness_items(surgery_posting_id)`);
+    await run('idx_ori_status', `CREATE INDEX IF NOT EXISTS idx_ori_status ON ot_readiness_items(status)`);
+    await run('idx_ori_role', `CREATE INDEX IF NOT EXISTS idx_ori_role ON ot_readiness_items(responsible_role)`);
+    await run('idx_ori_due', `CREATE INDEX IF NOT EXISTS idx_ori_due ON ot_readiness_items(due_by) WHERE due_by IS NOT NULL AND status = 'pending'`);
+
+    // 13c. ot_readiness_audit_log table
+    await run('ot_readiness_audit_log', `
+      CREATE TABLE IF NOT EXISTS ot_readiness_audit_log (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        readiness_item_id UUID NOT NULL REFERENCES ot_readiness_items(id),
+        surgery_posting_id UUID NOT NULL REFERENCES surgery_postings(id),
+        action VARCHAR(30) NOT NULL,
+        old_status VARCHAR(20),
+        new_status VARCHAR(20),
+        detail TEXT,
+        performed_by UUID NOT NULL REFERENCES profiles(id),
+        performed_by_name VARCHAR(255),
+        performed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run('idx_oral_item', `CREATE INDEX IF NOT EXISTS idx_oral_item ON ot_readiness_audit_log(readiness_item_id)`);
+    await run('idx_oral_posting', `CREATE INDEX IF NOT EXISTS idx_oral_posting ON ot_readiness_audit_log(surgery_posting_id)`);
+
+    // 13d. ot_equipment_items table
+    await run('ot_equipment_items', `
+      CREATE TABLE IF NOT EXISTS ot_equipment_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        surgery_posting_id UUID NOT NULL REFERENCES surgery_postings(id) ON DELETE CASCADE,
+        readiness_item_id UUID REFERENCES ot_readiness_items(id),
+        item_type VARCHAR(30) NOT NULL,
+        item_name VARCHAR(255) NOT NULL,
+        item_description TEXT,
+        quantity INTEGER DEFAULT 1,
+        vendor_name VARCHAR(255),
+        vendor_contact VARCHAR(255),
+        is_rental BOOLEAN DEFAULT false,
+        rental_cost_estimate NUMERIC(10,2),
+        status VARCHAR(30) NOT NULL DEFAULT 'requested',
+        delivery_eta TIMESTAMPTZ,
+        delivered_at TIMESTAMPTZ,
+        verified_by UUID REFERENCES profiles(id),
+        verified_at TIMESTAMPTZ,
+        status_notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run('idx_oei_posting', `CREATE INDEX IF NOT EXISTS idx_oei_posting ON ot_equipment_items(surgery_posting_id)`);
+    await run('idx_oei_readiness', `CREATE INDEX IF NOT EXISTS idx_oei_readiness ON ot_equipment_items(readiness_item_id) WHERE readiness_item_id IS NOT NULL`);
+    await run('idx_oei_status', `CREATE INDEX IF NOT EXISTS idx_oei_status ON ot_equipment_items(status)`);
+
+    // 13e. Triggers for OT tables
+    for (const tbl of ['surgery_postings', 'ot_readiness_items', 'ot_equipment_items']) {
+      await run(`trigger_${tbl}_drop`, `DROP TRIGGER IF EXISTS set_updated_at ON ${tbl}`);
+      await run(`trigger_${tbl}_create`, `CREATE TRIGGER set_updated_at BEFORE UPDATE ON ${tbl} FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at()`);
+    }
+
+    await run('ot_migration_record', `INSERT INTO _migrations (name) VALUES ('ot-surgery-readiness-v1') ON CONFLICT (name) DO NOTHING`);
+
     // 9. Verify
     const tables = await sql`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
-      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages','insurance_claims','claim_events','discharge_milestones')
+      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages','insurance_claims','claim_events','discharge_milestones','surgery_postings','ot_readiness_items','ot_readiness_audit_log','ot_equipment_items')
       ORDER BY table_name
     `;
 
@@ -486,7 +634,7 @@ export async function POST() {
         tables_found: tables.map((t) => t.table_name),
         log: results,
       },
-      message: `Migration complete. ${successCount} executed, ${skipCount} skipped, ${errorCount} errors. ${tables.length}/11 tables found.`,
+      message: `Migration complete. ${successCount} executed, ${skipCount} skipped, ${errorCount} errors. ${tables.length}/15 tables found.`,
     });
   } catch (error) {
     console.error('POST /api/admin/migrate error:', error);

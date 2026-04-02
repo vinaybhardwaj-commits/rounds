@@ -69,14 +69,18 @@ interface StaffProfile {
 }
 
 import { DailyBriefing } from '@/components/ai/DailyBriefing';
+import { OTItemsTab } from '@/components/ot/OTItemsTab';
+import { OTSchedulePage } from '@/components/ot/OTSchedulePage';
 
-type TaskTab = 'briefing' | 'overdue' | 'escalations';
+type TaskTab = 'briefing' | 'overdue' | 'escalations' | 'ot_items';
 
 interface TasksViewProps {
   onNavigateToPatient?: (patientThreadId: string) => void;
+  userRole?: string;
+  userId?: string;
 }
 
-export function TasksView({ onNavigateToPatient }: TasksViewProps) {
+export function TasksView({ onNavigateToPatient, userRole = '', userId = '' }: TasksViewProps) {
   const [tab, setTab] = useState<TaskTab>('briefing');
   const [overdueItems, setOverdueItems] = useState<ReadinessItem[]>([]);
   const [completedItems, setCompletedItems] = useState<CompletedItem[]>([]);
@@ -97,6 +101,7 @@ export function TasksView({ onNavigateToPatient }: TasksViewProps) {
   // Feedback
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [assignedNames, setAssignedNames] = useState<Record<string, string>>({});
+  const [showOTSchedule, setShowOTSchedule] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -381,12 +386,20 @@ export function TasksView({ onNavigateToPatient }: TasksViewProps) {
       <div className="px-4 pt-4 pb-2">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-xl font-bold text-even-navy">Tasks</h1>
-          <button
-            onClick={fetchData}
-            className="p-2 text-gray-400 hover:text-even-blue hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setShowOTSchedule(true)}
+              className="text-[11px] font-medium text-blue-700 bg-blue-50 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"
+            >
+              OT Schedule
+            </button>
+            <button
+              onClick={fetchData}
+              className="p-2 text-gray-400 hover:text-even-blue hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+            </button>
+          </div>
         </div>
 
         {/* Tab pills */}
@@ -426,6 +439,16 @@ export function TasksView({ onNavigateToPatient }: TasksViewProps) {
             {escCount > 0 && (
               <span className="bg-red-500 text-white text-[9px] px-1.5 rounded-full">{escCount}</span>
             )}
+          </button>
+          <button
+            onClick={() => setTab('ot_items')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              tab === 'ot_items'
+                ? 'bg-blue-100 text-blue-700'
+                : 'bg-gray-100 text-gray-500'
+            }`}
+          >
+            OT Items
           </button>
         </div>
       </div>
@@ -672,6 +695,8 @@ export function TasksView({ onNavigateToPatient }: TasksViewProps) {
               )}
             </div>
           )
+        ) : tab === 'ot_items' ? (
+          <OTItemsTab userRole={userRole} userId={userId} onNavigateToPatient={onNavigateToPatient} />
         ) : (
           /* Escalations tab */
           escalations.length === 0 ? (
@@ -869,6 +894,24 @@ export function TasksView({ onNavigateToPatient }: TasksViewProps) {
                 ))
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* OT Schedule full-screen overlay */}
+      {showOTSchedule && (
+        <div className="fixed inset-0 z-50 bg-white flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
+            <button
+              onClick={() => setShowOTSchedule(false)}
+              className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900"
+            >
+              <X size={18} />
+              Close
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <OTSchedulePage userRole={userRole} userId={userId} />
           </div>
         </div>
       )}

@@ -43,6 +43,11 @@ const CROSS_FUNCTIONAL_CHANNELS = [
     name: 'Emergency Escalation',
     description: 'Urgent cross-department escalations',
   },
+  {
+    id: 'ot-schedule',
+    name: 'OT Schedule',
+    description: 'Surgery posting notifications, readiness updates, and daily OT digest',
+  },
 ];
 
 // The hospital-wide ops broadcast channel

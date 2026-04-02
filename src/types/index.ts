@@ -921,3 +921,195 @@ export interface GuestInvitation {
   accepted_at: string | null;
   created_at: string;
 }
+
+// ============================================
+// OT SURGERY READINESS
+// ============================================
+
+export type ProcedureSide = 'Left' | 'Right' | 'Bilateral' | 'N/A' | 'Midline';
+export type CaseType = 'Elective' | 'Emergency' | 'Day Care';
+export type WoundClass = 'Clean' | 'Clean-Contaminated' | 'Dirty' | 'Infected';
+export type CaseComplexity = 'Minor' | 'Moderate' | 'Major' | 'Super-Major';
+export type AnaesthesiaType = 'GA' | 'SA' | 'Regional' | 'LA' | 'Block' | 'Sedation';
+export type PostOpDestination = 'PACU' | 'ICU' | 'Ward';
+
+export type SurgeryPostingStatus = 'posted' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'postponed';
+export type OverallReadiness = 'not_ready' | 'partial' | 'ready' | 'blocked';
+export type OTReadinessItemStatus = 'pending' | 'confirmed' | 'not_applicable' | 'flagged' | 'blocked';
+export type OTReadinessCategory = 'clinical' | 'financial' | 'logistics' | 'nursing' | 'team' | 'specialist_clearance' | 'equipment';
+export type OTEquipmentType = 'implant' | 'rental_equipment' | 'special_instrument' | 'consumable';
+export type OTEquipmentStatus = 'requested' | 'vendor_confirmed' | 'in_transit' | 'delivered' | 'in_ot' | 'verified' | 'returned';
+export type OTAuditAction = 'created' | 'confirmed' | 'flagged' | 'blocked' | 'escalated' | 'reset' | 'marked_na' | 'added' | 'bulk_confirmed';
+export type PostedVia = 'wizard' | 'slash_command' | 'api' | 'migration';
+
+export interface SurgeryPosting {
+  id: string;
+  patient_name: string;
+  patient_thread_id: string | null;
+  uhid: string | null;
+  ip_number: string | null;
+  age: number | null;
+  gender: string | null;
+  procedure_name: string;
+  procedure_side: ProcedureSide;
+  case_type: CaseType;
+  wound_class: WoundClass | null;
+  case_complexity: CaseComplexity | null;
+  estimated_duration_minutes: number | null;
+  anaesthesia_type: AnaesthesiaType | null;
+  implant_required: boolean;
+  blood_required: boolean;
+  is_insured: boolean;
+  asa_score: number | null;
+  asa_confirmed_by: string | null;
+  asa_confirmed_at: string | null;
+  pac_notes: string | null;
+  is_high_risk: boolean;
+  primary_surgeon_name: string;
+  primary_surgeon_id: string | null;
+  assistant_surgeon_name: string | null;
+  anaesthesiologist_name: string;
+  anaesthesiologist_id: string | null;
+  scrub_nurse_name: string | null;
+  circulating_nurse_name: string | null;
+  ot_technician_name: string | null;
+  scheduled_date: string;
+  scheduled_time: string | null;
+  ot_room: number;
+  slot_order: number | null;
+  post_op_destination: PostOpDestination;
+  icu_bed_required: boolean;
+  overall_readiness: OverallReadiness;
+  status: SurgeryPostingStatus;
+  cancellation_reason: string | null;
+  postponed_to: string | null;
+  posted_by: string;
+  posted_via: PostedVia;
+  getstream_message_id: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OTReadinessItem {
+  id: string;
+  surgery_posting_id: string;
+  item_key: string;
+  item_label: string;
+  item_category: OTReadinessCategory;
+  sort_order: number;
+  is_dynamic: boolean;
+  responsible_role: string;
+  responsible_user_id: string | null;
+  responsible_user_name: string | null;
+  status: OTReadinessItemStatus;
+  status_detail: string | null;
+  confirmed_by: string | null;
+  confirmed_by_name: string | null;
+  confirmed_at: string | null;
+  confirmation_notes: string | null;
+  asa_score_given: number | null;
+  due_by: string | null;
+  escalated: boolean;
+  escalated_at: string | null;
+  escalated_to: string | null;
+  escalation_level: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OTReadinessAuditLog {
+  id: string;
+  readiness_item_id: string;
+  surgery_posting_id: string;
+  action: OTAuditAction;
+  old_status: string | null;
+  new_status: string | null;
+  detail: string | null;
+  performed_by: string;
+  performed_by_name: string | null;
+  performed_at: string;
+}
+
+export interface OTEquipmentItem {
+  id: string;
+  surgery_posting_id: string;
+  readiness_item_id: string | null;
+  item_type: OTEquipmentType;
+  item_name: string;
+  item_description: string | null;
+  quantity: number;
+  vendor_name: string | null;
+  vendor_contact: string | null;
+  is_rental: boolean;
+  rental_cost_estimate: number | null;
+  status: OTEquipmentStatus;
+  delivery_eta: string | null;
+  delivered_at: string | null;
+  verified_by: string | null;
+  verified_at: string | null;
+  status_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// OT Labels & Colors
+export const SURGERY_STATUS_LABELS: Record<SurgeryPostingStatus, string> = {
+  posted: 'Posted', confirmed: 'Confirmed', in_progress: 'In Progress',
+  completed: 'Completed', cancelled: 'Cancelled', postponed: 'Postponed',
+};
+export const SURGERY_STATUS_COLORS: Record<SurgeryPostingStatus, string> = {
+  posted: 'bg-blue-100 text-blue-800', confirmed: 'bg-green-100 text-green-800',
+  in_progress: 'bg-yellow-100 text-yellow-800', completed: 'bg-gray-100 text-gray-800',
+  cancelled: 'bg-red-100 text-red-800', postponed: 'bg-orange-100 text-orange-800',
+};
+export const READINESS_STATUS_LABELS: Record<OverallReadiness, string> = {
+  not_ready: 'Not Ready', partial: 'Partial', ready: 'Ready', blocked: 'Blocked',
+};
+export const READINESS_STATUS_COLORS: Record<OverallReadiness, string> = {
+  not_ready: 'bg-red-100 text-red-800', partial: 'bg-orange-100 text-orange-800',
+  ready: 'bg-green-100 text-green-800', blocked: 'bg-red-200 text-red-900',
+};
+export const READINESS_STATUS_DOT_COLORS: Record<OverallReadiness, string> = {
+  not_ready: '#ef4444', partial: '#f59e0b', ready: '#22c55e', blocked: '#dc2626',
+};
+export const OT_ITEM_STATUS_LABELS: Record<OTReadinessItemStatus, string> = {
+  pending: 'Pending', confirmed: 'Confirmed', not_applicable: 'N/A',
+  flagged: 'Flagged', blocked: 'Blocked',
+};
+export const OT_ITEM_STATUS_COLORS: Record<OTReadinessItemStatus, string> = {
+  pending: 'text-gray-500', confirmed: 'text-green-600',
+  not_applicable: 'text-gray-400', flagged: 'text-orange-600', blocked: 'text-red-600',
+};
+export const OT_ITEM_STATUS_ICONS: Record<OTReadinessItemStatus, string> = {
+  pending: '⏳', confirmed: '✅', not_applicable: '➖', flagged: '🚫', blocked: '🔴',
+};
+export const OT_CATEGORY_LABELS: Record<OTReadinessCategory, string> = {
+  clinical: 'Clinical', financial: 'Financial', logistics: 'Logistics',
+  nursing: 'Nursing', team: 'Team', specialist_clearance: 'Specialist Clearances',
+  equipment: 'Equipment',
+};
+export const OT_EQUIPMENT_STATUS_LABELS: Record<OTEquipmentStatus, string> = {
+  requested: 'Requested', vendor_confirmed: 'Vendor Confirmed', in_transit: 'In Transit',
+  delivered: 'Delivered', in_ot: 'In OT', verified: 'Verified', returned: 'Returned',
+};
+export const OT_EQUIPMENT_STATUS_COLORS: Record<OTEquipmentStatus, string> = {
+  requested: 'text-gray-500', vendor_confirmed: 'text-blue-600', in_transit: 'text-yellow-600',
+  delivered: 'text-green-600', in_ot: 'text-green-700', verified: 'text-green-800', returned: 'text-gray-400',
+};
+// Simplified status for non-SCM roles
+export const OT_EQUIPMENT_SIMPLE_STATUS: Record<OTEquipmentStatus, { label: string; color: string }> = {
+  requested: { label: 'Pending', color: '🔴' },
+  vendor_confirmed: { label: 'In Progress', color: '🟡' },
+  in_transit: { label: 'In Transit', color: '🟡' },
+  delivered: { label: 'Available', color: '🟢' },
+  in_ot: { label: 'Available', color: '🟢' },
+  verified: { label: 'Available', color: '🟢' },
+  returned: { label: 'Returned', color: '⚪' },
+};
+export const WOUND_CLASS_LABELS: Record<WoundClass, string> = {
+  Clean: 'Clean', 'Clean-Contaminated': 'Clean-Contaminated', Dirty: 'Dirty', Infected: 'Infected',
+};
+export const ANAESTHESIA_TYPE_LABELS: Record<AnaesthesiaType, string> = {
+  GA: 'General', SA: 'Spinal', Regional: 'Regional', LA: 'Local', Block: 'Block', Sedation: 'Sedation',
+};

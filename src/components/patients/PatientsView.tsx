@@ -20,6 +20,7 @@ import {
 import type { PatientStage, FormType } from '@/types';
 import { PATIENT_STAGE_LABELS, PATIENT_STAGE_COLORS } from '@/types';
 import { FORMS_BY_STAGE, FORM_TYPE_LABELS } from '@/lib/form-registry';
+import { OTActionBanner } from '@/components/ot/OTActionBanner';
 
 type CreateTab = 'single' | 'upload';
 
@@ -53,6 +54,7 @@ interface PatientThread {
 interface PatientsViewProps {
   onOpenPatient?: (patient: PatientThread) => void;
   onNavigateToChannel?: (channelId: string) => void;
+  onViewOTItems?: () => void;
 }
 
 // Short labels for chiclets
@@ -114,7 +116,7 @@ function formatArchiveDate(d: string): string {
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsViewProps) {
+export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems }: PatientsViewProps) {
   const [patients, setPatients] = useState<PatientThread[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -495,6 +497,9 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel }: PatientsVie
           {msg.text}
         </div>
       )}
+
+      {/* OT Action Banner */}
+      <OTActionBanner onViewOTItems={onViewOTItems} />
 
       {/* Patient list + archived accordions */}
       <div className="flex-1 overflow-y-auto px-4 pb-4">

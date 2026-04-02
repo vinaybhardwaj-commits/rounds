@@ -26,13 +26,13 @@ interface AppShellProps {
 export function AppShell({ userId, userRole, streamToken }: AppShellProps) {
   return (
     <ChatProvider userId={userId} initialStreamToken={streamToken}>
-      <AppShellInner userRole={userRole} />
+      <AppShellInner userId={userId} userRole={userRole} />
     </ChatProvider>
   );
 }
 
 // ── Inner component (inside ChatProvider so it can use useChatContext) ──
-function AppShellInner({ userRole }: { userRole: string }) {
+function AppShellInner({ userId, userRole }: { userId: string; userRole: string }) {
   useChatContext(); // keep ChatProvider mounted
   const [activeTab, setActiveTab] = useState<TabId>('patients');
   const isAdmin = userRole === 'super_admin' || userRole === 'department_head';
@@ -48,6 +48,8 @@ function AppShellInner({ userRole }: { userRole: string }) {
 
   // Overdue count for Tasks badge
   const [overdueCount, setOverdueCount] = useState(0);
+  // OT pending count for Tasks badge
+  const [otPendingCount, setOtPendingCount] = useState(0);
 
   // Suppress popstate handling during programmatic history changes
   const suppressPopStateRef = useRef(false);
@@ -60,32 +62,41 @@ function AppShellInner({ userRole }: { userRole: string }) {
     setUnreadCount(count);
   }, []);
 
-  // ── Overdue count for Tasks badge ──
+  // ── Overdue + OT pending counts for Tasks badge ──
   useEffect(() => {
-    const fetchOverdue = async () => {
+    const fetchCounts = async () => {
       try {
-        const res = await fetch('/api/readiness/overdue');
-        const data = await res.json();
-        if (data.success && Array.isArray(data.data)) {
-          setOverdueCount(data.data.length);
+        const [overdueRes, otRes] = await Promise.all([
+          fetch('/api/readiness/overdue'),
+          fetch('/api/ot/readiness/mine?count_only=true'),
+        ]);
+        const overdueData = await overdueRes.json();
+        if (overdueData.success && Array.isArray(overdueData.data)) {
+          setOverdueCount(overdueData.data.length);
+        }
+        const otData = await otRes.json();
+        if (otData.success) {
+          const c = typeof otData.data === 'number' ? otData.data : (otData.data?.count ?? 0);
+          setOtPendingCount(c);
         }
       } catch {
         // Non-fatal — badge just won't show
       }
     };
 
-    fetchOverdue();
-    // Refresh overdue count every 2 minutes
-    const interval = setInterval(fetchOverdue, 120_000);
+    fetchCounts();
+    // Refresh every 2 minutes
+    const interval = setInterval(fetchCounts, 120_000);
     return () => clearInterval(interval);
   }, []);
 
   const badges = useMemo(() => {
     const b: Partial<Record<TabId, number>> = {};
     if (unreadCount > 0) b.chat = unreadCount;
-    if (overdueCount > 0) b.tasks = overdueCount;
+    const tasksBadge = overdueCount + otPendingCount;
+    if (tasksBadge > 0) b.tasks = tasksBadge;
     return b;
-  }, [unreadCount, overdueCount]);
+  }, [unreadCount, overdueCount, otPendingCount]);
 
   // ── Browser History Management ──
   // Every navigation state = { tab, patientId? } pushed to browser history.
@@ -193,11 +204,17 @@ function AppShellInner({ userRole }: { userRole: string }) {
               patientId={selectedPatientId}
               onBack={handleBackFromDetail}
               onOpenChannel={handleOpenChannelFromDetail}
+              userRole={userRole}
+              userId={userId}
             />
           ) : (
             <PatientsView
               onOpenPatient={handleOpenPatient}
               onNavigateToChannel={handleNavigateToChannel}
+              onViewOTItems={() => {
+                pushNavState('tasks', null);
+                setActiveTab('tasks');
+              }}
             />
           )}
         </div>
@@ -220,6 +237,8 @@ function AppShellInner({ userRole }: { userRole: string }) {
         {/* Tasks Tab */}
         <div className={activeTab === 'tasks' ? 'h-full' : 'hidden'}>
           <TasksView
+            userRole={userRole}
+            userId={userId}
             onNavigateToPatient={(patientThreadId) => {
               pushNavState('patients', patientThreadId);
               setSelectedPatientId(patientThreadId);

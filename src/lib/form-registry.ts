@@ -1633,7 +1633,8 @@ export const FORMS_BY_STAGE: Record<string, FormType[]> = {
   opd: ['marketing_cc_handoff', 'admission_advice'],
   pre_admission: ['marketing_cc_handoff', 'admission_advice', 'financial_counseling'],
   admitted: ['admission_checklist', 'financial_counseling', 'nursing_shift_handoff'],
-  pre_op: ['surgery_posting', 'pre_op_nursing_checklist', 'ot_billing_clearance', 'pac_clearance'],
+  // NOTE: surgery_posting removed — now a first-class entity via /api/ot/postings (OT Surgery Readiness)
+  pre_op: ['pre_op_nursing_checklist', 'ot_billing_clearance', 'pac_clearance'],
   surgery: ['who_safety_checklist'],
   post_op: ['nursing_shift_handoff'],
   discharge: ['discharge_readiness'],
