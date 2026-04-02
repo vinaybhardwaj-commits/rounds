@@ -33,8 +33,8 @@ import { useChatContext } from '@/providers/ChatProvider';
 import { MessageTypeBadge } from './MessageTypeBadge';
 import { DeleteMessageModal } from './DeleteMessageModal';
 import FormCard from '@/components/forms/FormCard';
-import type { MessageType, MessagePriority, FormType, PatientStage } from '@/types';
-import { PATIENT_STAGE_LABELS, VALID_STAGE_TRANSITIONS } from '@/types';
+import type { MessageType, MessagePriority, FormType, PatientStage, DischargeMilestoneStep } from '@/types';
+import { PATIENT_STAGE_LABELS, VALID_STAGE_TRANSITIONS, DISCHARGE_MILESTONE_LABELS } from '@/types';
 import { FORM_TYPE_LABELS, FORMS_BY_STAGE } from '@/lib/form-registry';
 
 // --- Types ---
@@ -1070,6 +1070,30 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                     setAdvancingStage(false);
                   }
                 }}
+                onDischargeAction={async (patientId, action, step) => {
+                  setShowSlashMenu(false);
+                  setMessageText('');
+                  try {
+                    if (action === 'start') {
+                      const res = await fetch(`/api/patients/${patientId}/discharge`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                      });
+                      const data = await res.json();
+                      if (!data.success) alert(`Discharge start failed: ${data.error}`);
+                    } else if (action === 'step' && step) {
+                      const res = await fetch(`/api/patients/${patientId}/discharge`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ step }),
+                      });
+                      const data = await res.json();
+                      if (!data.success) alert(`Milestone update failed: ${data.error}`);
+                    }
+                  } catch (err) {
+                    alert(`Discharge action error: ${err}`);
+                  }
+                }}
                 onArchive={async (patientId) => {
                   setShowSlashMenu(false);
                   setMessageText('');
@@ -1186,13 +1210,14 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
 }
 
 // ── Slash Command Menu ──
-// Shows stage transitions (advance/move back) + forms + archive
+// Shows stage transitions, discharge milestones, forms, and actions
 // in patient thread channels. Only forms in non-patient channels.
 function SlashCommandMenu({
   channel,
   advancingStage,
   onSelectForm,
   onAdvanceStage,
+  onDischargeAction,
   onArchive,
   onClose,
 }: {
@@ -1200,6 +1225,7 @@ function SlashCommandMenu({
   advancingStage: boolean;
   onSelectForm: (formType: FormType, patientId?: string) => void;
   onAdvanceStage: (patientId: string, newStage: string) => void;
+  onDischargeAction: (patientId: string, action: 'start' | 'step', step?: DischargeMilestoneStep) => void;
   onArchive: (patientId: string) => void;
   onClose: () => void;
 }) {
@@ -1207,6 +1233,19 @@ function SlashCommandMenu({
   const currentStage = (channelData?.current_stage as PatientStage) || null;
   const patientId = (channelData?.patient_thread_id as string) || undefined;
   const isPatientThread = channel.type === 'patient-thread';
+
+  // Discharge milestone steps available from current stage
+  const isDischargeStage = currentStage === 'discharge' || currentStage === 'post_op' || currentStage === 'medical_management';
+  const dischargeSteps: { step: DischargeMilestoneStep; label: string; emoji: string }[] = isPatientThread && isDischargeStage ? [
+    { step: 'pharmacy_clearance', label: 'Clear Pharmacy', emoji: '💊' },
+    { step: 'lab_clearance', label: 'Clear Labs', emoji: '🔬' },
+    { step: 'discharge_summary', label: 'Summary Finalized', emoji: '📝' },
+    { step: 'billing_closure', label: 'Close Billing', emoji: '💰' },
+    { step: 'final_bill_submitted', label: 'Submit to Insurer', emoji: '📤' },
+    { step: 'final_approval', label: 'Log Approval', emoji: '✅' },
+    { step: 'patient_settled', label: 'Patient Settled', emoji: '🧾' },
+    { step: 'patient_departed', label: 'Patient Departed', emoji: '🚪' },
+  ] : [];
 
   // Get valid next stages for this patient
   const nextStages: PatientStage[] = isPatientThread && currentStage
@@ -1260,6 +1299,32 @@ function SlashCommandMenu({
                 </span>
                 <span className="ml-auto text-[10px] text-blue-500 font-medium">
                   Stage
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Discharge Milestones */}
+      {isPatientThread && patientId && dischargeSteps.length > 0 && (
+        <>
+          <div className="px-3 py-2 border-t border-gray-100">
+            <p className="text-xs font-semibold text-gray-500">
+              Discharge Milestones
+            </p>
+          </div>
+          <div className="py-1">
+            {dischargeSteps.map(({ step, label, emoji }) => (
+              <button
+                key={step}
+                onClick={() => onDischargeAction(patientId, 'step', step)}
+                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-green-50 text-left transition-colors"
+              >
+                <span className="text-base shrink-0">{emoji}</span>
+                <span className="text-sm font-medium text-even-navy">{label}</span>
+                <span className="ml-auto text-[10px] text-green-600 font-medium">
+                  Discharge
                 </span>
               </button>
             ))}
@@ -1322,7 +1387,7 @@ function SlashCommandMenu({
         </>
       )}
 
-      {/* Archive action (patient threads only) */}
+      {/* Actions section */}
       {isPatientThread && patientId && (
         <>
           <div className="px-3 py-1.5 border-t border-gray-100">
@@ -1331,6 +1396,19 @@ function SlashCommandMenu({
             </p>
           </div>
           <div className="py-1">
+            {/* Start Discharge — only when in a stage that can reach discharge */}
+            {currentStage && ['admitted', 'medical_management', 'post_op', 'post_op_care', 'long_term_followup'].includes(currentStage) && (
+              <button
+                onClick={() => onDischargeAction(patientId, 'start')}
+                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-green-50 text-left transition-colors"
+              >
+                <span className="text-base shrink-0">🏁</span>
+                <span className="text-sm font-medium text-green-700">Start Discharge</span>
+                <span className="ml-auto text-[10px] text-green-600 font-medium">
+                  Milestone
+                </span>
+              </button>
+            )}
             <button
               onClick={() => onArchive(patientId)}
               className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-red-50 text-left transition-colors"

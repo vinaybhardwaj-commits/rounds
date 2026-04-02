@@ -163,6 +163,15 @@ export function PatientDetailView({
   // Tab state
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
 
+  // Discharge milestone state
+  const [dischargeMilestone, setDischargeMilestone] = useState<Record<string, unknown> | null>(null);
+  const [dischargeProgress, setDischargeProgress] = useState<{
+    completed: string[];
+    current: string | null;
+    pending: string[];
+    totalElapsedMinutes: number | null;
+  } | null>(null);
+
   // Inline edit state
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -185,7 +194,24 @@ export function PatientDetailView({
     }
   }, [patientId]);
 
+  const fetchDischargeStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/patients/${patientId}/discharge`);
+      const data = await res.json();
+      if (data.success && data.data) {
+        setDischargeMilestone(data.data.milestone);
+        setDischargeProgress(data.data.progress);
+      } else {
+        setDischargeMilestone(null);
+        setDischargeProgress(null);
+      }
+    } catch {
+      // Non-fatal
+    }
+  }, [patientId]);
+
   useEffect(() => { fetchPatient(); }, [fetchPatient]);
+  useEffect(() => { fetchDischargeStatus(); }, [fetchDischargeStatus]);
 
   // Fetch departments and consultants for inline edit
   useEffect(() => {
@@ -659,6 +685,105 @@ export function PatientDetailView({
           }`}>
             {msg.type === 'success' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
             {msg.text}
+          </div>
+        )}
+
+        {/* ── Discharge Progress ── */}
+        {dischargeProgress && dischargeMilestone && (
+          <div className="mx-4 mb-4">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              Discharge Progress
+              {dischargeProgress.totalElapsedMinutes != null && (
+                <span className="ml-2 text-even-blue font-bold normal-case">
+                  {dischargeProgress.totalElapsedMinutes < 60
+                    ? `${dischargeProgress.totalElapsedMinutes}m`
+                    : `${Math.floor(dischargeProgress.totalElapsedMinutes / 60)}h ${dischargeProgress.totalElapsedMinutes % 60}m`
+                  }
+                </span>
+              )}
+            </h3>
+            <div className="bg-white rounded-xl border border-gray-100 p-3">
+              {/* Progress dots */}
+              <div className="flex items-center gap-1 mb-3 overflow-x-auto">
+                {['discharge_ordered', 'pharmacy_clearance', 'lab_clearance', 'discharge_summary', 'billing_closure', 'final_bill_submitted', 'final_approval', 'patient_settled', 'patient_departed'].map((step, idx, arr) => {
+                  const isCompleted = dischargeProgress.completed.includes(step);
+                  const isCurrent = dischargeProgress.current === step;
+                  return (
+                    <div key={step} className="flex items-center">
+                      <div
+                        className={`w-3 h-3 rounded-full flex-shrink-0 ${
+                          isCompleted ? 'bg-green-500' : isCurrent ? 'bg-amber-400 animate-pulse' : 'bg-gray-200'
+                        }`}
+                        title={
+                          ({'discharge_ordered': 'Order', 'pharmacy_clearance': 'Pharmacy', 'lab_clearance': 'Labs',
+                            'discharge_summary': 'Summary', 'billing_closure': 'Billing', 'final_bill_submitted': 'Submit',
+                            'final_approval': 'Approval', 'patient_settled': 'Settled', 'patient_departed': 'Departed'
+                          } as Record<string, string>)[step] || step
+                        }
+                      />
+                      {idx < arr.length - 1 && (
+                        <div className={`w-3 h-0.5 ${isCompleted ? 'bg-green-300' : 'bg-gray-200'}`} />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Step list */}
+              <div className="space-y-1.5">
+                {dischargeProgress.completed.map(step => {
+                  const stepLabels: Record<string, string> = {
+                    discharge_ordered: '🏁 Ordered', pharmacy_clearance: '💊 Pharmacy',
+                    lab_clearance: '🔬 Labs', discharge_summary: '📝 Summary',
+                    billing_closure: '💰 Billing', final_bill_submitted: '📤 Submitted',
+                    final_approval: '✅ Approved', patient_settled: '🧾 Settled',
+                    patient_departed: '🚪 Departed',
+                  };
+                  const timeKey = step + '_at';
+                  const atVal = (dischargeMilestone as Record<string, unknown>)[
+                    step === 'discharge_ordered' ? 'discharge_ordered_at' :
+                    step === 'pharmacy_clearance' ? 'pharmacy_clearance_at' :
+                    step === 'lab_clearance' ? 'lab_clearance_at' :
+                    step === 'discharge_summary' ? 'discharge_summary_at' :
+                    step === 'billing_closure' ? 'billing_closure_at' :
+                    step === 'final_bill_submitted' ? 'final_bill_submitted_at' :
+                    step === 'final_approval' ? 'final_approval_at' :
+                    step === 'patient_settled' ? 'patient_settled_at' :
+                    'patient_departed_at'
+                  ] as string | null;
+                  const timeStr = atVal ? new Date(atVal).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '';
+                  return (
+                    <div key={step} className="flex items-center gap-2 text-xs">
+                      <span className="text-green-600 font-medium">{stepLabels[step] || step}</span>
+                      <span className="text-gray-400 ml-auto">{timeStr}</span>
+                    </div>
+                  );
+                })}
+                {dischargeProgress.current && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-amber-600 font-medium animate-pulse">
+                      {({'discharge_ordered': '🏁 Order', 'pharmacy_clearance': '💊 Pharmacy',
+                        'lab_clearance': '🔬 Labs', 'discharge_summary': '📝 Summary',
+                        'billing_closure': '💰 Billing', 'final_bill_submitted': '📤 Submit',
+                        'final_approval': '✅ Approval', 'patient_settled': '🧾 Settlement',
+                        'patient_departed': '🚪 Departure',
+                      } as Record<string, string>)[dischargeProgress.current] || dischargeProgress.current}
+                    </span>
+                    <span className="text-amber-400 ml-auto">pending...</span>
+                  </div>
+                )}
+              </div>
+              {/* Bottleneck indicator */}
+              {(dischargeMilestone as Record<string, unknown>).bottleneck_step && (
+                <div className="mt-2 pt-2 border-t border-gray-100 text-[10px] text-red-500">
+                  Bottleneck: {
+                    ({'pharmacy_clearance': 'Pharmacy', 'discharge_summary': 'Discharge Summary',
+                      'billing_closure': 'Billing', 'final_bill_submitted': 'Submission',
+                      'final_approval': 'Insurer Approval',
+                    } as Record<string, string>)[(dischargeMilestone as Record<string, unknown>).bottleneck_step as string] || (dischargeMilestone as Record<string, unknown>).bottleneck_step
+                  } ({(dischargeMilestone as Record<string, unknown>).bottleneck_minutes}m)
+                </div>
+              )}
+            </div>
           </div>
         )}
 

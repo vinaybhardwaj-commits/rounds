@@ -20,6 +20,7 @@ import {
   addUsersToChannel,
 } from '@/lib/getstream';
 import { postPatientActivity } from '@/lib/patient-activity';
+import { createDischargeMilestone, postMilestoneMessage } from '@/lib/discharge-milestones';
 import type { PatientStage } from '@/types';
 import { PATIENT_STAGE_LABELS, VALID_STAGE_TRANSITIONS } from '@/types';
 
@@ -179,6 +180,24 @@ export async function PATCH(
       actor: { profileId: user.profileId, name: user.email },
       data: { fromLabel, toLabel, membersAdded: newMembersAdded > 0 ? newMembersAdded : undefined },
     });
+
+    // Auto-start discharge milestone chain when transitioning to 'discharge'
+    if (newStage === 'discharge') {
+      try {
+        const milestone = await createDischargeMilestone(id, user.profileId);
+        await postMilestoneMessage(
+          'discharge_ordered',
+          user.email,
+          (patient as Record<string, unknown>).patient_name as string,
+          channelId,
+          id,
+          milestone,
+        );
+      } catch (err) {
+        console.error('Failed to auto-create discharge milestone:', err);
+        // Non-fatal — stage transition still succeeds
+      }
+    }
 
     // Auto-archive when reaching post_discharge
     let autoArchived = false;

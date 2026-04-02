@@ -456,8 +456,313 @@ export interface AdmissionTrackerEntry {
   // Coordination
   ip_coordinator_id: string | null;
   ip_coordinator_name?: string;
+  // Billing integration
+  insurance_claim_id: string | null;
+  insurer_name: string | null;
+  submission_channel: SubmissionChannel | null;
+  sum_insured: number | null;
+  room_rent_eligibility: number | null;
+  proportional_deduction_risk: number | null;
+  running_bill_amount: number | null;
+  cumulative_approved_amount: number | null;
+  enhancement_alert_threshold: number | null;
   // Joined fields
   getstream_channel_id?: string;
+  // Metadata
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================
+// BILLING & INSURANCE CLAIMS
+// ============================================
+
+export type ClaimStatus =
+  | 'counseling'
+  | 'pre_auth_pending'
+  | 'pre_auth_queried'
+  | 'pre_auth_approved'
+  | 'pre_auth_denied'
+  | 'enhancement_pending'
+  | 'active'
+  | 'final_submitted'
+  | 'final_queried'
+  | 'settled'
+  | 'rejected'
+  | 'disputed';
+
+export type ClaimPreAuthStatus =
+  | 'not_started'
+  | 'submitted'
+  | 'queried'
+  | 'approved'
+  | 'denied'
+  | 'partial';
+
+export type SubmissionChannel = 'tpa' | 'direct';
+
+export type ClaimEventType =
+  | 'pre_auth_submitted' | 'pre_auth_queried' | 'pre_auth_query_responded'
+  | 'pre_auth_approved' | 'pre_auth_denied' | 'pre_auth_partial'
+  | 'enhancement_triggered' | 'enhancement_doctor_notified'
+  | 'enhancement_case_summary_submitted'
+  | 'enhancement_submitted' | 'enhancement_approved' | 'enhancement_denied'
+  | 'final_bill_prepared' | 'final_submitted' | 'final_queried'
+  | 'final_query_responded' | 'final_approved' | 'final_rejected'
+  | 'dispute_initiated' | 'dispute_resolved'
+  | 'counseling_completed' | 'room_change'
+  | 'follow_up_needed' | 'follow_up_completed'
+  | 'note_added' | 'document_uploaded';
+
+export type DischargeMilestoneStep =
+  | 'discharge_ordered'
+  | 'pharmacy_clearance'
+  | 'lab_clearance'
+  | 'discharge_summary'
+  | 'billing_closure'
+  | 'final_bill_submitted'
+  | 'final_approval'
+  | 'patient_settled'
+  | 'patient_departed';
+
+export const CLAIM_STATUS_LABELS: Record<ClaimStatus, string> = {
+  counseling: 'Financial Counseling',
+  pre_auth_pending: 'Pre-Auth Pending',
+  pre_auth_queried: 'Pre-Auth Queried',
+  pre_auth_approved: 'Pre-Auth Approved',
+  pre_auth_denied: 'Pre-Auth Denied',
+  enhancement_pending: 'Enhancement Pending',
+  active: 'Active (In Treatment)',
+  final_submitted: 'Final Bill Submitted',
+  final_queried: 'Final Bill Queried',
+  settled: 'Settled',
+  rejected: 'Rejected',
+  disputed: 'Disputed',
+};
+
+export const CLAIM_STATUS_COLORS: Record<ClaimStatus, string> = {
+  counseling: '#6B7280',
+  pre_auth_pending: '#F97316',
+  pre_auth_queried: '#EAB308',
+  pre_auth_approved: '#22C55E',
+  pre_auth_denied: '#EF4444',
+  enhancement_pending: '#F97316',
+  active: '#0055FF',
+  final_submitted: '#8B5CF6',
+  final_queried: '#EAB308',
+  settled: '#22C55E',
+  rejected: '#EF4444',
+  disputed: '#DC2626',
+};
+
+export const CLAIM_EVENT_LABELS: Record<ClaimEventType, string> = {
+  pre_auth_submitted: 'Pre-Auth Submitted',
+  pre_auth_queried: 'Insurer Query',
+  pre_auth_query_responded: 'Query Responded',
+  pre_auth_approved: 'Pre-Auth Approved',
+  pre_auth_denied: 'Pre-Auth Denied',
+  pre_auth_partial: 'Partial Approval',
+  enhancement_triggered: 'Enhancement Needed',
+  enhancement_doctor_notified: 'Doctor Notified',
+  enhancement_case_summary_submitted: 'Case Summary Submitted',
+  enhancement_submitted: 'Enhancement Submitted',
+  enhancement_approved: 'Enhancement Approved',
+  enhancement_denied: 'Enhancement Denied',
+  final_bill_prepared: 'Final Bill Prepared',
+  final_submitted: 'Final Bill Submitted',
+  final_queried: 'Final Bill Queried',
+  final_query_responded: 'Query Responded',
+  final_approved: 'Final Approval',
+  final_rejected: 'Final Rejected',
+  dispute_initiated: 'Dispute Initiated',
+  dispute_resolved: 'Dispute Resolved',
+  counseling_completed: 'Counseling Complete',
+  room_change: 'Room Changed',
+  follow_up_needed: 'Follow-Up Needed',
+  follow_up_completed: 'Follow-Up Done',
+  note_added: 'Note Added',
+  document_uploaded: 'Document Uploaded',
+};
+
+export const CLAIM_EVENT_COLORS: Record<string, string> = {
+  // Green — approvals
+  pre_auth_approved: '#22C55E',
+  enhancement_approved: '#22C55E',
+  final_approved: '#22C55E',
+  dispute_resolved: '#22C55E',
+  counseling_completed: '#22C55E',
+  // Amber — pending/queries
+  pre_auth_submitted: '#F97316',
+  pre_auth_queried: '#EAB308',
+  pre_auth_query_responded: '#F97316',
+  enhancement_triggered: '#EAB308',
+  enhancement_doctor_notified: '#F97316',
+  enhancement_submitted: '#F97316',
+  final_submitted: '#8B5CF6',
+  final_queried: '#EAB308',
+  final_query_responded: '#F97316',
+  follow_up_needed: '#EAB308',
+  follow_up_completed: '#6B7280',
+  // Red — denials/rejections
+  pre_auth_denied: '#EF4444',
+  pre_auth_partial: '#F97316',
+  enhancement_denied: '#EF4444',
+  final_rejected: '#EF4444',
+  dispute_initiated: '#DC2626',
+  // Neutral
+  enhancement_case_summary_submitted: '#0055FF',
+  final_bill_prepared: '#0055FF',
+  room_change: '#6B7280',
+  note_added: '#6B7280',
+  document_uploaded: '#6B7280',
+};
+
+export const DISCHARGE_MILESTONE_LABELS: Record<DischargeMilestoneStep, string> = {
+  discharge_ordered: 'Discharge Ordered',
+  pharmacy_clearance: 'Pharmacy Cleared',
+  lab_clearance: 'Lab Cleared',
+  discharge_summary: 'Summary Finalized',
+  billing_closure: 'Billing Closed',
+  final_bill_submitted: 'Submitted to Insurer',
+  final_approval: 'Insurer Approved',
+  patient_settled: 'Patient Settled',
+  patient_departed: 'Patient Departed',
+};
+
+export const DISCHARGE_MILESTONE_ORDER: DischargeMilestoneStep[] = [
+  'discharge_ordered',
+  'pharmacy_clearance',
+  'lab_clearance',
+  'discharge_summary',
+  'billing_closure',
+  'final_bill_submitted',
+  'final_approval',
+  'patient_settled',
+  'patient_departed',
+];
+
+// Room rent eligibility constants (industry standard)
+export const ROOM_RENT_ELIGIBILITY_PCT = {
+  standard: 0.01,  // 1% of sum insured
+  icu: 0.015,      // 1.5% of sum insured
+};
+
+// Enhancement alert threshold (default ₹50,000)
+export const DEFAULT_ENHANCEMENT_THRESHOLD = 50000;
+
+// IRDA-mandated TATs (in minutes)
+export const IRDA_TAT = {
+  pre_auth: 480,      // 8 hours
+  final_approval: 240, // 4 hours
+  follow_up_alert: 180, // 3 hours — Mohan's rule: call if no response
+};
+
+export interface InsuranceClaim {
+  id: string;
+  patient_thread_id: string;
+  admission_tracker_id: string | null;
+  // Insurance identity
+  insurer_name: string | null;
+  tpa_name: string | null;
+  submission_channel: SubmissionChannel;
+  portal_used: string | null;
+  policy_number: string | null;
+  claim_number: string | null;
+  patient_card_photo_url: string | null;
+  // Financial counseling snapshot
+  sum_insured: number | null;
+  room_rent_eligibility: number | null;
+  room_category_selected: RoomCategory | null;
+  actual_room_rent: number | null;
+  proportional_deduction_pct: number | null;
+  co_pay_pct: number | null;
+  has_room_rent_waiver: boolean;
+  // Pre-auth
+  estimated_cost: number | null;
+  pre_auth_submitted_at: string | null;
+  pre_auth_approved_at: string | null;
+  pre_auth_amount: number | null;
+  pre_auth_status: ClaimPreAuthStatus;
+  pre_auth_tat_minutes: number | null;
+  // Enhancement
+  total_enhancements: number;
+  latest_enhancement_amount: number | null;
+  cumulative_approved_amount: number | null;
+  // Final settlement
+  final_bill_amount: number | null;
+  final_submitted_at: string | null;
+  final_approved_at: string | null;
+  final_approved_amount: number | null;
+  final_settlement_tat_minutes: number | null;
+  hospital_discount: number | null;
+  non_payable_deductions: number | null;
+  patient_liability: number | null;
+  // Status
+  claim_status: ClaimStatus;
+  // Revenue recovery
+  recovery_rate: number | null;
+  revenue_leakage: number | null;
+  leakage_reason: string | null;
+  // Metadata
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClaimEvent {
+  id: string;
+  insurance_claim_id: string;
+  patient_thread_id: string;
+  event_type: ClaimEventType;
+  description: string;
+  amount: number | null;
+  portal_reference: string | null;
+  document_urls: string[] | null;
+  insurer_response_needed: boolean;
+  insurer_response_deadline: string | null;
+  performed_by: string | null;
+  performed_by_name: string | null;
+  getstream_message_id: string | null;
+  created_at: string;
+}
+
+export interface DischargeMilestone {
+  id: string;
+  patient_thread_id: string;
+  admission_tracker_id: string | null;
+  insurance_claim_id: string | null;
+  // Milestone chain
+  discharge_ordered_at: string | null;
+  discharge_ordered_by: string | null;
+  pharmacy_clearance_at: string | null;
+  pharmacy_cleared_by: string | null;
+  lab_clearance_at: string | null;
+  lab_cleared_by: string | null;
+  discharge_summary_at: string | null;
+  discharge_summary_by: string | null;
+  billing_closure_at: string | null;
+  billing_closed_by: string | null;
+  final_bill_submitted_at: string | null;
+  final_bill_submitted_by: string | null;
+  final_approval_at: string | null;
+  final_approval_logged_by: string | null;
+  patient_settled_at: string | null;
+  patient_settled_by: string | null;
+  patient_departed_at: string | null;
+  // Calculated TATs
+  tat_order_to_pharmacy: number | null;
+  tat_order_to_summary: number | null;
+  tat_summary_to_billing: number | null;
+  tat_billing_to_submission: number | null;
+  tat_submission_to_approval: number | null;
+  tat_order_to_departure: number | null;
+  // Status
+  is_complete: boolean;
+  is_cancelled: boolean;
+  cancellation_reason: string | null;
+  // Bottleneck
+  bottleneck_step: DischargeMilestoneStep | null;
+  bottleneck_minutes: number | null;
   // Metadata
   created_at: string;
   updated_at: string;
