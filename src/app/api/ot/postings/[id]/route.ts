@@ -25,6 +25,12 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     }
 
     const { id } = await params;
+    // Validate UUID format to avoid DB errors on malformed input
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      return NextResponse.json({ success: false, error: 'Invalid posting ID format' }, { status: 400 });
+    }
+
     const result = await getSurgeryPosting(id);
     if (!result) {
       return NextResponse.json({ success: false, error: 'Posting not found' }, { status: 404 });
@@ -45,6 +51,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const { id } = await params;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      return NextResponse.json({ success: false, error: 'Invalid posting ID format' }, { status: 400 });
+    }
     const body = await request.json();
 
     // Handle cancel/postpone as special actions
