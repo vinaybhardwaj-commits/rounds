@@ -505,29 +505,51 @@ export async function getMyReadinessItems(
 ): Promise<{ items?: (OTReadinessItem & { procedure_name: string; primary_surgeon_name: string; ot_room: number; scheduled_date: string; scheduled_time: string | null; patient_name: string })[]; count?: number }> {
   const sql = getSql();
 
+  // Admin roles see ALL pending items, not just their own
+  const isAdmin = userRole === 'super_admin' || userRole === 'department_head';
+
   if (countOnly) {
-    const rows = await sql(`
-      SELECT COUNT(*) as count
-      FROM ot_readiness_items ori
-      JOIN surgery_postings sp ON sp.id = ori.surgery_posting_id
-      WHERE ori.status = 'pending'
-        AND sp.status NOT IN ('completed', 'cancelled')
-        AND (ori.responsible_role = $1 OR ori.responsible_user_id = $2)
-    `, [userRole, userId]);
+    const rows = isAdmin
+      ? await sql(`
+          SELECT COUNT(*) as count
+          FROM ot_readiness_items ori
+          JOIN surgery_postings sp ON sp.id = ori.surgery_posting_id
+          WHERE ori.status = 'pending'
+            AND sp.status NOT IN ('completed', 'cancelled')
+        `)
+      : await sql(`
+          SELECT COUNT(*) as count
+          FROM ot_readiness_items ori
+          JOIN surgery_postings sp ON sp.id = ori.surgery_posting_id
+          WHERE ori.status = 'pending'
+            AND sp.status NOT IN ('completed', 'cancelled')
+            AND (ori.responsible_role = $1 OR ori.responsible_user_id = $2)
+        `, [userRole, userId]);
     return { count: parseInt(rows[0]?.count || '0') };
   }
 
-  const rows = await sql(`
-    SELECT ori.*,
-           sp.procedure_name, sp.primary_surgeon_name, sp.ot_room,
-           sp.scheduled_date, sp.scheduled_time, sp.patient_name
-    FROM ot_readiness_items ori
-    JOIN surgery_postings sp ON sp.id = ori.surgery_posting_id
-    WHERE ori.status = 'pending'
-      AND sp.status NOT IN ('completed', 'cancelled')
-      AND (ori.responsible_role = $1 OR ori.responsible_user_id = $2)
-    ORDER BY sp.scheduled_date, sp.scheduled_time NULLS LAST, ori.sort_order
-  `, [userRole, userId]);
+  const rows = isAdmin
+    ? await sql(`
+        SELECT ori.*,
+               sp.procedure_name, sp.primary_surgeon_name, sp.ot_room,
+               sp.scheduled_date, sp.scheduled_time, sp.patient_name
+        FROM ot_readiness_items ori
+        JOIN surgery_postings sp ON sp.id = ori.surgery_posting_id
+        WHERE ori.status = 'pending'
+          AND sp.status NOT IN ('completed', 'cancelled')
+        ORDER BY sp.scheduled_date, sp.scheduled_time NULLS LAST, ori.sort_order
+      `)
+    : await sql(`
+        SELECT ori.*,
+               sp.procedure_name, sp.primary_surgeon_name, sp.ot_room,
+               sp.scheduled_date, sp.scheduled_time, sp.patient_name
+        FROM ot_readiness_items ori
+        JOIN surgery_postings sp ON sp.id = ori.surgery_posting_id
+        WHERE ori.status = 'pending'
+          AND sp.status NOT IN ('completed', 'cancelled')
+          AND (ori.responsible_role = $1 OR ori.responsible_user_id = $2)
+        ORDER BY sp.scheduled_date, sp.scheduled_time NULLS LAST, ori.sort_order
+      `, [userRole, userId]);
 
   return { items: rows as any[] };
 }

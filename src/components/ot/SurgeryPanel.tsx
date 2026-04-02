@@ -157,8 +157,8 @@ export function SurgeryPanel({ patientThreadId, userRole, userId }: SurgeryPanel
                 </span>
               </div>
               <p className="text-xs text-gray-500 pl-4.5">
-                {posting.primary_surgeon_name} — {posting.scheduled_date}
-                {posting.scheduled_time ? `, ${posting.scheduled_time}` : ''} OT{posting.ot_room}
+                {posting.primary_surgeon_name} — {new Date(posting.scheduled_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                {posting.scheduled_time ? `, ${String(posting.scheduled_time).slice(0, 5)}` : ''} · OT{posting.ot_room}
               </p>
             </div>
             <div className="flex items-center gap-3 shrink-0 ml-3">

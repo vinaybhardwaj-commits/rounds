@@ -380,7 +380,7 @@ function CaseCard({ posting, slotIndex }: { posting: ScheduleCase; slotIndex: nu
         {posting.scheduled_time && (
           <span className="flex items-center gap-0.5">
             <Clock size={10} className="text-gray-400" />
-            {posting.scheduled_time}
+            {String(posting.scheduled_time).slice(0, 5)}
           </span>
         )}
         <span className="flex items-center gap-0.5">

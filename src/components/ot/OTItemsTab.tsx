@@ -63,7 +63,8 @@ export function OTItemsTab({ userRole, userId, onNavigateToPatient }: OTItemsTab
   const groupedByDate = useMemo(() => {
     const map = new Map<string, OTItem[]>();
     for (const item of items) {
-      const date = item.scheduled_date || 'Unknown';
+      const rawDate = item.scheduled_date || 'Unknown';
+      const date = rawDate !== 'Unknown' && rawDate.length > 10 ? rawDate.slice(0, 10) : rawDate;
       if (!map.has(date)) map.set(date, []);
       map.get(date)!.push(item);
     }
