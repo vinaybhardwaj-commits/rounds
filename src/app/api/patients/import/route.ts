@@ -5,14 +5,21 @@
 //   - file: CSV file (KareXpert IP patient export)
 //   - date: optional date string (for reference, default today)
 //
-// Logic:
+// Smart matching logic (3-tier):
 //   1. Parse CSV rows
-//   2. For each row, check if UHID already exists in patient_threads → skip
-//   3. Match or create doctor profiles (stub profiles for unknown doctors)
-//   4. Match specialty → department
-//   5. Create patient_thread with stage='admitted'
-//   6. Create GetStream channel with auto-enrolled staff
-//   7. Return summary: { created, skipped, errors, details[] }
+//   2. For each row, match against existing patients:
+//      Tier 1: UHID match (case-insensitive, strongest)
+//      Tier 2: Name + phone match (catches LSQ patients without UHID)
+//      Tier 3: No match → create new patient
+//   3. Forward-only stage advancement:
+//      - If existing patient is at opd/pre_admission → advance to admitted
+//      - If existing patient is at admitted or beyond → keep their stage
+//      - NEVER regress a patient's journey stage
+//   4. Always enrich KX operational fields (bed, ward, IP#, doctors, payer)
+//      while preserving LSQ tracking fields (lsq_lead_id, etc.)
+//   5. Match or create doctor profiles (stub profiles for unknown doctors)
+//   6. For new patients: create GetStream channel with auto-enrolled staff
+//   7. Return summary: { created, advanced, enriched, skipped, errors }
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -390,52 +397,104 @@ export async function POST(request: NextRequest) {
 
     const rows = rawRows.map(mapRow).filter(r => r.uhid && r.patient_name);
 
-    // Get all existing UHIDs in one query for dedup
-    const existingPatients = await query<{ uhid: string }>(
-      `SELECT uhid FROM patient_threads WHERE uhid IS NOT NULL`
+    // ── Stage ordering for forward-only advancement ──
+    // KX import can only set 'admitted'. If a patient is already at or past
+    // 'admitted', we must NOT regress their stage. We define a numeric order
+    // so that stage comparisons are a simple integer check.
+    const STAGE_ORDER: Record<string, number> = {
+      opd: 0,
+      pre_admission: 1,
+      admitted: 2,
+      pre_op: 3,
+      medical_management: 3,   // same level as pre_op — both are post-admission
+      surgery: 4,
+      post_op: 5,
+      post_op_care: 5,         // same level as post_op
+      discharge: 6,
+      long_term_followup: 7,
+      post_discharge: 8,
+    };
+    const ADMITTED_ORDER = STAGE_ORDER['admitted']; // 2
+
+    // ── Pre-load ALL existing patients for multi-field matching ──
+    // This enables: (1) UHID match, (2) name+phone fallback for LSQ patients
+    interface ExistingPatient {
+      id: string;
+      uhid: string | null;
+      patient_name: string;
+      phone: string | null;
+      current_stage: string;
+      getstream_channel_id: string | null;
+      lsq_lead_id: string | null;
+    }
+    const allExisting = await query<ExistingPatient>(
+      `SELECT id, uhid, patient_name, phone, current_stage,
+              getstream_channel_id, lsq_lead_id
+       FROM patient_threads
+       WHERE archived_at IS NULL`
     );
-    const existingUhids = new Set(existingPatients.map(p => p.uhid.toLowerCase()));
+
+    // Build lookup indexes
+    const byUhid = new Map<string, ExistingPatient>();
+    const byNamePhone = new Map<string, ExistingPatient>();
+    for (const p of allExisting) {
+      if (p.uhid) byUhid.set(p.uhid.toLowerCase(), p);
+      // Index by normalized name + phone for LSQ patient matching
+      if (p.phone) {
+        const nameKey = p.patient_name.toLowerCase().replace(/\s+/g, ' ').trim();
+        const phoneKey = p.phone.replace(/\D/g, '').slice(-10); // last 10 digits
+        byNamePhone.set(`${nameKey}|${phoneKey}`, p);
+      }
+    }
 
     // Clear caches for this import batch
     doctorCache.clear();
     deptCache.clear();
     syncedToGetStream.clear();
 
+    // Track UHIDs processed in THIS batch to avoid within-batch duplicates
+    const batchUhids = new Set<string>();
+
     const results: {
       created: string[];
-      skipped: string[];
+      advanced: string[];     // stage moved forward (e.g., opd → admitted)
+      enriched: string[];     // fields updated but stage already at/past admitted
+      skipped: string[];      // exact duplicate (same UHID, already admitted+)
       errors: { uhid: string; name: string; error: string }[];
-      doctors_created: string[];
     } = {
       created: [],
+      advanced: [],
+      enriched: [],
       skipped: [],
       errors: [],
-      doctors_created: [],
     };
 
     for (const row of rows) {
-      // Dedup by UHID
-      if (existingUhids.has(row.uhid.toLowerCase())) {
-        results.skipped.push(`${row.patient_name} (${row.uhid})`);
+      // Skip within-batch duplicates
+      if (batchUhids.has(row.uhid.toLowerCase())) {
+        results.skipped.push(`${row.patient_name} (${row.uhid}) — duplicate in CSV`);
         continue;
       }
+      batchUhids.add(row.uhid.toLowerCase());
 
       try {
-        // Match or create doctor
-        const doctorId = await findOrCreateDoctor(row.admitting_doctor, row.admitting_specialty);
+        // ── 3-tier matching ──
+        // Tier 1: UHID match (strongest)
+        let existing = byUhid.get(row.uhid.toLowerCase()) || null;
 
-        // Track if doctor was created (check if it was a new stub)
-        if (doctorId && row.admitting_doctor) {
-          // We track all doctors linked, the cache handles dedup
+        // Tier 2: Name + phone match (catches LSQ patients without UHID)
+        if (!existing && row.mobile) {
+          const nameKey = row.patient_name.toLowerCase().replace(/\s+/g, ' ').trim();
+          const phoneKey = row.mobile.replace(/\D/g, '').slice(-10);
+          existing = byNamePhone.get(`${nameKey}|${phoneKey}`) || null;
         }
 
-        // Find department
+        // Match or create doctor (shared for both new + existing paths)
+        const doctorId = await findOrCreateDoctor(row.admitting_doctor, row.admitting_specialty);
         const deptId = await findDepartmentBySpecialty(row.admitting_specialty);
-
-        // Parse admission date
         const admissionDate = parseDateStr(row.admission_date);
 
-        // Build primary_diagnosis field with ward/bed/payer context
+        // Build ward/bed/payer context string
         const contextParts: string[] = [];
         if (row.ward_name) contextParts.push(`Ward: ${row.ward_name}`);
         if (row.bed_no) contextParts.push(`Bed: ${row.bed_no}`);
@@ -444,7 +503,99 @@ export async function POST(request: NextRequest) {
         if (row.high_risk === 'Yes') contextParts.push('HIGH RISK');
         const contextStr = contextParts.length > 0 ? contextParts.join(' | ') : null;
 
-        // Create patient thread
+        // ╔══════════════════════════════════════════╗
+        // ║  PATH A: Existing patient found — merge  ║
+        // ╚══════════════════════════════════════════╝
+        if (existing) {
+          const currentOrder = STAGE_ORDER[existing.current_stage] ?? 0;
+          const shouldAdvance = currentOrder < ADMITTED_ORDER;
+
+          // Build the UPDATE fields — always enrich operational data from KX
+          // but NEVER overwrite LSQ tracking fields
+          const updateFields: Record<string, unknown> = {
+            uhid: row.uhid,                              // ensure UHID is set (LSQ patients may lack it)
+            ip_number: row.admission_no || undefined,
+            primary_diagnosis: contextStr || undefined,   // ward/bed/payer context
+          };
+          if (doctorId) updateFields.primary_consultant_id = doctorId;
+          if (deptId) updateFields.department_id = deptId;
+          if (admissionDate) updateFields.admission_date = admissionDate;
+
+          // Forward-only stage advancement
+          if (shouldAdvance) {
+            updateFields.current_stage = 'admitted';
+          }
+          // If currentOrder >= ADMITTED_ORDER, we do NOT touch current_stage
+
+          await updatePatientThread(existing.id, updateFields);
+
+          // Log a changelog entry for stage advancement
+          if (shouldAdvance) {
+            try {
+              await query(
+                `INSERT INTO patient_changelog
+                   (patient_thread_id, change_type, field_name, old_value, new_value,
+                    old_display, new_display, changed_by, notes)
+                 VALUES ($1, 'stage_change', 'current_stage', $2, 'admitted', $3, 'Admitted', $4, $5)`,
+                [
+                  existing.id,
+                  existing.current_stage,
+                  existing.current_stage,
+                  user.profileId,
+                  `Advanced from ${existing.current_stage} to admitted via KX import (${row.uhid})`,
+                ]
+              );
+            } catch { /* non-fatal changelog */ }
+
+            // Post system message to existing GetStream channel if it exists
+            if (existing.getstream_channel_id) {
+              try {
+                await sendSystemMessage(
+                  'patient-thread',
+                  existing.getstream_channel_id,
+                  `📋 ${row.patient_name} admitted via KareXpert (${row.uhid}). ` +
+                  `Stage advanced from ${existing.current_stage} → admitted. ` +
+                  `IP: ${row.admission_no || 'N/A'} | Dr. ${row.admitting_doctor || 'Unassigned'}`
+                );
+              } catch { /* non-fatal */ }
+            }
+
+            results.advanced.push(
+              `${row.patient_name} (${row.uhid}) — ${existing.current_stage} → admitted` +
+              (existing.lsq_lead_id ? ' [LSQ patient]' : '')
+            );
+          } else {
+            // Patient already at or past admitted — just enriched fields
+            // Post a quieter system message about field update
+            if (existing.getstream_channel_id) {
+              try {
+                await sendSystemMessage(
+                  'patient-thread',
+                  existing.getstream_channel_id,
+                  `📋 KX data refreshed for ${row.patient_name} (${row.uhid}). ` +
+                  `Stage unchanged: ${existing.current_stage}. ` +
+                  `Bed: ${row.bed_no || 'N/A'} | Ward: ${row.ward_name || 'N/A'}`
+                );
+              } catch { /* non-fatal */ }
+            }
+
+            results.enriched.push(
+              `${row.patient_name} (${row.uhid}) — stage kept at ${existing.current_stage}, fields updated`
+            );
+          }
+
+          // Update the UHID index so subsequent rows don't re-match
+          if (!existing.uhid) {
+            byUhid.set(row.uhid.toLowerCase(), { ...existing, uhid: row.uhid });
+          }
+
+          continue;
+        }
+
+        // ╔══════════════════════════════════════════╗
+        // ║  PATH B: No match — create new patient   ║
+        // ╚══════════════════════════════════════════╝
+
         const patientResult = await createPatientThread({
           patient_name: row.patient_name,
           uhid: row.uhid,
@@ -458,10 +609,18 @@ export async function POST(request: NextRequest) {
           created_by: user.profileId,
         });
 
-        // Mark as existing to avoid dups within the same batch
-        existingUhids.add(row.uhid.toLowerCase());
+        // Add to UHID index to prevent within-batch re-match
+        byUhid.set(row.uhid.toLowerCase(), {
+          id: patientResult.id,
+          uhid: row.uhid,
+          patient_name: row.patient_name,
+          phone: row.mobile || null,
+          current_stage: 'admitted',
+          getstream_channel_id: null,
+          lsq_lead_id: null,
+        });
 
-        // Create GetStream channel
+        // Create GetStream channel with auto-enrolled staff
         const memberIds = new Set<string>();
         memberIds.add(user.profileId);
         if (doctorId) memberIds.add(doctorId);
@@ -486,15 +645,11 @@ export async function POST(request: NextRequest) {
           stageStaff.forEach(p => memberIds.add(p.id));
         } catch { /* non-fatal */ }
 
-        // ── CRITICAL: sync ALL members to GetStream before channel creation ──
-        // GetStream rejects addMembers for users that don't exist in its system.
-        // This ensures every profile in the DB is also upserted in GetStream.
+        // Sync all members to GetStream before channel creation
         for (const memberId of memberIds) {
           try {
             await ensureGetStreamUser(memberId);
           } catch {
-            // If a user can't be synced, remove them from members rather than
-            // failing the entire channel creation
             memberIds.delete(memberId);
           }
         }
@@ -540,13 +695,17 @@ export async function POST(request: NextRequest) {
       data: {
         total_in_csv: rows.length,
         created: results.created.length,
+        advanced: results.advanced.length,
+        enriched: results.enriched.length,
         skipped: results.skipped.length,
         errors: results.errors.length,
         created_list: results.created,
+        advanced_list: results.advanced,
+        enriched_list: results.enriched,
         skipped_list: results.skipped,
         error_list: results.errors,
       },
-      message: `Imported ${results.created.length} patients, skipped ${results.skipped.length} existing, ${results.errors.length} errors.`,
+      message: `Import complete: ${results.created.length} new, ${results.advanced.length} advanced to admitted, ${results.enriched.length} fields updated, ${results.skipped.length} skipped, ${results.errors.length} errors.`,
     });
   } catch (error) {
     console.error('POST /api/patients/import error:', error);
