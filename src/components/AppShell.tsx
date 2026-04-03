@@ -202,7 +202,7 @@ function AppShellInner({ userId, userRole }: { userId: string; userRole: string 
   }, [pushNavState]);
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-even-white">
+    <div className="h-dvh flex flex-col overflow-hidden bg-even-white">
       {/* Tab content — takes full height minus tab bar */}
       <div className="flex-1 overflow-hidden">
         {/* Patients Tab */}
