@@ -31,6 +31,7 @@ import {
 import type { Channel, MessageResponse } from 'stream-chat';
 import { useChatContext } from '@/providers/ChatProvider';
 import { MessageTypeBadge } from './MessageTypeBadge';
+import { ReadReceipt, computeReadStatus } from './ReadReceipt';
 import { DeleteMessageModal } from './DeleteMessageModal';
 import FormCard from '@/components/forms/FormCard';
 import type { MessageType, MessagePriority, FormType, PatientStage, DischargeMilestoneStep, ClaimEventType } from '@/types';
@@ -200,6 +201,8 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
   const [mentionIndex, setMentionIndex] = useState(0);
   const [pendingMentions, setPendingMentions] = useState<{ id: string; name: string }[]>([]);
   const [advancingStage, setAdvancingStage] = useState(false);
+  // Read receipt: bump counter to force re-render when read state changes
+  const [readTick, setReadTick] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -347,16 +350,21 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
       setMessages(topLevel.map(toDisplayMessage));
     };
 
+    // Read receipt: when another user reads the channel, bump tick to re-render checkmarks
+    const handleReadEvent = () => setReadTick((t) => t + 1);
+
     channel.on('message.new', handleNewMessage);
     channel.on('message.deleted', handleMessageDeleted);
     channel.on('reaction.new', handleReactionNew);
     channel.on('reaction.deleted', handleReactionNew);
+    channel.on('message.read', handleReadEvent);
 
     return () => {
       channel.off('message.new', handleNewMessage);
       channel.off('message.deleted', handleMessageDeleted);
       channel.off('reaction.new', handleReactionNew);
       channel.off('reaction.deleted', handleReactionNew);
+      channel.off('message.read', handleReadEvent);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channel?.cid, client]);
@@ -831,6 +839,18 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                         <MessageTypeBadge type={msg.message_type} />
                       )}
                       <span className="text-[10px] text-gray-400">{time}</span>
+                      {/* Read receipt checkmark — only on own messages */}
+                      {isOwn && !msg.is_system && (
+                        <ReadReceipt
+                          status={computeReadStatus(
+                            msg.created_at,
+                            channel.state?.read as Record<string, { last_read?: string | Date; user?: { id?: string } }>,
+                            msg.user_id,
+                            Object.keys(channel.state?.members || {}).length
+                          )}
+                          className="ml-1"
+                        />
+                      )}
                     </div>
                   )}
 

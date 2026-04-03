@@ -118,7 +118,7 @@ export function ChannelSidebar({
   const { client } = useChatContext();
   const [channelGroups, setChannelGroups] = useState<ChannelGroup[]>([]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
-    new Set(['direct', 'ops-broadcast', 'archived-post-dc', 'archived-removed'])
+    new Set(['ops-broadcast', 'archived-post-dc', 'archived-removed'])
   );
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -185,9 +185,9 @@ export function ChannelSidebar({
 
       const orderedTypes = [
         { type: 'department', label: 'Departments', icon: Hash, defaultOpen: true },
+        { type: 'direct', label: 'Direct Messages', icon: MessageCircle, defaultOpen: true },
         { type: 'cross-functional', label: 'Cross-Functional', icon: Users, defaultOpen: true },
         { type: 'patient-thread', label: 'Patient Threads', icon: Activity, defaultOpen: true },
-        { type: 'direct', label: 'Direct Messages', icon: MessageCircle, defaultOpen: false },
         { type: 'ops-broadcast', label: 'Broadcast', icon: Megaphone, defaultOpen: false },
       ];
 
