@@ -547,7 +547,19 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
     );
   }
 
-  const channelName = (channel.data?.name as string) || channel.id || 'Channel';
+  // For DM channels, resolve the other member's display name instead of showing the raw channel ID
+  const resolvedChannelName = (() => {
+    if (channel.data?.name) return channel.data.name as string;
+    if (channel.type === 'direct' && client?.userID) {
+      const members = Object.values(channel.state?.members || {});
+      const otherMember = members.find((m) => m.user_id !== client.userID);
+      if (otherMember?.user?.name) return otherMember.user.name;
+    }
+    // Fallback: strip !members- prefix if present for a slightly cleaner look
+    const rawId = channel.id || 'Channel';
+    return rawId.startsWith('!members-') ? 'Direct Message' : rawId;
+  })();
+  const channelName = resolvedChannelName;
   const channelDesc = (channel.data?.description as string) || '';
   const ChannelIcon = CHANNEL_TYPE_ICONS[channel.type] || Hash;
   const memberCount = Object.keys(channel.state?.members || {}).length;

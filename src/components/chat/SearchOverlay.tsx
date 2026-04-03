@@ -87,7 +87,11 @@ export function SearchOverlay({
             userId: msg.user?.id || '',
             createdAt: msg.created_at || '',
             channelId: ch?.id || '',
-            channelName: (ch?.name as string) || ch?.id || 'Channel',
+            channelName: (ch?.name as string) || (
+              ch?.type === 'direct'
+                ? `DM with ${msg.user?.name || 'someone'}`
+                : ch?.id || 'Channel'
+            ),
             channelType: ch?.type || 'messaging',
             channelCid: ch?.cid || '',
           };

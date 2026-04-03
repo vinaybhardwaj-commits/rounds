@@ -410,8 +410,17 @@ export function ChannelSidebar({
                   {!isCollapsed && (
                     <div className="space-y-0.5 mt-0.5">
                       {group.channels.map((channel) => {
-                        const channelName =
-                          (channel.data?.name as string) || channel.id || 'Unnamed';
+                        // For DM channels, resolve the other member's name instead of showing raw channel ID
+                        const channelName = (() => {
+                          if (channel.data?.name) return channel.data.name as string;
+                          if (channel.type === 'direct' && client?.userID) {
+                            const members = Object.values(channel.state?.members || {});
+                            const otherMember = members.find((m) => m.user_id !== client.userID);
+                            if (otherMember?.user?.name) return otherMember.user.name;
+                          }
+                          const rawId = channel.id || 'Unnamed';
+                          return rawId.startsWith('!members-') ? 'Direct Message' : rawId;
+                        })();
                         const isActive = channel.cid === activeChannelId;
                         const ChannelIcon =
                           CHANNEL_ICONS[channel.type] || Hash;
