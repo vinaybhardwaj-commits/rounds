@@ -7,10 +7,14 @@ import { isValidRole } from '@/lib/roles';
 // Force Vercel to regenerate the serverless function with all HTTP methods
 export const dynamic = 'force-dynamic';
 
-let _sql: ReturnType<typeof neon> | null = null;
+// _rawSql: for dynamic queries (string + params). sql: tagged template wrapper for safe queries.
+let _rawSql: ReturnType<typeof neon> | null = null;
+function getRawSql() {
+  if (!_rawSql) _rawSql = neon(process.env.POSTGRES_URL!);
+  return _rawSql;
+}
 function sql(strings: TemplateStringsArray, ...values: unknown[]) {
-  if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
-  return _sql(strings, ...values);
+  return getRawSql()(strings, ...values);
 }
 
 // GET /api/admin/profiles/[id] — fetch single profile with department info
@@ -132,9 +136,8 @@ export async function PATCH(
     RETURNING id, email, full_name, role, status, designation, phone, department_id
   `;
 
-  // Use raw sql for dynamic query — ensure connection is initialized
-  if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
-  const result = await _sql(query, values);
+  // Use raw sql for dynamic query
+  const result = await getRawSql()(query, values);
 
   if (!result.length) {
     return NextResponse.json({ success: false, error: 'Profile not found' }, { status: 404 });
@@ -194,7 +197,7 @@ export async function DELETE(
     //    The deleted_profiles table lets us look up who the person was.
     //    IMPORTANT: If you add a new table with a FK to profiles.id,
     //    you MUST add a corresponding nullify query here.
-    if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
+    const rawSql = getRawSql();
 
     const nullifyQueries = [
       // Patient threads
@@ -246,11 +249,7 @@ export async function DELETE(
 
     for (const query of nullifyQueries) {
       try {
-        if (query.startsWith('ALTER')) {
-          await _sql(query);
-        } else {
-          await _sql(query, [id]);
-        }
+        await rawSql(query, [id]);
       } catch (e) {
         // Some tables may not exist yet — log and skip
         console.warn(`[DeleteProfile] Skipping nullify query (table may not exist): ${query.substring(0, 60)}`, e);

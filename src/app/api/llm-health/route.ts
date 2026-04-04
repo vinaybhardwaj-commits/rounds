@@ -4,11 +4,18 @@
 // ============================================
 
 import { NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/auth';
 import llm, { MODEL_PRIMARY } from '@/lib/llm';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  // Require authentication — exposes internal model info
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  }
+
   const start = Date.now();
 
   // Quick check: are env vars even set?

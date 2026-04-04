@@ -12,9 +12,16 @@
 
 import OpenAI from 'openai';
 
+const LLM_BASE_URL = process.env.LLM_BASE_URL?.trim() || 'http://localhost:11434/v1';
+const LLM_API_KEY = process.env.LLM_API_KEY?.trim() || 'ollama';
+
+if (!process.env.LLM_BASE_URL && process.env.NODE_ENV === 'production') {
+  console.warn('[LLM] LLM_BASE_URL not set — defaulting to localhost:11434. AI features will fail in production unless a tunnel or remote URL is configured.');
+}
+
 const llm = new OpenAI({
-  baseURL: process.env.LLM_BASE_URL || 'http://localhost:11434/v1',
-  apiKey: process.env.LLM_API_KEY || 'ollama',
+  baseURL: LLM_BASE_URL,
+  apiKey: LLM_API_KEY,
   timeout: 120000, // 2 min — local inference can be slow on big prompts
 });
 

@@ -32,6 +32,7 @@ export async function POST() {
         if (msg.includes('already exists') || msg.includes('duplicate key')) {
           results.push(`⏭ ${label} (already exists)`);
         } else {
+          console.error(`[Migrate] Failed: ${label}:`, msg.substring(0, 200));
           results.push(`❌ ${label}: ${msg.substring(0, 150)}`);
         }
       }

@@ -105,11 +105,14 @@ export function FormsView() {
   // ── Load recent submissions on mount ──
   useEffect(() => {
     fetch('/api/forms?limit=10')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`Failed to fetch forms: ${r.status}`);
+        return r.json();
+      })
       .then(d => {
         if (d.success) setRecentSubmissions(d.data);
       })
-      .catch(() => {});
+      .catch((err) => console.warn('[FormsView] Recent submissions fetch failed:', err));
   }, []);
 
   // ── Load patients when entering patient picker ──
@@ -117,13 +120,16 @@ export function FormsView() {
     if (view !== 'pick-patient') return;
     setPatientsLoading(true);
     fetch('/api/patients?limit=200&include_archived=false')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`Failed to fetch patients: ${r.status}`);
+        return r.json();
+      })
       .then(d => {
         if (d.success && d.data) {
           setPatients(d.data);
         }
       })
-      .catch(() => {})
+      .catch((err) => console.warn('[FormsView] Patient list fetch failed:', err))
       .finally(() => setPatientsLoading(false));
   }, [view]);
 
@@ -224,9 +230,12 @@ export function FormsView() {
     setCreatedFormId('');
     // Refresh recent submissions
     fetch('/api/forms?limit=10')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`Failed to refresh forms: ${r.status}`);
+        return r.json();
+      })
       .then(d => { if (d.success) setRecentSubmissions(d.data); })
-      .catch(() => {});
+      .catch((err) => console.warn('[FormsView] Refresh submissions failed:', err));
   }, []);
 
   const handleBackToPatientPicker = useCallback(() => {
