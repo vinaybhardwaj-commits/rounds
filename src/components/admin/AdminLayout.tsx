@@ -35,7 +35,7 @@ export function AdminLayout({ breadcrumbs, children }: AdminLayoutProps) {
 
             {/* Breadcrumbs */}
             <nav className="flex items-center gap-1 text-sm overflow-x-auto min-w-0">
-              {breadcrumbs.map((crumb, i) => {
+              {(breadcrumbs || []).map((crumb, i) => {
                 const isLast = i === breadcrumbs.length - 1;
                 return (
                   <span key={i} className="flex items-center gap-1 shrink-0">

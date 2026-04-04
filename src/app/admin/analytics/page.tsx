@@ -123,7 +123,7 @@ export default function AnalyticsDashboard() {
   );
 
   return (
-    <AdminLayout title="Analytics" subtitle="Usage, adoption & errors">
+    <AdminLayout breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Analytics' }]}>
       {/* Controls */}
       <div className="flex items-center gap-3 mb-6">
         <div className="relative">
