@@ -4,6 +4,7 @@ import './globals.css';
 import { AuthProvider } from '@/components/layout/AuthProvider';
 import { ServiceWorkerRegistration } from '@/components/pwa/ServiceWorkerRegistration';
 import { InstallPrompt } from '@/components/pwa/InstallPrompt';
+import { ErrorReporterInit } from '@/components/ErrorReporterInit';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -34,6 +35,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <ServiceWorkerRegistration />
         <InstallPrompt />
+        <ErrorReporterInit />
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

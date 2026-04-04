@@ -646,11 +646,73 @@ export async function POST() {
 
     await run('help_system_migration_record', `INSERT INTO _migrations (name) VALUES ('help-system-v1') ON CONFLICT (name) DO NOTHING`);
 
+    // ── Step 15: Error Tracking + Session Analytics ──
+
+    // 15a. app_errors — client-side error logs
+    await run('app_errors', `
+      CREATE TABLE IF NOT EXISTS app_errors (
+        id SERIAL PRIMARY KEY,
+        message TEXT NOT NULL,
+        stack TEXT,
+        url VARCHAR(500),
+        component VARCHAR(200),
+        severity VARCHAR(20) NOT NULL DEFAULT 'error',
+        profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+        user_role VARCHAR(50),
+        user_agent VARCHAR(500),
+        ip_address VARCHAR(45),
+        extra JSONB,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await run('idx_app_errors_created', `CREATE INDEX IF NOT EXISTS idx_app_errors_created ON app_errors(created_at DESC)`);
+    await run('idx_app_errors_severity', `CREATE INDEX IF NOT EXISTS idx_app_errors_severity ON app_errors(severity, created_at DESC)`);
+    await run('idx_app_errors_profile', `CREATE INDEX IF NOT EXISTS idx_app_errors_profile ON app_errors(profile_id) WHERE profile_id IS NOT NULL`);
+
+    // 15b. session_events — user activity tracking
+    await run('session_events', `
+      CREATE TABLE IF NOT EXISTS session_events (
+        id SERIAL PRIMARY KEY,
+        profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        event_type VARCHAR(50) NOT NULL,
+        page VARCHAR(255),
+        feature VARCHAR(100),
+        detail JSONB,
+        session_id VARCHAR(36) NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await run('idx_session_events_profile', `CREATE INDEX IF NOT EXISTS idx_session_events_profile ON session_events(profile_id, created_at DESC)`);
+    await run('idx_session_events_type', `CREATE INDEX IF NOT EXISTS idx_session_events_type ON session_events(event_type, created_at DESC)`);
+    await run('idx_session_events_session', `CREATE INDEX IF NOT EXISTS idx_session_events_session ON session_events(session_id)`);
+    await run('idx_session_events_feature', `CREATE INDEX IF NOT EXISTS idx_session_events_feature ON session_events(feature) WHERE feature IS NOT NULL`);
+
+    // 15c. daily_active_users — materialized daily rollup (populated by cron or manual trigger)
+    await run('daily_active_users', `
+      CREATE TABLE IF NOT EXISTS daily_active_users (
+        id SERIAL PRIMARY KEY,
+        date DATE NOT NULL,
+        profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        session_count INTEGER DEFAULT 1,
+        page_views INTEGER DEFAULT 0,
+        feature_uses INTEGER DEFAULT 0,
+        total_duration_seconds INTEGER DEFAULT 0,
+        first_seen_at TIMESTAMPTZ,
+        last_seen_at TIMESTAMPTZ,
+        features_used TEXT[] DEFAULT '{}',
+        UNIQUE(date, profile_id)
+      )
+    `);
+    await run('idx_dau_date', `CREATE INDEX IF NOT EXISTS idx_dau_date ON daily_active_users(date DESC)`);
+    await run('idx_dau_profile', `CREATE INDEX IF NOT EXISTS idx_dau_profile ON daily_active_users(profile_id)`);
+
+    await run('observability_migration_record', `INSERT INTO _migrations (name) VALUES ('observability-v1') ON CONFLICT (name) DO NOTHING`);
+
     // 9. Verify
     const tables = await sql`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
-      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages','insurance_claims','claim_events','discharge_milestones','surgery_postings','ot_readiness_items','ot_readiness_audit_log','ot_equipment_items','help_interactions','help_dismissals')
+      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages','insurance_claims','claim_events','discharge_milestones','surgery_postings','ot_readiness_items','ot_readiness_audit_log','ot_equipment_items','help_interactions','help_dismissals','app_errors','session_events','daily_active_users')
       ORDER BY table_name
     `;
 
@@ -667,7 +729,7 @@ export async function POST() {
         tables_found: tables.map((t) => t.table_name),
         log: results,
       },
-      message: `Migration complete. ${successCount} executed, ${skipCount} skipped, ${errorCount} errors. ${tables.length}/17 tables found.`,
+      message: `Migration complete. ${successCount} executed, ${skipCount} skipped, ${errorCount} errors. ${tables.length}/20 tables found.`,
     });
   } catch (error) {
     console.error('POST /api/admin/migrate error:', error);

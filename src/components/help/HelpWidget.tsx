@@ -18,6 +18,7 @@ import {
   Brain,
   FileText,
 } from 'lucide-react';
+import { trackFeature } from '@/lib/session-tracker';
 
 interface HelpMessage {
   id: string;
@@ -70,6 +71,7 @@ export default function HelpWidget({ currentPage }: HelpWidgetProps) {
     const text = input.trim();
     if (!text || loading) return;
 
+    trackFeature('help_ask', { page: currentPage });
     setInput('');
     setLoading(true);
 
