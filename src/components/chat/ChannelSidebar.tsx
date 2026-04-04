@@ -381,8 +381,15 @@ export function ChannelSidebar({
               <div className="w-5 h-5 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
             </div>
           ) : filteredGroups.length === 0 ? (
-            <div className="text-center text-white/40 text-sm py-8">
-              {searchQuery ? 'No channels match your search' : 'No channels yet'}
+            <div className="text-center py-12 px-4">
+              <p className="text-white/50 text-sm font-medium">
+                {searchQuery ? 'No channels match your search' : 'No channels yet'}
+              </p>
+              <p className="text-white/30 text-xs mt-1.5">
+                {searchQuery
+                  ? 'Try a different name or keyword'
+                  : 'Channels are created when departments are set up or patients are admitted. Ask your admin if this looks wrong.'}
+              </p>
             </div>
           ) : (
             filteredGroups.map((group) => {

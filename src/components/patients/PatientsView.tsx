@@ -508,14 +508,26 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
         {loading ? (
           <div className="text-center py-12 text-gray-400 text-sm">Loading patients...</div>
         ) : filtered.length === 0 && archivedPostDC.length === 0 && archivedRemoved.length === 0 ? (
-          <div className="text-center py-16">
-            <Activity size={40} className="mx-auto text-gray-200 mb-3" />
-            <p className="text-gray-500 font-medium text-sm">
-              {search ? 'No patients match your search' : 'No patient threads yet'}
-            </p>
-            <p className="text-gray-400 text-xs mt-1">
-              {search ? 'Try a different name, UHID, IP#, or bed number' : 'Tap the + button to create a patient thread.'}
-            </p>
+          <div className="text-center py-16 px-6">
+            {search ? (
+              <>
+                <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-gray-100 flex items-center justify-center">
+                  <Search size={20} className="text-gray-300" />
+                </div>
+                <p className="text-gray-500 font-medium text-sm">No patients match &ldquo;{search}&rdquo;</p>
+                <p className="text-gray-400 text-xs mt-1">Try a different name, UHID, IP number, or bed number</p>
+              </>
+            ) : (
+              <>
+                <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-blue-50 flex items-center justify-center">
+                  <Activity size={24} className="text-even-blue" />
+                </div>
+                <p className="text-gray-700 font-semibold text-base mb-1">No patient threads yet</p>
+                <p className="text-gray-400 text-xs max-w-[260px] mx-auto leading-relaxed">
+                  Patient threads track each patient from admission through discharge. Tap the <span className="inline-flex items-center justify-center w-5 h-5 bg-even-blue rounded-full text-white text-[10px] font-bold align-middle mx-0.5">+</span> button to create one, or import a batch via CSV.
+                </p>
+              </>
+            )}
           </div>
         ) : (
           <>

@@ -646,8 +646,22 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
             <div className="w-5 h-5 border-2 border-even-blue/20 border-t-even-blue rounded-full animate-spin" />
           </div>
         ) : messages.length === 0 ? (
-          <div className="text-center text-gray-400 text-sm py-12">
-            No messages yet. Start the conversation!
+          <div className="text-center py-16 px-6">
+            <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-gray-100 flex items-center justify-center">
+              <MessageSquare size={20} className="text-gray-300" />
+            </div>
+            <p className="text-sm font-medium text-gray-500">
+              {channel.type === 'patient-thread' ? 'No messages in this patient thread'
+                : channel.type === 'direct' ? 'No messages yet'
+                : 'No messages in this channel'}
+            </p>
+            <p className="text-xs text-gray-400 mt-1.5 max-w-[240px] mx-auto">
+              {channel.type === 'patient-thread'
+                ? 'Use the composer below to share updates, lab results, or escalate concerns about this patient.'
+                : channel.type === 'direct'
+                ? 'Say hello! Direct messages are private between you and this person.'
+                : 'Type below to start the discussion. Use @mentions to loop someone in.'}
+            </p>
           </div>
         ) : (
           <>

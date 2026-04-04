@@ -1026,6 +1026,45 @@ export function PatientDetailView({
           </div>
         )}
 
+        {/* ── Stage-Aware Nudge Banner ── */}
+        {(() => {
+          const missingForms = stageForms.filter(ft => !completedFormTypes.has(ft));
+          if (missingForms.length === 0 || stageForms.length === 0) return null;
+          const allMissing = missingForms.length === stageForms.length;
+          const admissionDate = patient.admission_date ? new Date(patient.admission_date) : null;
+          const daysInStage = admissionDate ? daysSince(admissionDate.toISOString()) : 0;
+          const isUrgent = daysInStage > 2 || ['pre_op', 'surgery', 'discharge'].includes(patient.current_stage);
+          const bgColor = isUrgent ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200';
+          const iconColor = isUrgent ? 'text-red-500' : 'text-amber-500';
+          const textColor = isUrgent ? 'text-red-800' : 'text-amber-800';
+          const subColor = isUrgent ? 'text-red-600' : 'text-amber-600';
+          return (
+            <div className={`mx-4 mb-3 p-3 rounded-xl border ${bgColor}`}>
+              <div className="flex items-start gap-2.5">
+                <AlertCircle size={18} className={`${iconColor} shrink-0 mt-0.5`} />
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xs font-semibold ${textColor}`}>
+                    {allMissing
+                      ? `${missingForms.length} form${missingForms.length > 1 ? 's' : ''} needed for ${PATIENT_STAGE_LABELS[patient.current_stage]}`
+                      : `${missingForms.length} of ${stageForms.length} forms still pending`}
+                  </p>
+                  <p className={`text-[11px] mt-0.5 ${subColor}`}>
+                    {missingForms.slice(0, 3).map(ft => FORM_TYPE_LABELS[ft]).join(', ')}
+                    {missingForms.length > 3 ? ` +${missingForms.length - 3} more` : ''}
+                  </p>
+                  {isUrgent && (
+                    <p className={`text-[10px] mt-1 font-medium ${subColor}`}>
+                      {patient.current_stage === 'discharge' ? 'Required before discharge clearance' :
+                       patient.current_stage === 'pre_op' ? 'Required before surgery' :
+                       `Patient has been in this stage for ${daysInStage} days`}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* ── Stage-Relevant Forms ── */}
         <div className="mx-4 mb-4">
           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Forms for this Stage</h3>

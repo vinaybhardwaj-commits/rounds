@@ -467,11 +467,13 @@ export function TasksView({ onNavigateToPatient, userRole = '', userId = '', ini
           <div className="text-center py-12 text-gray-400 text-sm">Loading tasks...</div>
         ) : tab === 'overdue' ? (
           overdueItems.length === 0 && completedItems.length === 0 ? (
-            <div className="text-center py-16">
-              <CheckCircle size={40} className="mx-auto text-green-200 mb-3" />
-              <p className="text-gray-500 font-medium text-sm">All caught up!</p>
-              <p className="text-gray-400 text-xs mt-1">
-                No overdue readiness items.
+            <div className="text-center py-16 px-6">
+              <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-green-50 flex items-center justify-center">
+                <CheckCircle size={24} className="text-green-400" />
+              </div>
+              <p className="text-gray-700 font-semibold text-base mb-1">All caught up!</p>
+              <p className="text-gray-400 text-xs max-w-[260px] mx-auto leading-relaxed">
+                No overdue readiness items right now. When a patient needs forms, labs, or clearances before their procedure, pending items will show up here.
               </p>
             </div>
           ) : (
@@ -706,12 +708,13 @@ export function TasksView({ onNavigateToPatient, userRole = '', userId = '', ini
         ) : (
           /* Escalations tab */
           escalations.length === 0 ? (
-            <div className="text-center py-16">
-              <CheckCircle size={40} className="mx-auto text-green-200 mb-3" />
-              <p className="text-gray-500 font-medium text-sm">No open escalations</p>
-              <p className="text-gray-400 text-xs mt-1">
-                When readiness items are overdue and escalated through the chain,
-                they&apos;ll appear here.
+            <div className="text-center py-16 px-6">
+              <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-green-50 flex items-center justify-center">
+                <CheckCircle size={24} className="text-green-400" />
+              </div>
+              <p className="text-gray-700 font-semibold text-base mb-1">No open escalations</p>
+              <p className="text-gray-400 text-xs max-w-[260px] mx-auto leading-relaxed">
+                Escalations are created automatically when readiness items stay overdue. They move up the chain — assignee, then department head, then GM — until resolved.
               </p>
             </div>
           ) : (
