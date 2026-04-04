@@ -157,20 +157,19 @@ export async function generateDailyBriefing(): Promise<DailyBriefing> {
       LIMIT 30
     `,
     sql`
-      SELECT source_type, severity, message, resolved, created_at
+      SELECT source_type, level, reason, resolved, created_at
       FROM escalation_log
       WHERE resolved = false
-      ORDER BY severity DESC, created_at DESC
+      ORDER BY level DESC, created_at DESC
       LIMIT 20
     `,
     sql`
       SELECT dr.shift_type, dr.role, p.full_name, d.name as dept_name
       FROM duty_roster dr
-      JOIN profiles p ON dr.profile_id = p.id
+      JOIN profiles p ON dr.user_id = p.id
       LEFT JOIN departments d ON dr.department_id = d.id
-      WHERE dr.is_active = true
-      AND (dr.effective_from IS NULL OR dr.effective_from <= ${today})
-      AND (dr.effective_until IS NULL OR dr.effective_until >= ${today})
+      WHERE dr.effective_from <= ${today}
+      AND (dr.effective_to IS NULL OR dr.effective_to >= ${today})
       LIMIT 30
     `,
   ]);
@@ -214,7 +213,7 @@ Overdue items (${overdueItems.length}):
 ${overdueItems.slice(0, 10).map((i) => `- ${i.patient_name}: ${i.item_name} (${i.item_category})`).join('\n') || 'None'}
 
 Escalations (${escalations.length}):
-${escalations.slice(0, 5).map((e) => `- ${e.source_type}: ${e.message} (severity: ${e.severity})`).join('\n') || 'None'}
+${escalations.slice(0, 5).map((e) => `- ${e.source_type}: ${e.reason} (level: ${e.level})`).join('\n') || 'None'}
 
 On-duty (${dutyRoster.length}):
 ${dutyRoster.slice(0, 10).map((d) => `- ${d.full_name} (${d.role}, ${d.shift_type}${d.dept_name ? ', ' + d.dept_name : ''})`).join('\n') || 'No roster entries'}
@@ -302,7 +301,7 @@ export async function predictPatientOutcomes(
   `;
 
   const escalations = await sql`
-    SELECT severity, resolved, message
+    SELECT level, resolved, reason
     FROM escalation_log
     WHERE source_id = ${patientThreadId} AND source_type = 'readiness_item'
   `;
