@@ -11,6 +11,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { X, ChevronLeft, ChevronRight, Search, Check } from 'lucide-react';
 import { COMMON_PROCEDURES, KNOWN_SURGEONS, KNOWN_ANAESTHESIOLOGISTS } from '@/lib/ot/procedure-defaults';
 import { getProcedureDefaults } from '@/lib/ot/procedure-defaults';
+import { trackFeature } from '@/lib/session-tracker';
 
 interface WizardProps {
   onClose: () => void;
@@ -157,6 +158,7 @@ export function SurgeryPostingWizard({ onClose, onPosted, prefillPatient }: Wiza
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
+      trackFeature('ot_surgery_posted', { procedure: procedureName, case_type: caseType, ot_room: otRoom });
       onPosted();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to post surgery');

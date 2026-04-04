@@ -148,7 +148,7 @@ export default function HelpWidget({ currentPage }: HelpWidgetProps) {
     <>
       {/* ── Floating Button ── */}
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => { if (!isOpen) trackFeature('help_open'); setIsOpen(!isOpen); }}
         className={`fixed z-[55] rounded-full shadow-lg transition-all duration-200 ${
           isOpen
             ? 'bottom-20 right-4 w-10 h-10 bg-gray-600 hover:bg-gray-700'

@@ -21,6 +21,7 @@ import type { PatientStage, FormType } from '@/types';
 import { PATIENT_STAGE_LABELS, PATIENT_STAGE_COLORS } from '@/types';
 import { FORMS_BY_STAGE, FORM_TYPE_LABELS } from '@/lib/form-registry';
 import { OTActionBanner } from '@/components/ot/OTActionBanner';
+import { trackFeature } from '@/lib/session-tracker';
 
 type CreateTab = 'single' | 'upload';
 
@@ -263,6 +264,7 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
       });
       const data = await res.json();
       if (data.success) {
+        trackFeature('patient_archive', { reason: removeReason });
         setRemoveTarget(null);
         setRemoveReason('');
         setRemoveDetail('');
@@ -309,7 +311,7 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
       formData.append('date', uploadDate);
       const res = await fetch('/api/patients/import', { method: 'POST', body: formData });
       const data = await res.json();
-      if (data.success) { setUploadResult(data.data); setMsg({ type: 'success', text: data.message }); fetchPatients(); }
+      if (data.success) { trackFeature('patient_import_csv', { count: data.data?.created || 0 }); setUploadResult(data.data); setMsg({ type: 'success', text: data.message }); fetchPatients(); }
       else { setMsg({ type: 'error', text: data.error || 'Import failed.' }); }
     } catch { setMsg({ type: 'error', text: 'Network error during upload.' }); }
     finally { setSaving(false); }
@@ -325,7 +327,7 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
         body: JSON.stringify({ patient_name: fName, uhid: fUhid || null, current_stage: fStage }),
       });
       const data = await res.json();
-      if (data.success) { setMsg({ type: 'success', text: 'Patient thread created.' }); setShowCreate(false); setFName(''); setFUhid(''); setFStage('opd'); fetchPatients(); }
+      if (data.success) { trackFeature('patient_create', { stage: fStage }); setMsg({ type: 'success', text: 'Patient thread created.' }); setShowCreate(false); setFName(''); setFUhid(''); setFStage('opd'); fetchPatients(); }
       else { setMsg({ type: 'error', text: data.error || 'Failed to create.' }); }
     } catch { setMsg({ type: 'error', text: 'Network error.' }); }
     finally { setSaving(false); }

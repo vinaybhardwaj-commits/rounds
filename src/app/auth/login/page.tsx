@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { LogIn, Eye, EyeOff } from 'lucide-react';
+import { trackFeature } from '@/lib/session-tracker';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,6 +38,8 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
+
+      trackFeature('login_success', { role: data.data?.role });
 
       // Redirect: force PIN change if flagged, otherwise go home
       if (data.data?.must_change_pin) {

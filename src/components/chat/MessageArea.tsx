@@ -37,6 +37,7 @@ import FormCard from '@/components/forms/FormCard';
 import type { MessageType, MessagePriority, FormType, PatientStage, DischargeMilestoneStep, ClaimEventType } from '@/types';
 import { PATIENT_STAGE_LABELS, VALID_STAGE_TRANSITIONS, DISCHARGE_MILESTONE_LABELS, CLAIM_STATUS_LABELS } from '@/types';
 import { FORM_TYPE_LABELS, FORMS_BY_STAGE } from '@/lib/form-registry';
+import { trackFeature } from '@/lib/session-tracker';
 
 // --- Types ---
 
@@ -499,6 +500,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
         text: messageText.trim(),
         mentioned_users: mentionedUserIds,
       });
+      trackFeature('chat_send_message', { channel_type: channel.type, has_mentions: mentionedUserIds.length > 0 });
       setMessageText('');
       setPendingMentions([]);
       inputRef.current?.focus();
@@ -538,6 +540,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
           },
         ],
       });
+      trackFeature('chat_file_upload', { file_type: file.type, channel_type: channel.type });
     } catch (err) {
       console.error('File upload failed:', err);
     } finally {
@@ -1122,6 +1125,8 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
                     const data = await res.json();
                     if (!data.success) {
                       alert(`Stage change failed: ${data.error}`);
+                    } else {
+                      trackFeature('patient_stage_advance', { new_stage: newStage });
                     }
                   } catch (err) {
                     alert(`Stage change error: ${err}`);

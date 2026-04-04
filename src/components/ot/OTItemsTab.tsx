@@ -11,6 +11,7 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { Check, CheckCheck, AlertTriangle, ChevronDown, ChevronUp, Clock, User } from 'lucide-react';
 import type { OTReadinessItem } from '@/types';
 import { OT_ITEM_STATUS_LABELS, OT_CATEGORY_LABELS } from '@/types';
+import { trackFeature } from '@/lib/session-tracker';
 
 interface OTItem extends OTReadinessItem {
   // Joined fields from the API
@@ -83,6 +84,7 @@ export function OTItemsTab({ userRole, userId, onNavigateToPatient }: OTItemsTab
       });
       const data = await res.json();
       if (data.success) {
+        trackFeature('ot_readiness_confirm', { item_id: itemId });
         // Remove from local list
         setItems(prev => prev.filter(i => i.id !== itemId));
         // Notify AppShell to refresh badge count
@@ -120,6 +122,7 @@ export function OTItemsTab({ userRole, userId, onNavigateToPatient }: OTItemsTab
           })
         )
       );
+      trackFeature('ot_readiness_bulk_confirm', { count: selectedIds.size });
       // Remove confirmed items
       setItems(prev => prev.filter(i => !selectedIds.has(i.id)));
       setSelectedIds(new Set());

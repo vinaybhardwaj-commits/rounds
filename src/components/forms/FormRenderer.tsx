@@ -8,6 +8,7 @@
 // ============================================
 
 import { useState, useCallback, useMemo } from 'react';
+import { trackFeature } from '@/lib/session-tracker';
 import {
   type FormSchema,
   type FormField,
@@ -110,6 +111,7 @@ export default function FormRenderer({
       }
 
       const score = computeCompletionScore(schema, formData);
+      trackFeature('form_submit', { form_type: schema.type || schema.title, completion_score: Math.round(score * 100) });
       await onSubmit(formData, score);
     },
     [schema, formData, onSubmit]
