@@ -7,7 +7,7 @@
 // file attachments, message actions.
 // ============================================
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   MessageSquare,
