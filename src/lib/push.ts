@@ -6,13 +6,16 @@
 import webpush from 'web-push';
 import { sql } from '@/lib/db';
 
-// Configure VAPID
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:tech@even.in';
+// Configure VAPID — keys must be set in env; empty strings are treated as unconfigured
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY?.trim() || '';
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY?.trim() || '';
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT?.trim() || 'mailto:tech@even.in';
+const VAPID_CONFIGURED = VAPID_PUBLIC_KEY.length > 0 && VAPID_PRIVATE_KEY.length > 0;
 
-if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+if (VAPID_CONFIGURED) {
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+} else if (process.env.NODE_ENV === 'production') {
+  console.error('[Push] VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be set in production');
 }
 
 interface PushPayload {
@@ -32,7 +35,7 @@ export async function sendPushToUser(
   profileId: string,
   payload: PushPayload
 ): Promise<{ sent: number; failed: number }> {
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+  if (!VAPID_CONFIGURED) {
     console.warn('[Push] VAPID keys not configured, skipping push');
     return { sent: 0, failed: 0 };
   }

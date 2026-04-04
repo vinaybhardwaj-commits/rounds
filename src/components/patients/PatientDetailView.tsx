@@ -203,6 +203,7 @@ export function PatientDetailView({
     setLoading(true);
     try {
       const res = await fetch(`/api/patients/${patientId}`);
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       const data = await res.json();
       if (data.success) setPatient(data.data);
     } catch (err) {
@@ -215,6 +216,7 @@ export function PatientDetailView({
   const fetchDischargeStatus = useCallback(async () => {
     try {
       const res = await fetch(`/api/patients/${patientId}/discharge`);
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       const data = await res.json();
       if (data.success && data.data) {
         setDischargeMilestone(data.data.milestone);
@@ -231,6 +233,7 @@ export function PatientDetailView({
   const fetchClaimStatus = useCallback(async () => {
     try {
       const res = await fetch(`/api/patients/${patientId}/claim`);
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       const data = await res.json();
       if (data.success && data.data) {
         setInsuranceClaim(data.data.claim);
@@ -252,14 +255,14 @@ export function PatientDetailView({
 
   // Fetch departments and consultants for inline edit
   useEffect(() => {
-    fetch('/api/departments').then(r => r.json()).then(d => {
+    fetch('/api/departments').then(r => { if (!r.ok) throw new Error(`Request failed: ${r.status}`); return r.json(); }).then(d => {
       if (d.success) setDepartments(d.data || []);
     }).catch(() => {});
-    fetch('/api/profiles?role=department_head&limit=100').then(r => r.json()).then(d => {
+    fetch('/api/profiles?role=department_head&limit=100').then(r => { if (!r.ok) throw new Error(`Request failed: ${r.status}`); return r.json(); }).then(d => {
       if (d.success) setConsultants(d.data || []);
     }).catch(() => {});
     // Also fetch all doctors/consultants
-    fetch('/api/profiles?limit=200').then(r => r.json()).then(d => {
+    fetch('/api/profiles?limit=200').then(r => { if (!r.ok) throw new Error(`Request failed: ${r.status}`); return r.json(); }).then(d => {
       if (d.success) {
         setConsultants(d.data?.map((p: { id: string; full_name: string }) => ({
           id: p.id,
@@ -299,6 +302,7 @@ export function PatientDetailView({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       const data = await res.json();
       if (data.success) {
         showToast('success', 'Updated');
@@ -323,6 +327,7 @@ export function PatientDetailView({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pac_status: newStatus || null }),
       });
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       const data = await res.json();
       if (data.success) {
         showToast('success', 'PAC status updated');
@@ -346,6 +351,7 @@ export function PatientDetailView({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stage: newStage }),
       });
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       const data = await res.json();
       if (data.success) {
         showToast('success', `Stage advanced to ${PATIENT_STAGE_LABELS[newStage]}`);

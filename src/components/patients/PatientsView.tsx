@@ -166,6 +166,7 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
       const params = new URLSearchParams({ limit });
       if (stageFilter) params.set('stage', stageFilter);
       const res = await fetch(`/api/patients?${params.toString()}`);
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       const data = await res.json();
       if (data.success) {
         setPatients(data.data || []);
@@ -186,6 +187,7 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
       const params = new URLSearchParams({ limit, offset });
       if (stageFilter) params.set('stage', stageFilter);
       const res = await fetch(`/api/patients?${params.toString()}`);
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       const data = await res.json();
       if (data.success && data.data?.length > 0) {
         setPatients(prev => [...prev, ...data.data]);
@@ -203,6 +205,8 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
         fetch('/api/patients/archive?type=post_discharge'),
         fetch('/api/patients/archive?type=removed'),
       ]);
+      if (!pdRes.ok) throw new Error(`Request failed: ${pdRes.status}`);
+      if (!rmRes.ok) throw new Error(`Request failed: ${rmRes.status}`);
       const pdData = await pdRes.json();
       const rmData = await rmRes.json();
       if (pdData.success) setArchivedPostDC(pdData.data || []);
@@ -219,7 +223,7 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
     if (patients.length === 0) return;
     const ids = patients.map(p => p.id).join(',');
     fetch(`/api/patients/form-status?ids=${ids}`)
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error(`Request failed: ${r.status}`); return r.json(); })
       .then(data => {
         if (data.success) setFormStatuses(data.data || {});
       })
@@ -262,6 +266,7 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
           reason_detail: removeDetail || null,
         }),
       });
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       const data = await res.json();
       if (data.success) {
         trackFeature('patient_archive', { reason: removeReason });
@@ -289,6 +294,7 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ patient_thread_id: patientId }),
       });
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       const data = await res.json();
       if (data.success) {
         fetchPatients();
@@ -310,6 +316,7 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
       formData.append('file', uploadFile);
       formData.append('date', uploadDate);
       const res = await fetch('/api/patients/import', { method: 'POST', body: formData });
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       const data = await res.json();
       if (data.success) { trackFeature('patient_import_csv', { count: data.data?.created || 0 }); setUploadResult(data.data); setMsg({ type: 'success', text: data.message }); fetchPatients(); }
       else { setMsg({ type: 'error', text: data.error || 'Import failed.' }); }
@@ -326,6 +333,7 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ patient_name: fName, uhid: fUhid || null, current_stage: fStage }),
       });
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       const data = await res.json();
       if (data.success) { trackFeature('patient_create', { stage: fStage }); setMsg({ type: 'success', text: 'Patient thread created.' }); setShowCreate(false); setFName(''); setFUhid(''); setFStage('opd'); fetchPatients(); }
       else { setMsg({ type: 'error', text: data.error || 'Failed to create.' }); }

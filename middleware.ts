@@ -4,6 +4,7 @@ import { jwtVerify } from 'jose';
 const COOKIE_NAME = 'rounds_session';
 
 // Routes that don't require authentication
+// Uses exact match to prevent unintended path matching (e.g. /auth/login-admin)
 const PUBLIC_ROUTES = ['/auth/login', '/auth/signup', '/auth/pending'];
 const PUBLIC_API_ROUTES = ['/api/auth/login', '/api/auth/signup', '/api/auth/logout'];
 
@@ -32,12 +33,12 @@ export async function middleware(request: NextRequest) {
   }
 
   // Allow public routes
-  if (PUBLIC_ROUTES.some(r => pathname.startsWith(r))) {
+  if (PUBLIC_ROUTES.some(r => pathname === r)) {
     return NextResponse.next();
   }
 
-  // Allow public API routes
-  if (PUBLIC_API_ROUTES.some(r => pathname.startsWith(r))) {
+  // Allow public API routes (exact match to prevent /api/auth/login-backdoor etc.)
+  if (PUBLIC_API_ROUTES.some(r => pathname === r)) {
     return NextResponse.next();
   }
 
@@ -81,7 +82,9 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/auth/pending', request.url));
     }
 
-    // Block non-admins from /admin routes
+    // Block non-admins from /admin routes (both UI and API)
+    // NOTE: department_heads get access to the /admin UI and some API routes.
+    // Individual API handlers enforce finer-grained permissions (e.g. super_admin-only).
     if (pathname.startsWith('/admin') && payload.role !== 'super_admin' && payload.role !== 'department_head') {
       if (pathname.startsWith('/api/')) {
         return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });

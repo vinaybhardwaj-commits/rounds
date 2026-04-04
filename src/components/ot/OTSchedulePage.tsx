@@ -120,6 +120,8 @@ export function OTSchedulePage({ userRole, userId }: OTSchedulePageProps) {
         fetch(`/api/ot/schedule?date=${selectedDate}`),
         fetch(`/api/ot/schedule/stats?date=${selectedDate}`),
       ]);
+      if (!scheduleRes.ok) throw new Error(`Request failed: ${scheduleRes.status}`);
+      if (!statsRes.ok) throw new Error(`Request failed: ${statsRes.status}`);
       const scheduleData = await scheduleRes.json();
       const statsData = await statsRes.json();
 

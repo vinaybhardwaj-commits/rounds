@@ -52,6 +52,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 export function ProfileView({ isAdmin = false }: ProfileViewProps) {
   const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editMsg, setEditMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -63,16 +64,25 @@ export function ProfileView({ isAdmin = false }: ProfileViewProps) {
 
   useEffect(() => {
     fetch('/api/auth/me')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(d => {
         if (d.success) {
           setProfile(d.data);
           setEditName(d.data.full_name || '');
           setEditDesignation(d.data.designation || '');
           setEditPhone(d.data.phone || '');
+          setError(null);
+        } else {
+          setError('Failed to load profile');
         }
       })
-      .catch(() => {});
+      .catch(err => {
+        console.error('Failed to fetch profile:', err);
+        setError('Could not load profile. Please refresh.');
+      });
   }, []);
 
   const startEdit = () => {
@@ -131,6 +141,22 @@ export function ProfileView({ isAdmin = false }: ProfileViewProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-4">
+        {/* Load error state */}
+        {error && !profile && (
+          <div className="text-center py-12 px-4">
+            <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-3">
+              <X size={20} className="text-red-500" />
+            </div>
+            <p className="text-red-600 font-medium mb-3">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="text-sm text-even-blue hover:underline"
+            >
+              Refresh page
+            </button>
+          </div>
+        )}
+
         {/* Edit success/error toast */}
         {editMsg && (
           <div className={`mb-3 p-2.5 rounded-lg text-xs flex items-center gap-2 ${
@@ -142,6 +168,7 @@ export function ProfileView({ isAdmin = false }: ProfileViewProps) {
         )}
 
         {/* Profile card */}
+        {profile && (
         <div className="bg-white rounded-xl border border-gray-100 p-5 mb-4">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
@@ -245,6 +272,7 @@ export function ProfileView({ isAdmin = false }: ProfileViewProps) {
             )}
           </div>
         </div>
+        )}
 
         {/* Navigation links */}
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-4">

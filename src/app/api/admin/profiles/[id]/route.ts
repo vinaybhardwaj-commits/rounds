@@ -201,8 +201,7 @@ export async function DELETE(
       `UPDATE patient_threads SET primary_consultant_id = NULL WHERE primary_consultant_id = $1`,
       `UPDATE patient_threads SET created_by = NULL WHERE created_by = $1`,
       `UPDATE patient_threads SET archived_by = NULL WHERE archived_by = $1`,
-      // Form submissions — make submitted_by nullable first, then nullify
-      `ALTER TABLE form_submissions ALTER COLUMN submitted_by DROP NOT NULL`,
+      // Form submissions (submitted_by is already nullable per schema)
       `UPDATE form_submissions SET submitted_by = NULL WHERE submitted_by = $1`,
       // Readiness items
       `UPDATE readiness_items SET responsible_user_id = NULL WHERE responsible_user_id = $1`,
@@ -215,11 +214,9 @@ export async function DELETE(
       `UPDATE admission_tracker SET admitted_by = NULL WHERE admitted_by = $1`,
       `UPDATE admission_tracker SET primary_surgeon_id = NULL WHERE primary_surgeon_id = $1`,
       `UPDATE admission_tracker SET ip_coordinator_id = NULL WHERE ip_coordinator_id = $1`,
-      // Duty roster
-      `ALTER TABLE duty_roster ALTER COLUMN user_id DROP NOT NULL`,
+      // Duty roster (user_id is already nullable per schema)
       `UPDATE duty_roster SET user_id = NULL WHERE user_id = $1`,
-      // Deleted messages audit
-      `ALTER TABLE deleted_messages ALTER COLUMN deleted_by_id DROP NOT NULL`,
+      // Deleted messages audit (deleted_by_id is already nullable per schema)
       `UPDATE deleted_messages SET deleted_by_id = NULL WHERE deleted_by_id = $1`,
       // Discharge milestones
       `UPDATE discharge_milestones SET discharge_ordered_by = NULL WHERE discharge_ordered_by = $1`,
@@ -232,11 +229,9 @@ export async function DELETE(
       `UPDATE discharge_milestones SET patient_settled_by = NULL WHERE patient_settled_by = $1`,
       // Insurance claims
       `UPDATE insurance_claims SET created_by = NULL WHERE created_by = $1`,
-      // OT readiness audit log
-      `ALTER TABLE ot_readiness_audit_log ALTER COLUMN performed_by DROP NOT NULL`,
+      // OT readiness audit log (performed_by is already nullable per schema)
       `UPDATE ot_readiness_audit_log SET performed_by = NULL WHERE performed_by = $1`,
-      // Surgery postings
-      `ALTER TABLE surgery_postings ALTER COLUMN posted_by DROP NOT NULL`,
+      // Surgery postings (posted_by is already nullable per schema)
       `UPDATE surgery_postings SET posted_by = NULL WHERE posted_by = $1`,
       `UPDATE surgery_postings SET primary_surgeon_id = NULL WHERE primary_surgeon_id = $1`,
       `UPDATE surgery_postings SET anaesthesiologist_id = NULL WHERE anaesthesiologist_id = $1`,
@@ -256,8 +251,9 @@ export async function DELETE(
         } else {
           await _sql(query, [id]);
         }
-      } catch {
-        // Some tables may not exist yet — skip silently
+      } catch (e) {
+        // Some tables may not exist yet — log and skip
+        console.warn(`[DeleteProfile] Skipping nullify query (table may not exist): ${query.substring(0, 60)}`, e);
       }
     }
 

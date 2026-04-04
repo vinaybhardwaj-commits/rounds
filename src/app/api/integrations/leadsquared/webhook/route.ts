@@ -10,6 +10,7 @@
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
+import { timingSafeEqual } from 'crypto';
 import { syncSingleLead } from '@/lib/lsq-sync';
 
 const WEBHOOK_SECRET = process.env.LSQ_WEBHOOK_SECRET || '';
@@ -32,7 +33,12 @@ export async function POST(request: NextRequest) {
 
     const providedSecret = authHeader?.replace('Bearer ', '') || querySecret;
 
-    if (providedSecret !== WEBHOOK_SECRET) {
+    // Use constant-time comparison to prevent timing attacks
+    const secretsMatch = providedSecret
+      && providedSecret.length === WEBHOOK_SECRET.length
+      && timingSafeEqual(Buffer.from(providedSecret), Buffer.from(WEBHOOK_SECRET));
+
+    if (!secretsMatch) {
       console.warn('[LSQ Webhook] Invalid secret, rejecting request');
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },

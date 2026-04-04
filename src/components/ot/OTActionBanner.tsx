@@ -36,7 +36,7 @@ export function OTActionBanner({ onViewOTItems }: OTActionBannerProps) {
     };
 
     fetchCount();
-    const interval = setInterval(fetchCount, 120_000); // Refresh every 2 min
+    let interval = setInterval(fetchCount, 120_000); // Refresh every 2 min
     const handleOtChange = () => fetchCount();
     window.addEventListener('ot-items-changed', handleOtChange);
     return () => {
@@ -45,7 +45,7 @@ export function OTActionBanner({ onViewOTItems }: OTActionBannerProps) {
       clearInterval(interval);
       window.removeEventListener('ot-items-changed', handleOtChange);
     };
-  }, []);
+  }, [onViewOTItems]);
 
   if (count === 0) return null;
 

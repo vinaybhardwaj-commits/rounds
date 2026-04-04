@@ -101,8 +101,11 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     const { id } = await params;
-    const body = await request.json().catch(() => ({}));
-    const reason = body.reason || 'Cancelled via API';
+    const body = await request.json().catch(() => {
+      console.warn('DELETE /api/ot/postings/[id]: No valid JSON body, using default reason');
+      return {} as Record<string, unknown>;
+    });
+    const reason = (typeof body.reason === 'string' && body.reason.trim()) ? body.reason.trim() : 'Cancelled via API';
 
     const result = await cancelSurgeryPosting(id, reason);
     if (!result) {

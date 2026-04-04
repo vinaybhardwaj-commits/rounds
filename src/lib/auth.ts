@@ -96,7 +96,7 @@ export function isValidPin(pin: string): boolean {
 }
 
 // --- Superuser check ---
-const SUPERUSER_EMAIL = 'vinay.bhardwaj@even.in';
+const SUPERUSER_EMAIL = (process.env.SUPERUSER_EMAIL || 'vinay.bhardwaj@even.in').toLowerCase();
 
 export function isSuperuserEmail(email: string): boolean {
   return email.toLowerCase() === SUPERUSER_EMAIL;

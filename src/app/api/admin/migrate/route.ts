@@ -80,7 +80,7 @@ export async function POST() {
         patient_thread_id UUID REFERENCES patient_threads(id) ON DELETE SET NULL,
         getstream_message_id VARCHAR(100),
         getstream_channel_id VARCHAR(100),
-        submitted_by UUID NOT NULL REFERENCES profiles(id),
+        submitted_by UUID REFERENCES profiles(id),
         department_id UUID REFERENCES departments(id),
         form_data JSONB NOT NULL DEFAULT '{}',
         completion_score REAL,
@@ -210,7 +210,7 @@ export async function POST() {
     await run('duty_roster', `
       CREATE TABLE IF NOT EXISTS duty_roster (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id UUID NOT NULL REFERENCES profiles(id),
+        user_id UUID REFERENCES profiles(id),
         department_id UUID NOT NULL REFERENCES departments(id),
         role VARCHAR(50) NOT NULL,
         shift_type VARCHAR(20) NOT NULL,
@@ -222,7 +222,7 @@ export async function POST() {
         is_override BOOLEAN NOT NULL DEFAULT false,
         override_reason TEXT,
         override_date DATE,
-        created_by UUID NOT NULL REFERENCES profiles(id),
+        created_by UUID REFERENCES profiles(id),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
@@ -303,7 +303,7 @@ export async function POST() {
         original_text TEXT,
         original_user_id UUID,
         original_user_name VARCHAR(200),
-        deleted_by_id UUID NOT NULL REFERENCES profiles(id),
+        deleted_by_id UUID REFERENCES profiles(id),
         deleted_by_name VARCHAR(200),
         deleted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         reason VARCHAR(50) NOT NULL DEFAULT 'other',
@@ -510,7 +510,7 @@ export async function POST() {
         status VARCHAR(20) NOT NULL DEFAULT 'posted',
         cancellation_reason TEXT,
         postponed_to DATE,
-        posted_by UUID NOT NULL REFERENCES profiles(id),
+        posted_by UUID REFERENCES profiles(id),
         posted_via VARCHAR(20) DEFAULT 'wizard',
         getstream_message_id VARCHAR(255),
         notes TEXT,
@@ -569,7 +569,7 @@ export async function POST() {
         old_status VARCHAR(20),
         new_status VARCHAR(20),
         detail TEXT,
-        performed_by UUID NOT NULL REFERENCES profiles(id),
+        performed_by UUID REFERENCES profiles(id),
         performed_by_name VARCHAR(255),
         performed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )

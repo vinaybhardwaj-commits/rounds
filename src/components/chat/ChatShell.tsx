@@ -33,6 +33,7 @@ export function ChatShell({
   const { client, connecting, error } = useChatContext();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
+  const [channelError, setChannelError] = useState<string | null>(null);
 
   // Thread state
   const [threadMessage, setThreadMessage] = useState<MessageResponse | null>(null);
@@ -55,6 +56,7 @@ export function ChatShell({
 
     const navigateToChannel = async () => {
       try {
+        setChannelError(null);
         // Initialize the channel directly by type + id and watch it
         const channel = client.channel('patient-thread', pendingChannelId);
         await channel.watch();
@@ -63,6 +65,7 @@ export function ChatShell({
         }
       } catch (err) {
         console.error(`Failed to navigate to channel ${pendingChannelId}:`, err);
+        setChannelError('Failed to load channel');
         // Fallback: try querying across all channel types
         try {
           const channels = await client.queryChannels(
@@ -72,9 +75,15 @@ export function ChatShell({
           );
           if (!cancelled && channels.length > 0) {
             handleSelectChannel(channels[0]);
+            setChannelError(null);
+          } else if (!cancelled) {
+            setChannelError('Channel not found');
           }
         } catch (err2) {
           console.error('Fallback query also failed:', err2);
+          if (!cancelled) {
+            setChannelError('Failed to load channel');
+          }
         }
       } finally {
         if (!cancelled) {
@@ -151,6 +160,29 @@ export function ChatShell({
           >
             Log out and try again
           </a>
+        </div>
+      </div>
+    );
+  }
+
+  // Channel error state
+  if (channelError && !activeChannel) {
+    return (
+      <div className="flex items-center justify-center h-full bg-even-white">
+        <div className="text-center max-w-sm p-6">
+          <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-3">
+            <span className="text-red-500 text-xl">!</span>
+          </div>
+          <h2 className="text-lg font-semibold text-even-navy mb-1">
+            {channelError}
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">Unable to open this conversation right now</p>
+          <button
+            onClick={() => setChannelError(null)}
+            className="text-sm text-even-blue hover:underline"
+          >
+            Dismiss
+          </button>
         </div>
       </div>
     );

@@ -6,16 +6,24 @@
 import { NextResponse } from 'next/server';
 
 export async function GET() {
-  const publicKey = process.env.VAPID_PUBLIC_KEY;
-  if (!publicKey) {
+  try {
+    const publicKey = process.env.VAPID_PUBLIC_KEY;
+    if (!publicKey) {
+      return NextResponse.json(
+        { success: false, error: 'VAPID key not configured' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: { publicKey },
+    });
+  } catch (error) {
+    console.error('GET /api/push/vapid-key error:', error);
     return NextResponse.json(
-      { success: false, error: 'VAPID key not configured' },
+      { success: false, error: 'Failed to retrieve VAPID key' },
       { status: 500 }
     );
   }
-
-  return NextResponse.json({
-    success: true,
-    data: { publicKey },
-  });
 }

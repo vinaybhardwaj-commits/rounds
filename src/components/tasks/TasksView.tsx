@@ -92,6 +92,7 @@ export function TasksView({ onNavigateToPatient, userRole = '', userId = '', ini
   const [completedItems, setCompletedItems] = useState<CompletedItem[]>([]);
   const [escalations, setEscalations] = useState<EscalationEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [completedOpen, setCompletedOpen] = useState(false);
 
   // Action states
@@ -111,6 +112,7 @@ export function TasksView({ onNavigateToPatient, userRole = '', userId = '', ini
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const [overdueRes, completedRes, escRes] = await Promise.all([
         fetch('/api/readiness/overdue'),
@@ -132,6 +134,7 @@ export function TasksView({ onNavigateToPatient, userRole = '', userId = '', ini
       if (escData.success) setEscalations(escData.data || []);
     } catch (err) {
       console.error('Failed to fetch tasks:', err);
+      setError('Failed to load tasks. Please refresh.');
     } finally {
       setLoading(false);
     }
@@ -463,6 +466,19 @@ export function TasksView({ onNavigateToPatient, userRole = '', userId = '', ini
       <div className="flex-1 overflow-y-auto px-4 pb-4">
         {tab === 'briefing' ? (
           <DailyBriefing />
+        ) : error ? (
+          <div className="text-center py-12 px-4">
+            <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-3">
+              <AlertTriangle size={20} className="text-red-500" />
+            </div>
+            <p className="text-red-600 font-medium mb-3">{error}</p>
+            <button
+              onClick={fetchData}
+              className="text-sm text-even-blue hover:underline"
+            >
+              Try again
+            </button>
+          </div>
         ) : loading ? (
           <div className="text-center py-12 text-gray-400 text-sm">Loading tasks...</div>
         ) : tab === 'overdue' ? (

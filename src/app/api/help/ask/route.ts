@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     // 1. Auth check
     const user = await getCurrentUser();
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
     // 2. Parse request
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     const { question, page } = body;
 
     if (!question || typeof question !== 'string' || question.trim().length === 0) {
-      return NextResponse.json({ error: 'Missing question parameter' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Missing question parameter' }, { status: 400 });
     }
 
     // 3. Answer the question
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ...response, interactionId });
   } catch (err) {
     console.error('[HelpAPI] Error:', err);
-    return NextResponse.json({ error: 'Failed to process help request' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Failed to process help request' }, { status: 500 });
   }
 }
 

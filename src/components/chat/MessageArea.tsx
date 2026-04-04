@@ -222,13 +222,17 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         setHighlightedMessageId(scrollToMessageId);
-        // Clear highlight after animation
-        setTimeout(() => setHighlightedMessageId(null), 2000);
       }
       onScrollComplete?.();
     }, 300);
 
-    return () => clearTimeout(timer);
+    // Clear highlight after animation
+    const highlightTimer = setTimeout(() => setHighlightedMessageId(null), 2300);
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(highlightTimer);
+    };
   }, [scrollToMessageId, messages, onScrollComplete]);
 
   const scrollToBottom = useCallback(() => {
@@ -312,6 +316,8 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
     }
     activeChannelRef.current = channel;
 
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
     const loadMessages = async () => {
       setLoading(true);
       try {
@@ -325,7 +331,8 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
         setMessages(topLevel.map(toDisplayMessage));
         // Explicitly mark channel as read so unread badges update
         await channel.markRead();
-        setTimeout(scrollToBottom, 100);
+        const timer = setTimeout(scrollToBottom, 100);
+        timers.push(timer);
       } catch (error) {
         console.error('Failed to load messages:', error);
       } finally {
@@ -338,6 +345,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
       try {
         const channelFullId = `${channel.type}:${channel.id}`;
         const res = await fetch(`/api/chat/delete-message?channel_id=${encodeURIComponent(channelFullId)}`);
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
         const data = await res.json();
         if (data.success) {
           setDeletedRecords(data.data || []);
@@ -353,7 +361,8 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
     const handleNewMessage = (event: { message?: MessageResponse }) => {
       if (event.message && !event.message.parent_id && !event.message.deleted_at && (event.message as Record<string, unknown>).type !== 'deleted') {
         setMessages((prev) => [...prev, toDisplayMessage(event.message!)]);
-        setTimeout(scrollToBottom, 50);
+        const timer = setTimeout(scrollToBottom, 50);
+        timers.push(timer);
       }
     };
 
@@ -388,6 +397,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
       channel.off('reaction.new', handleReactionNew);
       channel.off('reaction.deleted', handleReactionNew);
       channel.off('message.read', handleReadEvent);
+      timers.forEach(clearTimeout);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channel?.cid, client]);
@@ -1080,6 +1090,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
             try {
               const channelFullId = `${channel.type}:${channel.id}`;
               const res = await fetch(`/api/chat/delete-message?channel_id=${encodeURIComponent(channelFullId)}`);
+              if (!res.ok) throw new Error(`Request failed: ${res.status}`);
               const data = await res.json();
               if (data.success) setDeletedRecords(data.data || []);
             } catch { /* non-fatal */ }
@@ -1136,6 +1147,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ stage: newStage }),
                     });
+                    if (!res.ok) throw new Error(`Request failed: ${res.status}`);
                     const data = await res.json();
                     if (!data.success) {
                       alert(`Stage change failed: ${data.error}`);
@@ -1157,6 +1169,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                       });
+                      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
                       const data = await res.json();
                       if (!data.success) alert(`Discharge start failed: ${data.error}`);
                     } else if (action === 'step' && step) {
@@ -1165,6 +1178,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ step }),
                       });
+                      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
                       const data = await res.json();
                       if (!data.success) alert(`Milestone update failed: ${data.error}`);
                     }
@@ -1182,6 +1196,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                       });
+                      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
                       const data = await res.json();
                       if (!data.success) alert(`Claim creation failed: ${data.error}`);
                     } else {
@@ -1210,6 +1225,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
                           portalReference: ref,
                         }),
                       });
+                      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
                       const data = await res.json();
                       if (!data.success) alert(`Claim event failed: ${data.error}`);
                     }
@@ -1230,6 +1246,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
                         archiveType: 'post_discharge',
                       }),
                     });
+                    if (!res.ok) throw new Error(`Request failed: ${res.status}`);
                     const data = await res.json();
                     if (!data.success) {
                       alert(`Archive failed: ${data.error}`);
@@ -1488,6 +1505,7 @@ function SlashCommandMenu({
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ sumInsured, roomCategory }),
                   });
+                  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
                   const data = await res.json();
                   if (data.success) {
                     alert(data.data.message.replace(/\*\*/g, ''));
@@ -1632,6 +1650,7 @@ function SlashCommandMenu({
                           revisedEstimate: estimate,
                         }),
                       });
+                      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
                       const data = await res.json();
                       if (!data.success) alert(`Enhancement failed: ${data.error}`);
                     } catch (err) {
@@ -1658,6 +1677,7 @@ function SlashCommandMenu({
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ runningBill }),
                       });
+                      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
                       const data = await res.json();
                       if (data.success) {
                         const msg = data.data?.needsEnhancement
@@ -1687,6 +1707,7 @@ function SlashCommandMenu({
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ patientThreadId: patientId }),
                       });
+                      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
                       const data = await res.json();
                       if (data.success) {
                         alert(data.message);
