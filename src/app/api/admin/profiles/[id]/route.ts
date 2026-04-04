@@ -97,6 +97,17 @@ export async function PATCH(
     updates.push(`must_change_pin = $${paramIdx}`);
     values.push(true);
     paramIdx++;
+
+    // Auto-activate if currently pending — admin resetting PIN implies approval
+    const statusAlreadyInPayload = 'status' in body;
+    if (!statusAlreadyInPayload) {
+      const current = await sql`SELECT status FROM profiles WHERE id = ${id}`;
+      if (current.length && (current[0] as Record<string, string>).status === 'pending_approval') {
+        updates.push(`status = $${paramIdx}`);
+        values.push('active');
+        paramIdx++;
+      }
+    }
   }
 
   if (updates.length === 0) {
@@ -113,8 +124,9 @@ export async function PATCH(
     RETURNING id, email, full_name, role, status, designation, phone, department_id
   `;
 
-  // Use raw sql for dynamic query
-  const result = await _sql!(query, values);
+  // Use raw sql for dynamic query — ensure connection is initialized
+  if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
+  const result = await _sql(query, values);
 
   if (!result.length) {
     return NextResponse.json({ success: false, error: 'Profile not found' }, { status: 404 });
