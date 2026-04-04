@@ -16,6 +16,7 @@ import { TasksView } from './tasks/TasksView';
 import { ProfileView } from './profile/ProfileView';
 import { FormsView } from './forms/FormsView';
 import { BottomTabBar, type TabId } from './layout/BottomTabBar';
+import HelpWidget from './help/HelpWidget';
 
 interface AppShellProps {
   userId: string;
@@ -269,6 +270,9 @@ function AppShellInner({ userId, userRole }: { userId: string; userRole: string 
         onTabChange={handleTabChange}
         badges={badges}
       />
+
+      {/* Help Widget — floating ? button, always available */}
+      <HelpWidget currentPage={`/${activeTab}${selectedPatientId ? `/${selectedPatientId}` : ''}`} />
     </div>
   );
 }
