@@ -3,6 +3,9 @@ import { neon } from '@neondatabase/serverless';
 import { getCurrentUser } from '@/lib/auth';
 import { hashPin, isValidPin } from '@/lib/auth';
 
+// Force Vercel to regenerate the serverless function with all HTTP methods
+export const dynamic = 'force-dynamic';
+
 let _sql: ReturnType<typeof neon> | null = null;
 function sql(strings: TemplateStringsArray, ...values: unknown[]) {
   if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
