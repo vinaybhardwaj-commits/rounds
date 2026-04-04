@@ -61,11 +61,20 @@ export async function POST(request: NextRequest) {
 
   // Hash and save new PIN, clear the forced-change flag
   const newHash = await hashPin(new_pin);
-  await sql`
-    UPDATE profiles
-    SET password_hash = ${newHash}, must_change_pin = false, updated_at = NOW()
-    WHERE id = ${user.profileId}
-  `;
+  try {
+    const result = await sql`
+      UPDATE profiles
+      SET password_hash = ${newHash}, must_change_pin = false, updated_at = NOW()
+      WHERE id = ${user.profileId}
+      RETURNING id
+    `;
+    if (!result.length) {
+      return NextResponse.json({ success: false, error: 'Failed to update PIN — profile not found' }, { status: 500 });
+    }
+  } catch (err) {
+    console.error('Change PIN DB error:', err);
+    return NextResponse.json({ success: false, error: 'Failed to save new PIN. Please try again.' }, { status: 500 });
+  }
 
   return NextResponse.json({
     success: true,
