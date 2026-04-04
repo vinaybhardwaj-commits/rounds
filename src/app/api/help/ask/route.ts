@@ -33,12 +33,15 @@ export async function POST(request: NextRequest) {
       page: page || undefined,
     });
 
-    // 4. Log the interaction (async, don't block response)
-    logInteraction(user.profileId, question.trim(), response.matched_features, response.source, page).catch(err => {
+    // 4. Log the interaction and get the ID back for feedback
+    let interactionId: number | null = null;
+    try {
+      interactionId = await logInteraction(user.profileId, question.trim(), response.matched_features, response.source, page);
+    } catch (err) {
       console.error('[HelpAPI] Failed to log interaction:', err);
-    });
+    }
 
-    return NextResponse.json(response);
+    return NextResponse.json({ ...response, interactionId });
   } catch (err) {
     console.error('[HelpAPI] Error:', err);
     return NextResponse.json({ error: 'Failed to process help request' }, { status: 500 });
@@ -54,14 +57,17 @@ async function logInteraction(
   matchedFeatures: string[],
   responseSource: string,
   contextPage?: string
-) {
+): Promise<number | null> {
   try {
-    await sql`
+    const rows = await sql`
       INSERT INTO help_interactions (profile_id, question, matched_features, response_source, context_page)
       VALUES (${profileId}, ${question}, ${matchedFeatures as unknown as string}, ${responseSource}, ${contextPage || null})
+      RETURNING id
     `;
+    return rows[0]?.id ?? null;
   } catch (err) {
     // Table might not exist yet — silently fail
     console.warn('[HelpAPI] Could not log interaction (table may not exist):', err);
+    return null;
   }
 }

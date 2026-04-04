@@ -99,6 +99,7 @@ export default function HelpWidget({ currentPage }: HelpWidgetProps) {
         role: 'assistant',
         content: data.answer,
         source: data.source,
+        interactionId: data.interactionId ?? undefined,
       };
       setMessages(prev => [...prev, aiMsg]);
     } catch {
@@ -121,10 +122,24 @@ export default function HelpWidget({ currentPage }: HelpWidgetProps) {
   }
 
   async function handleFeedback(msgId: string, helpful: boolean) {
+    // Find the message to get the interactionId
+    const msg = messages.find(m => m.id === msgId);
     setMessages(prev => prev.map(m =>
       m.id === msgId ? { ...m, feedbackGiven: true } : m
     ));
-    // TODO: call /api/help/feedback when endpoint is built
+
+    // Send feedback to backend
+    if (msg?.interactionId) {
+      try {
+        await fetch('/api/help/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ interactionId: msg.interactionId, helpful }),
+        });
+      } catch {
+        // Silently fail — feedback is non-critical
+      }
+    }
   }
 
   return (

@@ -161,7 +161,7 @@ async function setupSystemBot(): Promise<string> {
       id: 'rounds-system',
       name: 'Rounds System',
       role: 'admin', // needs to post to any channel
-      image: undefined, // TODO: add bot avatar URL
+      image: 'https://ui-avatars.com/api/?name=R&background=0055FF&color=fff&size=128&bold=true&format=png',
       is_bot: true,
     });
     return 'System bot user created/updated: rounds-system';

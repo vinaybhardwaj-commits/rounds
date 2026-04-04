@@ -102,15 +102,24 @@ export function ChatShell({
     setSidebarOpen(false);
   }, []);
 
+  // Scroll-to-message state (from search navigation)
+  const [scrollToMessageId, setScrollToMessageId] = useState<string | null>(null);
+
   const handleSearchNavigate = useCallback(
-    (channel: Channel, _messageId?: string) => {
+    (channel: Channel, messageId?: string) => {
       setActiveChannel(channel);
       setThreadMessage(null);
       setSidebarOpen(false);
-      // TODO: Scroll to specific message by messageId
+      if (messageId) {
+        setScrollToMessageId(messageId);
+      }
     },
     []
   );
+
+  const handleScrollComplete = useCallback(() => {
+    setScrollToMessageId(null);
+  }, []);
 
   // Loading state
   if (connecting) {
@@ -167,6 +176,8 @@ export function ChatShell({
           channel={activeChannel}
           onOpenSidebar={() => setSidebarOpen(true)}
           onOpenThread={handleOpenThread}
+          scrollToMessageId={scrollToMessageId}
+          onScrollComplete={handleScrollComplete}
         />
 
         {/* Thread panel (desktop: side panel, mobile: overlay) */}

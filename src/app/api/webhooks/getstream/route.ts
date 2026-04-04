@@ -12,6 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
+import { neon } from '@neondatabase/serverless';
 
 /**
  * Verify GetStream webhook signature.
@@ -135,16 +136,43 @@ async function handleMessageNew(event: GetStreamWebhookEvent): Promise<void> {
   // Skip system/bot messages to prevent infinite loops
   if (message.user?.id === 'rounds-system') return;
 
-  // Log for development — will be replaced with cascade logic in Milestone 5
-  console.log(
-    `[webhook] message.new in ${message.channel_type}:${message.channel_id}`,
-    `from ${message.user?.name || message.user?.id}`,
-    `type: ${(message as Record<string, unknown>).message_type || 'chat'}`
-  );
+  const messageType = (message as Record<string, unknown>).message_type as string || 'chat';
+  const channelType = message.channel_type || event.channel?.type;
+  const channelId = message.channel_id || event.channel?.id;
 
-  // TODO (Milestone 5): Check if this message triggers a cascade
-  // const messageType = message.message_type as string;
-  // if (messageType && messageType !== 'chat') {
-  //   await processCascadeTrigger(message);
-  // }
+  // Only cascade non-chat messages (escalations, requests, decisions)
+  if (messageType === 'chat' || messageType === 'general') return;
+
+  // Log escalations to the escalation_log table for tracking
+  if (messageType === 'escalation') {
+    try {
+      const sql = neon(process.env.POSTGRES_URL!);
+
+      // Find patient_thread_id if this is a patient thread channel
+      let patientThreadId: string | null = null;
+      if (channelType === 'patient-thread' && channelId) {
+        const rows = await sql(
+          `SELECT id FROM patient_threads WHERE getstream_channel_id = $1 LIMIT 1`,
+          [channelId]
+        );
+        if (rows.length > 0) patientThreadId = rows[0].id;
+      }
+
+      await sql(
+        `INSERT INTO escalation_log (source_type, source_id, reason, patient_thread_id, getstream_channel_id, getstream_message_id, level)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          'chat_message',
+          message.id,
+          message.text?.substring(0, 500) || 'Escalation via chat',
+          patientThreadId,
+          channelId ? `${channelType}:${channelId}` : null,
+          message.id,
+          1,
+        ]
+      );
+    } catch (err) {
+      console.error('[webhook] Failed to log escalation:', err);
+    }
+  }
 }

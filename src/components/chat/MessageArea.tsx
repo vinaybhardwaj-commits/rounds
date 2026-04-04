@@ -44,6 +44,8 @@ interface MessageAreaProps {
   channel: Channel | null;
   onOpenSidebar: () => void;
   onOpenThread: (message: MessageResponse) => void;
+  scrollToMessageId?: string | null;
+  onScrollComplete?: () => void;
 }
 
 interface DisplayMessage {
@@ -181,7 +183,7 @@ function renderTextWithMentions(text: string, mentionedIds: string[], currentUse
 
 // --- Component ---
 
-export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAreaProps) {
+export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMessageId, onScrollComplete }: MessageAreaProps) {
   const { client } = useChatContext();
   const router = useRouter();
   const [messageText, setMessageText] = useState('');
@@ -207,6 +209,26 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeChannelRef = useRef<Channel | null>(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+
+  // Scroll to a specific message (from search navigation)
+  useEffect(() => {
+    if (!scrollToMessageId || messages.length === 0) return;
+
+    // Small delay to let DOM render
+    const timer = setTimeout(() => {
+      const el = document.querySelector(`[data-message-id="${scrollToMessageId}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setHighlightedMessageId(scrollToMessageId);
+        // Clear highlight after animation
+        setTimeout(() => setHighlightedMessageId(null), 2000);
+      }
+      onScrollComplete?.();
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [scrollToMessageId, messages, onScrollComplete]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -657,7 +679,9 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
                 return (
                   <div
                     key={msg.id}
-                    className={`group/sys relative px-3 py-2.5 rounded-lg border ${
+                    data-message-id={msg.id}
+                    className={`group/sys relative px-3 py-2.5 rounded-lg border transition-all duration-500 ${
+                      highlightedMessageId === msg.id ? 'ring-2 ring-yellow-400 bg-yellow-50' :
                       isEscalation
                         ? 'bg-red-50 border-red-100'
                         : isStageTransition
@@ -770,8 +794,11 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread }: MessageAre
               return (
                 <div
                   key={msg.id}
-                  className={`group relative ${showAvatar ? 'mt-3' : 'mt-0.5'} ${
-                    mentionsMe
+                  data-message-id={msg.id}
+                  className={`group relative transition-all duration-500 ${showAvatar ? 'mt-3' : 'mt-0.5'} ${
+                    highlightedMessageId === msg.id
+                      ? 'pl-2 border-l-[3px] border-l-yellow-400 bg-yellow-50/70 rounded-r-md -ml-1 ring-1 ring-yellow-300'
+                      : mentionsMe
                       ? 'pl-2 border-l-[3px] border-l-blue-500 bg-blue-50/50 rounded-r-md -ml-1'
                       : isRelevantRole ? 'pl-2 border-l-[3px] border-l-even-blue bg-blue-50/30 rounded-r-md -ml-1' : ''
                   }`}
