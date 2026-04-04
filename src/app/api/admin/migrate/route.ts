@@ -613,11 +613,44 @@ export async function POST() {
 
     await run('ot_migration_record', `INSERT INTO _migrations (name) VALUES ('ot-surgery-readiness-v1') ON CONFLICT (name) DO NOTHING`);
 
+    // ── Step 14: Help System Tables ──
+
+    // 14a. help_interactions — tracks every help question + response
+    await run('help_interactions', `
+      CREATE TABLE IF NOT EXISTS help_interactions (
+        id SERIAL PRIMARY KEY,
+        profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        question TEXT NOT NULL,
+        matched_features TEXT[] DEFAULT '{}',
+        response_source VARCHAR(20) NOT NULL DEFAULT 'template',
+        context_page VARCHAR(255),
+        helpful BOOLEAN,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await run('idx_help_interactions_profile', `CREATE INDEX IF NOT EXISTS idx_help_interactions_profile ON help_interactions(profile_id, created_at DESC)`);
+    await run('idx_help_interactions_features', `CREATE INDEX IF NOT EXISTS idx_help_interactions_features ON help_interactions USING GIN(matched_features)`);
+
+    // 14b. help_dismissals — tracks dismissed nudges and what's-new badges
+    await run('help_dismissals', `
+      CREATE TABLE IF NOT EXISTS help_dismissals (
+        id SERIAL PRIMARY KEY,
+        profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        feature_id VARCHAR(100) NOT NULL,
+        type VARCHAR(20) NOT NULL DEFAULT 'whats-new',
+        dismissed_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(profile_id, feature_id, type)
+      )
+    `);
+    await run('idx_help_dismissals_profile', `CREATE INDEX IF NOT EXISTS idx_help_dismissals_profile ON help_dismissals(profile_id)`);
+
+    await run('help_system_migration_record', `INSERT INTO _migrations (name) VALUES ('help-system-v1') ON CONFLICT (name) DO NOTHING`);
+
     // 9. Verify
     const tables = await sql`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
-      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages','insurance_claims','claim_events','discharge_milestones','surgery_postings','ot_readiness_items','ot_readiness_audit_log','ot_equipment_items')
+      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages','insurance_claims','claim_events','discharge_milestones','surgery_postings','ot_readiness_items','ot_readiness_audit_log','ot_equipment_items','help_interactions','help_dismissals')
       ORDER BY table_name
     `;
 
@@ -634,7 +667,7 @@ export async function POST() {
         tables_found: tables.map((t) => t.table_name),
         log: results,
       },
-      message: `Migration complete. ${successCount} executed, ${skipCount} skipped, ${errorCount} errors. ${tables.length}/15 tables found.`,
+      message: `Migration complete. ${successCount} executed, ${skipCount} skipped, ${errorCount} errors. ${tables.length}/17 tables found.`,
     });
   } catch (error) {
     console.error('POST /api/admin/migrate error:', error);
