@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import Link from 'next/link';
+import { LlmHealthIndicator } from '@/components/ai/LlmHealthIndicator';
 
 interface ProfileData {
   profileId: string;
@@ -265,6 +266,13 @@ export function ProfileView({ isAdmin = false }: ProfileViewProps) {
             <span className="flex-1 text-sm font-medium text-red-600">Log Out</span>
           </a>
         </div>
+
+        {/* AI Engine Status */}
+        {isAdmin && (
+          <div className="mb-4">
+            <LlmHealthIndicator />
+          </div>
+        )}
 
         {/* App info */}
         <div className="text-center text-xs text-gray-300 mt-6">
