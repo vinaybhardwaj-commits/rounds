@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { clearSessionCookie } from '@/lib/auth';
 
 export async function POST() {
@@ -11,12 +11,12 @@ export async function POST() {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await clearSessionCookie();
-    return NextResponse.redirect(new URL('/auth/login', process.env.NEXTAUTH_URL || 'http://localhost:3000'));
+    return NextResponse.redirect(new URL('/auth/login', request.nextUrl.origin));
   } catch (error) {
     console.error('GET /api/auth/logout error:', error);
-    return NextResponse.redirect(new URL('/auth/login', process.env.NEXTAUTH_URL || 'http://localhost:3000'));
+    return NextResponse.redirect(new URL('/auth/login', request.nextUrl.origin));
   }
 }
