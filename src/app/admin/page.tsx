@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Building2, Upload, Shield, UserCheck, Calendar, AlertTriangle, Activity, UserPlus, ClipboardList, Link2, MessageSquare } from 'lucide-react';
+import { Users, Building2, Upload, Shield, UserCheck, Calendar, AlertTriangle, Activity, UserPlus, ClipboardList, Link2, MessageSquare, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 
@@ -160,6 +160,13 @@ export default function AdminDashboard() {
               <div>
                 <div className="text-sm font-medium">Chat System Setup</div>
                 <div className="text-xs text-gray-500">Seed department channels, backfill patient chats, create group chats</div>
+              </div>
+            </Link>
+            <Link href="/admin/analytics" className="flex items-center gap-3 px-4 py-3 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors">
+              <BarChart3 size={18} className="text-emerald-600" />
+              <div>
+                <div className="text-sm font-medium">Usage Analytics</div>
+                <div className="text-xs text-gray-500">DAU, feature adoption, session stats, error tracking</div>
               </div>
             </Link>
           </div>
