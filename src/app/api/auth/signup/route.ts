@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { hashPin, isValidEvenEmail, isValidPin, isSuperuserEmail, createToken, setSessionCookie } from '@/lib/auth';
+import type { UserRole } from '@/types';
+
+// Roles that can be self-selected during signup (excludes privileged roles)
+const ALLOWED_SIGNUP_ROLES: UserRole[] = [
+  'staff', 'nurse', 'pharmacist', 'physiotherapist', 'clinical_care',
+  'ip_coordinator', 'anesthesiologist', 'ot_coordinator',
+  'billing_executive', 'insurance_coordinator', 'marketing_executive',
+  'pac_coordinator', 'administrator', 'medical_administrator',
+  'operations_manager', 'unit_head', 'marketing', 'guest',
+];
 
 let _sql: ReturnType<typeof neon> | null = null;
 function sql(strings: TemplateStringsArray, ...values: unknown[]) {
@@ -67,7 +77,20 @@ export async function POST(request: NextRequest) {
     // Determine status: superuser is auto-approved
     const isSuperuser = isSuperuserEmail(email);
     const status = isSuperuser ? 'active' : 'pending_approval';
-    const userRole = isSuperuser ? 'super_admin' : (role || 'staff');
+
+    // Validate role: superuser gets super_admin; others must pick from allowed list
+    let userRole: UserRole = 'staff';
+    if (isSuperuser) {
+      userRole = 'super_admin';
+    } else if (role) {
+      if (!ALLOWED_SIGNUP_ROLES.includes(role as UserRole)) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid role selected' },
+          { status: 400 }
+        );
+      }
+      userRole = role as UserRole;
+    }
 
     // Create the profile
     const result = await sql`

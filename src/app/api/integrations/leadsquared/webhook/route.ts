@@ -17,6 +17,14 @@ const WEBHOOK_SECRET = process.env.LSQ_WEBHOOK_SECRET || '';
 export async function POST(request: NextRequest) {
   try {
     // ---- Security: validate webhook secret ----
+    if (!WEBHOOK_SECRET) {
+      console.error('[LSQ Webhook] LSQ_WEBHOOK_SECRET is not configured — rejecting request');
+      return NextResponse.json(
+        { success: false, error: 'Webhook not configured' },
+        { status: 503 }
+      );
+    }
+
     const authHeader = request.headers.get('x-webhook-secret')
       || request.headers.get('authorization');
     const { searchParams } = new URL(request.url);
@@ -24,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     const providedSecret = authHeader?.replace('Bearer ', '') || querySecret;
 
-    if (WEBHOOK_SECRET && providedSecret !== WEBHOOK_SECRET) {
+    if (providedSecret !== WEBHOOK_SECRET) {
       console.warn('[LSQ Webhook] Invalid secret, rejecting request');
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },

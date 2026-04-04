@@ -17,6 +17,12 @@ import { syncLeadsByStage, getLastSyncTime } from '@/lib/lsq-sync';
 const CRON_SECRET = process.env.CRON_SECRET || '';
 
 function validateAuth(request: NextRequest): boolean {
+  // Require CRON_SECRET to be configured — refuse to run without it
+  if (!CRON_SECRET) {
+    console.error('[LSQ Sync] CRON_SECRET is not configured — rejecting request');
+    return false;
+  }
+
   // Vercel cron sends Authorization header
   const authHeader = request.headers.get('authorization');
   if (authHeader === `Bearer ${CRON_SECRET}`) return true;
@@ -24,9 +30,6 @@ function validateAuth(request: NextRequest): boolean {
   // Also allow query param for manual triggers
   const { searchParams } = new URL(request.url);
   if (searchParams.get('secret') === CRON_SECRET) return true;
-
-  // Skip auth check if no secret configured (dev mode)
-  if (!CRON_SECRET) return true;
 
   return false;
 }
