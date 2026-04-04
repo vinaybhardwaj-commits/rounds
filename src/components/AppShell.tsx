@@ -67,12 +67,16 @@ function AppShellInner({ userId, userRole }: { userId: string; userRole: string 
 
   // ── Overdue + OT pending counts for Tasks badge ──
   useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
     const fetchCounts = async () => {
       try {
         const [overdueRes, otRes] = await Promise.all([
-          fetch('/api/readiness/overdue'),
-          fetch('/api/ot/readiness/mine?count_only=true'),
+          fetch('/api/readiness/overdue', { signal: controller.signal }),
+          fetch('/api/ot/readiness/mine?count_only=true', { signal: controller.signal }),
         ]);
+        if (cancelled) return;
         const overdueData = await overdueRes.json();
         if (overdueData.success && Array.isArray(overdueData.data)) {
           setOverdueCount(overdueData.data.length);
@@ -94,6 +98,8 @@ function AppShellInner({ userId, userRole }: { userId: string; userRole: string 
     const handleOtChange = () => fetchCounts();
     window.addEventListener('ot-items-changed', handleOtChange);
     return () => {
+      cancelled = true;
+      controller.abort();
       clearInterval(interval);
       window.removeEventListener('ot-items-changed', handleOtChange);
     };

@@ -319,7 +319,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
         const state = channel.state;
         // Only show top-level messages (not thread replies), exclude deleted tombstones
         // Belt-and-suspenders: check both deleted_at AND type !== 'deleted'
-        const topLevel = state.messages.filter(
+        const topLevel = (state.messages || []).filter(
           (m) => !m.parent_id && !m.deleted_at && (m as Record<string, unknown>).type !== 'deleted'
         );
         setMessages(topLevel.map(toDisplayMessage));

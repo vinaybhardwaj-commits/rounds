@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { getCurrentUser } from '@/lib/auth';
+import { VALID_ROLES } from '@/lib/roles';
 
 let _sql: ReturnType<typeof neon> | null = null;
 function sql(strings: TemplateStringsArray, ...values: unknown[]) {
@@ -144,12 +145,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'email and full_name are required' }, { status: 400 });
     }
 
+    // Validate role against the UserRole enum
+    const validatedRole = role && VALID_ROLES.includes(role) ? role : 'staff';
+
     const result = await sql`
       INSERT INTO profiles (email, full_name, role, department_id, designation, phone, account_type, status)
       VALUES (
         ${email.toLowerCase()},
         ${full_name},
-        ${role || 'staff'},
+        ${validatedRole},
         ${department_id || null},
         ${designation || null},
         ${phone || null},

@@ -11,6 +11,12 @@ const LSQ_API_HOST = process.env.LSQ_API_HOST || 'https://api-in21.leadsquared.c
 const LSQ_ACCESS_KEY = process.env.LSQ_ACCESS_KEY || '';
 const LSQ_SECRET_KEY = process.env.LSQ_SECRET_KEY || '';
 
+function assertLSQConfigured() {
+  if (!LSQ_ACCESS_KEY || !LSQ_SECRET_KEY) {
+    throw new Error('[LeadSquared] LSQ_ACCESS_KEY and LSQ_SECRET_KEY must be configured');
+  }
+}
+
 // ============================================
 // TYPES
 // ============================================
@@ -137,6 +143,7 @@ async function lsqFetch<T>(endpoint: string, options?: {
   extraParams?: Record<string, string>;
   leadId?: string;
 }): Promise<T> {
+  assertLSQConfigured();
   const url = buildUrl(endpoint, options?.extraParams);
   const method = options?.method || 'GET';
   const startTime = Date.now();

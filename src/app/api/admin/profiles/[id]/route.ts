@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { getCurrentUser } from '@/lib/auth';
 import { hashPin, isValidPin } from '@/lib/auth';
+import { isValidRole } from '@/lib/roles';
 
 // Force Vercel to regenerate the serverless function with all HTTP methods
 export const dynamic = 'force-dynamic';
@@ -82,6 +83,10 @@ export async function PATCH(
 
   for (const [key, col] of Object.entries(allowedFields)) {
     if (key in body && body[key] !== undefined) {
+      // Validate role against the UserRole enum
+      if (key === 'role' && !isValidRole(body[key])) {
+        return NextResponse.json({ success: false, error: `Invalid role: ${body[key]}` }, { status: 400 });
+      }
       updates.push(`${col} = $${paramIdx}`);
       values.push(body[key] === '' ? null : body[key]);
       paramIdx++;
@@ -187,6 +192,8 @@ export async function DELETE(
     // 2. Nullify all FK references across operational tables
     //    This preserves the rows but removes the link to the profile.
     //    The deleted_profiles table lets us look up who the person was.
+    //    IMPORTANT: If you add a new table with a FK to profiles.id,
+    //    you MUST add a corresponding nullify query here.
     if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
 
     const nullifyQueries = [
@@ -238,8 +245,6 @@ export async function DELETE(
       `UPDATE ot_readiness_items SET responsible_user_id = NULL WHERE responsible_user_id = $1`,
       `UPDATE ot_readiness_items SET confirmed_by = NULL WHERE confirmed_by = $1`,
       `UPDATE ot_readiness_items SET escalated_to = NULL WHERE escalated_to = $1`,
-      // PAC clearances
-      `UPDATE pac_clearances SET verified_by = NULL WHERE verified_by = $1`,
       // App errors
       `UPDATE app_errors SET profile_id = NULL WHERE profile_id = $1`,
     ];

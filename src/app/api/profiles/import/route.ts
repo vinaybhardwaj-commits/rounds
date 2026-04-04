@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { getCurrentUser } from '@/lib/auth';
+import { isValidRole } from '@/lib/roles';
 import { parse } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
 import type { CSVImportResult } from '@/types';
@@ -119,9 +120,8 @@ export async function POST(request: NextRequest) {
       // Resolve department
       const departmentId = deptMap.get(deptKey) || null;
 
-      // Validate role
-      const validRoles = ['super_admin', 'department_head', 'staff', 'pac_coordinator', 'marketing', 'guest', 'doctor', 'nurse', 'resident', 'pharmacist', 'lab_technician'];
-      const finalRole = validRoles.includes(role) ? role : 'staff';
+      // Validate role against the canonical UserRole type
+      const finalRole = isValidRole(role) ? role : 'staff';
 
       try {
         const upsertResult = await sql`

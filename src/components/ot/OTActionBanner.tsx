@@ -6,7 +6,7 @@
 // "3 OT items need your action [View →]"
 // ============================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Activity, ChevronRight } from 'lucide-react';
 
 interface OTActionBannerProps {
@@ -16,31 +16,36 @@ interface OTActionBannerProps {
 export function OTActionBanner({ onViewOTItems }: OTActionBannerProps) {
   const [count, setCount] = useState(0);
 
-  const fetchCount = useCallback(async () => {
-    try {
-      const res = await fetch('/api/ot/readiness/mine?count_only=true');
-      const data = await res.json();
-      if (data.success && typeof data.data === 'number') {
-        setCount(data.data);
-      } else if (data.success && data.data?.count !== undefined) {
-        setCount(data.data.count);
-      }
-    } catch {
-      // Non-fatal
-    }
-  }, []);
-
   useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const fetchCount = async () => {
+      try {
+        const res = await fetch('/api/ot/readiness/mine?count_only=true', { signal: controller.signal });
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.success && typeof data.data === 'number') {
+          setCount(data.data);
+        } else if (data.success && data.data?.count !== undefined) {
+          setCount(data.data.count);
+        }
+      } catch {
+        // Non-fatal (includes AbortError on unmount)
+      }
+    };
+
     fetchCount();
     const interval = setInterval(fetchCount, 120_000); // Refresh every 2 min
-    // Re-fetch when OT items change (confirm/bulk-confirm)
     const handleOtChange = () => fetchCount();
     window.addEventListener('ot-items-changed', handleOtChange);
     return () => {
+      cancelled = true;
+      controller.abort();
       clearInterval(interval);
       window.removeEventListener('ot-items-changed', handleOtChange);
     };
-  }, [fetchCount]);
+  }, []);
 
   if (count === 0) return null;
 
