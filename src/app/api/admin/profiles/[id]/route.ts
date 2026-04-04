@@ -135,7 +135,7 @@ export async function PATCH(
   return NextResponse.json({ success: true, data: result[0] });
 }
 
-// DELETE /api/admin/profiles/[id] — permanently remove a user, preserving all history
+// DELETE /api/admin/profiles/[id] — permanently remove a user while preserving all history
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
