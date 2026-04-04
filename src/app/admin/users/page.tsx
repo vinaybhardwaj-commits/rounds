@@ -47,6 +47,14 @@ export default function UsersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [totalCount, setTotalCount] = useState(0);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; role: string } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(d => { if (d.success) setCurrentUser({ id: d.data.id, role: d.data.role }); })
+      .catch(() => {});
+  }, []);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -199,6 +207,8 @@ export default function UsersPage() {
           profileId={editingProfileId}
           onClose={() => setEditingProfileId(null)}
           onSaved={() => fetchUsers()}
+          currentUserRole={currentUser?.role}
+          currentUserId={currentUser?.id}
         />
       )}
     </AdminLayout>

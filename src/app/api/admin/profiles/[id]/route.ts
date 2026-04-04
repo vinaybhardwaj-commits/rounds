@@ -134,3 +134,137 @@ export async function PATCH(
 
   return NextResponse.json({ success: true, data: result[0] });
 }
+
+// DELETE /api/admin/profiles/[id] — permanently remove a user, preserving all history
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== 'super_admin') {
+    return NextResponse.json({ success: false, error: 'Only super admins can delete users' }, { status: 403 });
+  }
+
+  const { id } = await params;
+
+  // Cannot delete yourself
+  if (id === user.profileId) {
+    return NextResponse.json({ success: false, error: 'You cannot delete your own account' }, { status: 400 });
+  }
+
+  // Fetch the profile to snapshot before deletion
+  const rows = await sql`
+    SELECT p.id, p.email, p.full_name, p.role, p.status, p.designation,
+           p.phone, p.department_id, d.name as department_name,
+           p.created_at, p.last_login_at
+    FROM profiles p
+    LEFT JOIN departments d ON d.id = p.department_id
+    WHERE p.id = ${id}
+  `;
+
+  if (!rows.length) {
+    return NextResponse.json({ success: false, error: 'Profile not found' }, { status: 404 });
+  }
+
+  const profile = rows[0] as Record<string, unknown>;
+
+  try {
+    // 1. Snapshot into deleted_profiles audit table
+    await sql`
+      INSERT INTO deleted_profiles (
+        original_id, email, full_name, role, designation, department_name,
+        created_at, last_login_at, deleted_by
+      ) VALUES (
+        ${id}, ${profile.email}, ${profile.full_name}, ${profile.role},
+        ${profile.designation}, ${profile.department_name},
+        ${profile.created_at}, ${profile.last_login_at}, ${user.profileId}
+      )
+    `;
+
+    // 2. Nullify all FK references across operational tables
+    //    This preserves the rows but removes the link to the profile.
+    //    The deleted_profiles table lets us look up who the person was.
+    if (!_sql) _sql = neon(process.env.POSTGRES_URL!);
+
+    const nullifyQueries = [
+      // Patient threads
+      `UPDATE patient_threads SET primary_consultant_id = NULL WHERE primary_consultant_id = $1`,
+      `UPDATE patient_threads SET created_by = NULL WHERE created_by = $1`,
+      `UPDATE patient_threads SET archived_by = NULL WHERE archived_by = $1`,
+      // Form submissions — make submitted_by nullable first, then nullify
+      `ALTER TABLE form_submissions ALTER COLUMN submitted_by DROP NOT NULL`,
+      `UPDATE form_submissions SET submitted_by = NULL WHERE submitted_by = $1`,
+      // Readiness items
+      `UPDATE readiness_items SET responsible_user_id = NULL WHERE responsible_user_id = $1`,
+      `UPDATE readiness_items SET confirmed_by = NULL WHERE confirmed_by = $1`,
+      // Escalation log
+      `UPDATE escalation_log SET escalated_from = NULL WHERE escalated_from = $1`,
+      `UPDATE escalation_log SET escalated_to = NULL WHERE escalated_to = $1`,
+      `UPDATE escalation_log SET resolved_by = NULL WHERE resolved_by = $1`,
+      // Admission tracker
+      `UPDATE admission_tracker SET admitted_by = NULL WHERE admitted_by = $1`,
+      `UPDATE admission_tracker SET primary_surgeon_id = NULL WHERE primary_surgeon_id = $1`,
+      `UPDATE admission_tracker SET ip_coordinator_id = NULL WHERE ip_coordinator_id = $1`,
+      // Duty roster
+      `ALTER TABLE duty_roster ALTER COLUMN user_id DROP NOT NULL`,
+      `UPDATE duty_roster SET user_id = NULL WHERE user_id = $1`,
+      // Deleted messages audit
+      `ALTER TABLE deleted_messages ALTER COLUMN deleted_by_id DROP NOT NULL`,
+      `UPDATE deleted_messages SET deleted_by_id = NULL WHERE deleted_by_id = $1`,
+      // Discharge milestones
+      `UPDATE discharge_milestones SET discharge_ordered_by = NULL WHERE discharge_ordered_by = $1`,
+      `UPDATE discharge_milestones SET pharmacy_cleared_by = NULL WHERE pharmacy_cleared_by = $1`,
+      `UPDATE discharge_milestones SET lab_cleared_by = NULL WHERE lab_cleared_by = $1`,
+      `UPDATE discharge_milestones SET discharge_summary_by = NULL WHERE discharge_summary_by = $1`,
+      `UPDATE discharge_milestones SET billing_closed_by = NULL WHERE billing_closed_by = $1`,
+      `UPDATE discharge_milestones SET final_bill_submitted_by = NULL WHERE final_bill_submitted_by = $1`,
+      `UPDATE discharge_milestones SET final_approval_logged_by = NULL WHERE final_approval_logged_by = $1`,
+      `UPDATE discharge_milestones SET patient_settled_by = NULL WHERE patient_settled_by = $1`,
+      // Insurance claims
+      `UPDATE insurance_claims SET created_by = NULL WHERE created_by = $1`,
+      // OT readiness audit log
+      `ALTER TABLE ot_readiness_audit_log ALTER COLUMN performed_by DROP NOT NULL`,
+      `UPDATE ot_readiness_audit_log SET performed_by = NULL WHERE performed_by = $1`,
+      // Surgery postings
+      `ALTER TABLE surgery_postings ALTER COLUMN posted_by DROP NOT NULL`,
+      `UPDATE surgery_postings SET posted_by = NULL WHERE posted_by = $1`,
+      `UPDATE surgery_postings SET primary_surgeon_id = NULL WHERE primary_surgeon_id = $1`,
+      `UPDATE surgery_postings SET anaesthesiologist_id = NULL WHERE anaesthesiologist_id = $1`,
+      `UPDATE surgery_postings SET asa_confirmed_by = NULL WHERE asa_confirmed_by = $1`,
+      // OT readiness items
+      `UPDATE ot_readiness_items SET responsible_user_id = NULL WHERE responsible_user_id = $1`,
+      `UPDATE ot_readiness_items SET confirmed_by = NULL WHERE confirmed_by = $1`,
+      `UPDATE ot_readiness_items SET escalated_to = NULL WHERE escalated_to = $1`,
+      // PAC clearances
+      `UPDATE pac_clearances SET verified_by = NULL WHERE verified_by = $1`,
+      // App errors
+      `UPDATE app_errors SET profile_id = NULL WHERE profile_id = $1`,
+    ];
+
+    for (const query of nullifyQueries) {
+      try {
+        if (query.startsWith('ALTER')) {
+          await _sql(query);
+        } else {
+          await _sql(query, [id]);
+        }
+      } catch {
+        // Some tables may not exist yet — skip silently
+      }
+    }
+
+    // 3. Delete the profile row (cascades handle session_events, help_*, push_subs, dau)
+    await sql`DELETE FROM profiles WHERE id = ${id}`;
+
+    return NextResponse.json({
+      success: true,
+      message: `User ${profile.full_name} (${profile.email}) has been permanently deleted. All their actions and history are preserved.`,
+    });
+  } catch (err) {
+    console.error('Delete profile error:', err);
+    return NextResponse.json(
+      { success: false, error: 'Failed to delete profile. Please try again.' },
+      { status: 500 }
+    );
+  }
+}

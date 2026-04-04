@@ -708,11 +708,29 @@ export async function POST() {
 
     await run('observability_migration_record', `INSERT INTO _migrations (name) VALUES ('observability-v1') ON CONFLICT (name) DO NOTHING`);
 
+    // ── Step 16: Deleted Profiles Audit Table ──
+    await run('deleted_profiles', `
+      CREATE TABLE IF NOT EXISTS deleted_profiles (
+        id SERIAL PRIMARY KEY,
+        original_id UUID NOT NULL,
+        email TEXT NOT NULL,
+        full_name TEXT NOT NULL,
+        role TEXT,
+        designation TEXT,
+        department_name TEXT,
+        created_at TIMESTAMPTZ,
+        last_login_at TIMESTAMPTZ,
+        deleted_by UUID REFERENCES profiles(id),
+        deleted_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await run('idx_deleted_profiles_original', `CREATE INDEX IF NOT EXISTS idx_deleted_profiles_original ON deleted_profiles(original_id)`);
+
     // 9. Verify
     const tables = await sql`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
-      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages','insurance_claims','claim_events','discharge_milestones','surgery_postings','ot_readiness_items','ot_readiness_audit_log','ot_equipment_items','help_interactions','help_dismissals','app_errors','session_events','daily_active_users')
+      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages','insurance_claims','claim_events','discharge_milestones','surgery_postings','ot_readiness_items','ot_readiness_audit_log','ot_equipment_items','help_interactions','help_dismissals','app_errors','session_events','daily_active_users','deleted_profiles','pac_clearances')
       ORDER BY table_name
     `;
 
@@ -729,7 +747,7 @@ export async function POST() {
         tables_found: tables.map((t) => t.table_name),
         log: results,
       },
-      message: `Migration complete. ${successCount} executed, ${skipCount} skipped, ${errorCount} errors. ${tables.length}/20 tables found.`,
+      message: `Migration complete. ${successCount} executed, ${skipCount} skipped, ${errorCount} errors. ${tables.length}/22 tables found.`,
     });
   } catch (error) {
     console.error('POST /api/admin/migrate error:', error);
