@@ -3,6 +3,7 @@
    ────────────────────────────────────────────────────────────────── */
 
 import llm, { MODEL_PRIMARY } from '@/lib/llm';
+import { logLLMCall } from '@/lib/ai';
 import { searchKnowledgeBase, type SearchResult } from './knowledge-base';
 
 export interface HelpResponse {
@@ -104,18 +105,39 @@ ${roleNote} ${pageNote}
 DOCUMENTATION:
 ${docContext}`;
 
+  const messages = [
+    { role: 'system' as const, content: systemPrompt },
+    { role: 'user' as const, content: question },
+  ];
+
+  const startMs = Date.now();
   const response = await llm.chat.completions.create({
     model: MODEL_PRIMARY,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: question },
-    ],
+    messages,
     temperature: 0.2,
     max_tokens: 300,
   });
+  const latencyMs = Date.now() - startMs;
 
   const content = response.choices[0]?.message?.content;
-  return content && content.trim().length > 10 ? content.trim() : null;
+  const success = content && content.trim().length > 10;
+
+  await logLLMCall({
+    route: '/api/help/ask',
+    analysisType: 'help_answer',
+    promptMessages: messages,
+    responseRaw: content || '',
+    responseParsed: null,
+    model: response.model || MODEL_PRIMARY,
+    tokensPrompt: response.usage?.prompt_tokens || 0,
+    tokensCompletion: response.usage?.completion_tokens || 0,
+    latencyMs,
+    status: success ? 'success' : 'fallback',
+    fallbackUsed: !success,
+    metadata: { question, results_count: results.length },
+  });
+
+  return success ? content!.trim() : null;
 }
 
 /**

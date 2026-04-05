@@ -27,6 +27,9 @@ export async function POST(request: NextRequest) {
     const sql = neon(process.env.POSTGRES_URL!);
 
     // Batch insert all events
+    let hasSessionStart = false;
+    let sessionEndDuration = 0;
+
     for (const event of events.slice(0, 50)) { // Cap at 50 per request
       try {
         await sql(
@@ -41,9 +44,39 @@ export async function POST(request: NextRequest) {
             sessionId.substring(0, 36),
           ]
         );
+
+        if (event.event_type === 'session_start') hasSessionStart = true;
+        if (event.event_type === 'session_end' && event.detail?.duration_seconds) {
+          sessionEndDuration = Number(event.detail.duration_seconds) || 0;
+        }
       } catch {
         // Skip individual event failures
       }
+    }
+
+    // ── Lifecycle field updates ──
+    // Update profiles on session_start/session_end (non-fatal)
+    try {
+      if (hasSessionStart) {
+        await sql(
+          `UPDATE profiles SET
+            last_active_at = NOW(),
+            login_count = COALESCE(login_count, 0) + 1,
+            first_login_at = COALESCE(first_login_at, NOW())
+          WHERE id = $1`,
+          [user.profileId]
+        );
+      }
+      if (sessionEndDuration > 0) {
+        await sql(
+          `UPDATE profiles SET
+            total_session_seconds = COALESCE(total_session_seconds, 0) + $1
+          WHERE id = $2`,
+          [sessionEndDuration, user.profileId]
+        );
+      }
+    } catch {
+      // Non-fatal — lifecycle updates should never break event ingestion
     }
 
     return NextResponse.json({ success: true });

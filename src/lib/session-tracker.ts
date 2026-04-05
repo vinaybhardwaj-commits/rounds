@@ -112,6 +112,87 @@ export function trackEvent(eventType: string, detail?: Record<string, unknown>) 
   });
 }
 
+// ── Admin Intelligence: Enhanced Event Tracking ──
+
+/**
+ * Track form field focus — which fields users interact with.
+ * Call when a form field receives focus or changes.
+ */
+export function trackFormFieldFocus(formType: string, fieldName: string, fieldIndex: number) {
+  enqueue({
+    event_type: 'form_field_focus',
+    page: currentPage,
+    feature: `form:${formType}`,
+    detail: { form_type: formType, field_name: fieldName, field_index: fieldIndex },
+    timestamp: Date.now(),
+  });
+}
+
+/**
+ * Track form abandonment — when a user navigates away without submitting.
+ * Call in form component cleanup (useEffect return) or beforeunload.
+ */
+export function trackFormAbandon(
+  formType: string,
+  lastField: string,
+  fieldsCompleted: number,
+  totalFields: number
+) {
+  enqueue({
+    event_type: 'form_abandon',
+    page: currentPage,
+    feature: `form:${formType}`,
+    detail: {
+      form_type: formType,
+      last_field: lastField,
+      fields_completed: fieldsCompleted,
+      total_fields: totalFields,
+      completion_pct: totalFields > 0 ? Math.round((fieldsCompleted / totalFields) * 100) : 0,
+    },
+    timestamp: Date.now(),
+  });
+  flush(); // Flush immediately — user is leaving
+}
+
+/**
+ * Track help system search.
+ */
+export function trackHelpSearch(query: string, resultsCount: number) {
+  enqueue({
+    event_type: 'help_search',
+    page: currentPage,
+    feature: 'help',
+    detail: { query, results_count: resultsCount },
+    timestamp: Date.now(),
+  });
+}
+
+/**
+ * Track help manifest/topic view.
+ */
+export function trackHelpView(manifestId: string, topic: string) {
+  enqueue({
+    event_type: 'help_view',
+    page: currentPage,
+    feature: 'help',
+    detail: { manifest_id: manifestId, topic },
+    timestamp: Date.now(),
+  });
+}
+
+/**
+ * Track when a user encounters an error.
+ */
+export function trackErrorEncountered(errorMessage: string, component?: string) {
+  enqueue({
+    event_type: 'error_encountered',
+    page: currentPage,
+    feature: component || undefined,
+    detail: { message: errorMessage, component },
+    timestamp: Date.now(),
+  });
+}
+
 /**
  * Initialize the session tracker. Call once in root layout.
  */

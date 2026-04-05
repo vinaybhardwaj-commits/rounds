@@ -2,6 +2,10 @@
 // AI Integration — Local LLM via Ollama + Cloudflare Tunnel
 // Uses OpenAI SDK pointed at Ollama's compatible API.
 // Step 8.1–8.3: Gap Analysis, Briefing, Predictions
+//
+// All LLM calls are logged to the `llm_logs` table with
+// full prompt, response, latency, and metadata for the
+// Admin Intelligence Center / LLM Observatory.
 // ============================================
 
 import llm, { MODEL_PRIMARY } from './llm';
@@ -18,6 +22,62 @@ function extractJSON(text: string): string | null {
   // Try raw JSON object
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   return jsonMatch ? jsonMatch[0] : null;
+}
+
+/**
+ * Log an LLM call to the llm_logs table.
+ * Non-fatal — logging failure never breaks the AI feature.
+ */
+export async function logLLMCall(params: {
+  route: string;
+  analysisType: string;
+  promptMessages: Array<{ role: string; content: string }>;
+  responseRaw: string | null;
+  responseParsed: unknown | null;
+  model: string;
+  tokensPrompt: number;
+  tokensCompletion: number;
+  latencyMs: number;
+  status: 'success' | 'error' | 'fallback';
+  errorMessage?: string;
+  cacheHit?: boolean;
+  fallbackUsed?: boolean;
+  sourceId?: string;
+  sourceType?: string;
+  triggeredBy?: string;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    await sql`
+      INSERT INTO llm_logs (
+        route, analysis_type, prompt_messages, response_raw, response_parsed,
+        model, tokens_prompt, tokens_completion, latency_ms,
+        status, error_message, cache_hit, fallback_used,
+        source_id, source_type, triggered_by, metadata
+      ) VALUES (
+        ${params.route},
+        ${params.analysisType},
+        ${JSON.stringify(params.promptMessages)}::jsonb,
+        ${params.responseRaw},
+        ${params.responseParsed ? JSON.stringify(params.responseParsed) : null}::jsonb,
+        ${params.model},
+        ${params.tokensPrompt},
+        ${params.tokensCompletion},
+        ${params.latencyMs},
+        ${params.status},
+        ${params.errorMessage || null},
+        ${params.cacheHit || false},
+        ${params.fallbackUsed || false},
+        ${params.sourceId || null}::uuid,
+        ${params.sourceType || null},
+        ${params.triggeredBy || null}::uuid,
+        ${params.metadata ? JSON.stringify(params.metadata) : '{}'}::jsonb
+      )
+    `;
+  } catch (err) {
+    console.error('[LLM Log] Failed to log LLM call:', err);
+    // Non-fatal — never let logging break the AI feature
+  }
 }
 
 // ── Types ──
@@ -74,18 +134,14 @@ export async function analyzeFormGaps(
       }`
     : 'No patient context';
 
-  const response = await llm.chat.completions.create({
-    model: MODEL_PRIMARY,
-    temperature: 0.3,
-    max_tokens: 1024,
-    messages: [
-      {
-        role: 'system',
-        content: 'You are a hospital operations analyst at Even Hospital, Indore. Analyze medical forms for completeness, gaps, and risks. Respond ONLY with valid JSON. No markdown, no explanation — just the JSON object.',
-      },
-      {
-        role: 'user',
-        content: `Analyze this ${formType} form submission for gaps and risks.
+  const messages = [
+    {
+      role: 'system' as const,
+      content: 'You are a hospital operations analyst at Even Hospital, Indore. Analyze medical forms for completeness, gaps, and risks. Respond ONLY with valid JSON. No markdown, no explanation — just the JSON object.',
+    },
+    {
+      role: 'user' as const,
+      content: `Analyze this ${formType} form submission for gaps and risks.
 
 Context: ${contextStr}
 
@@ -100,14 +156,57 @@ Return ONLY this JSON (no other text):
   "recommendations": ["..."],
   "flags": ["<any concerning patterns or values>"]
 }`,
-      },
-    ],
-  });
+    },
+  ];
 
+  const startMs = Date.now();
+  let response;
+  try {
+    response = await llm.chat.completions.create({
+      model: MODEL_PRIMARY,
+      temperature: 0.3,
+      max_tokens: 1024,
+      messages,
+    });
+  } catch (err) {
+    const latencyMs = Date.now() - startMs;
+    await logLLMCall({
+      route: '/api/ai/gap-analysis',
+      analysisType: 'gap_analysis',
+      promptMessages: messages,
+      responseRaw: null,
+      responseParsed: null,
+      model: MODEL_PRIMARY,
+      tokensPrompt: 0,
+      tokensCompletion: 0,
+      latencyMs,
+      status: 'error',
+      errorMessage: err instanceof Error ? err.message : 'Unknown error',
+      sourceType: formType,
+    });
+    throw err;
+  }
+
+  const latencyMs = Date.now() - startMs;
   const text = response.choices[0]?.message?.content || '';
   const jsonStr = extractJSON(text);
 
   if (!jsonStr) {
+    await logLLMCall({
+      route: '/api/ai/gap-analysis',
+      analysisType: 'gap_analysis',
+      promptMessages: messages,
+      responseRaw: text,
+      responseParsed: null,
+      model: response.model || MODEL_PRIMARY,
+      tokensPrompt: response.usage?.prompt_tokens || 0,
+      tokensCompletion: response.usage?.completion_tokens || 0,
+      latencyMs,
+      status: 'fallback',
+      errorMessage: 'LLM did not return valid JSON',
+      fallbackUsed: true,
+      sourceType: formType,
+    });
     return {
       score: 0,
       summary: 'Unable to analyze form — LLM did not return valid JSON',
@@ -119,12 +218,28 @@ Return ONLY this JSON (no other text):
 
   const report = JSON.parse(jsonStr) as GapReport;
 
-  // Cache the result
+  // Log to llm_logs (full request/response) + cache in ai_analysis
+  const tokensPrompt = response.usage?.prompt_tokens || 0;
+  const tokensCompletion = response.usage?.completion_tokens || 0;
+
+  await logLLMCall({
+    route: '/api/ai/gap-analysis',
+    analysisType: 'gap_analysis',
+    promptMessages: messages,
+    responseRaw: text,
+    responseParsed: report,
+    model: response.model || MODEL_PRIMARY,
+    tokensPrompt,
+    tokensCompletion,
+    latencyMs,
+    status: 'success',
+    sourceType: formType,
+  });
+
   try {
-    const tokens = (response.usage?.prompt_tokens || 0) + (response.usage?.completion_tokens || 0);
     await sql`
       INSERT INTO ai_analysis (analysis_type, source_type, result, model, token_count)
-      VALUES ('gap_analysis', ${formType}, ${JSON.stringify(report)}::jsonb, ${response.model || MODEL_PRIMARY}, ${tokens})
+      VALUES ('gap_analysis', ${formType}, ${JSON.stringify(report)}::jsonb, ${response.model || MODEL_PRIMARY}, ${tokensPrompt + tokensCompletion})
     `;
   } catch {
     // Non-fatal
@@ -184,18 +299,14 @@ export async function generateDailyBriefing(): Promise<DailyBriefing> {
   const todayDischarges = patients.filter((p) => p.current_stage === 'discharge');
   const admitted = patients.filter((p) => p.current_stage === 'admitted');
 
-  const response = await llm.chat.completions.create({
-    model: MODEL_PRIMARY,
-    temperature: 0.3,
-    max_tokens: 1500,
-    messages: [
-      {
-        role: 'system',
-        content: 'You are the AI operations assistant for Even Hospital Race Course Road, Indore. Generate a concise morning briefing. Be specific with numbers and names. Respond ONLY with valid JSON.',
-      },
-      {
-        role: 'user',
-        content: `Generate today's morning briefing (${today}).
+  const messages = [
+    {
+      role: 'system' as const,
+      content: 'You are the AI operations assistant for Even Hospital Race Course Road, Indore. Generate a concise morning briefing. Be specific with numbers and names. Respond ONLY with valid JSON.',
+    },
+    {
+      role: 'user' as const,
+      content: `Generate today's morning briefing (${today}).
 
 Active patients by stage: ${JSON.stringify(stageCounts)}
 Total active: ${patients.length}
@@ -232,17 +343,47 @@ Return ONLY this JSON:
   },
   "action_items": [{"priority": "high|medium|low", "text": "..."}]
 }`,
-      },
-    ],
-  });
+    },
+  ];
 
+  const startMs = Date.now();
+  let response;
+  try {
+    response = await llm.chat.completions.create({
+      model: MODEL_PRIMARY,
+      temperature: 0.3,
+      max_tokens: 1500,
+      messages,
+    });
+  } catch (err) {
+    const latencyMs = Date.now() - startMs;
+    await logLLMCall({
+      route: '/api/ai/briefing',
+      analysisType: 'daily_briefing',
+      promptMessages: messages,
+      responseRaw: null,
+      responseParsed: null,
+      model: MODEL_PRIMARY,
+      tokensPrompt: 0,
+      tokensCompletion: 0,
+      latencyMs,
+      status: 'error',
+      errorMessage: err instanceof Error ? err.message : 'Unknown error',
+      sourceType: 'hospital',
+    });
+    throw err;
+  }
+
+  const latencyMs = Date.now() - startMs;
   const text = response.choices[0]?.message?.content || '';
   const jsonStr = extractJSON(text);
 
   let briefing: DailyBriefing;
+  let llmStatus: 'success' | 'fallback' = 'success';
   if (jsonStr) {
     briefing = JSON.parse(jsonStr);
   } else {
+    llmStatus = 'fallback';
     briefing = {
       date: today,
       summary: 'Unable to generate briefing — check that Ollama is running and the Cloudflare Tunnel is active.',
@@ -258,11 +399,29 @@ Return ONLY this JSON:
     };
   }
 
+  const tokensPrompt = response.usage?.prompt_tokens || 0;
+  const tokensCompletion = response.usage?.completion_tokens || 0;
+
+  await logLLMCall({
+    route: '/api/ai/briefing',
+    analysisType: 'daily_briefing',
+    promptMessages: messages,
+    responseRaw: text,
+    responseParsed: briefing,
+    model: response.model || MODEL_PRIMARY,
+    tokensPrompt,
+    tokensCompletion,
+    latencyMs,
+    status: llmStatus,
+    fallbackUsed: llmStatus === 'fallback',
+    errorMessage: llmStatus === 'fallback' ? 'LLM did not return valid JSON' : undefined,
+    sourceType: 'hospital',
+  });
+
   try {
-    const tokens = (response.usage?.prompt_tokens || 0) + (response.usage?.completion_tokens || 0);
     await sql`
       INSERT INTO ai_analysis (analysis_type, source_type, result, model, token_count)
-      VALUES ('daily_briefing', 'hospital', ${JSON.stringify(briefing)}::jsonb, ${response.model || MODEL_PRIMARY}, ${tokens})
+      VALUES ('daily_briefing', 'hospital', ${JSON.stringify(briefing)}::jsonb, ${response.model || MODEL_PRIMARY}, ${tokensPrompt + tokensCompletion})
     `;
   } catch {
     // Non-fatal
@@ -321,18 +480,14 @@ export async function predictPatientOutcomes(
     ? Math.ceil((Date.now() - admissionDate.getTime()) / (1000 * 60 * 60 * 24))
     : null;
 
-  const response = await llm.chat.completions.create({
-    model: MODEL_PRIMARY,
-    temperature: 0.2,
-    max_tokens: 800,
-    messages: [
-      {
-        role: 'system',
-        content: 'You are a hospital operations AI for Even Hospital. Predict patient outcomes conservatively. Respond ONLY with valid JSON.',
-      },
-      {
-        role: 'user',
-        content: `Predict outcomes for:
+  const messages = [
+    {
+      role: 'system' as const,
+      content: 'You are a hospital operations AI for Even Hospital. Predict patient outcomes conservatively. Respond ONLY with valid JSON.',
+    },
+    {
+      role: 'user' as const,
+      content: `Predict outcomes for:
 
 Patient: ${patient.patient_name}, Stage: ${patient.current_stage}
 Dept: ${patient.department_name || 'Unknown'}, Consultant: ${patient.consultant_name || 'Unknown'}
@@ -348,13 +503,64 @@ Return ONLY this JSON:
   "escalation_risk": "high|medium|low",
   "risk_factors": ["..."]
 }`,
-      },
-    ],
-  });
+    },
+  ];
 
+  const startMs = Date.now();
+  let response;
+  try {
+    response = await llm.chat.completions.create({
+      model: MODEL_PRIMARY,
+      temperature: 0.2,
+      max_tokens: 800,
+      messages,
+    });
+  } catch (err) {
+    const latencyMs = Date.now() - startMs;
+    await logLLMCall({
+      route: '/api/ai/predict',
+      analysisType: 'prediction',
+      promptMessages: messages,
+      responseRaw: null,
+      responseParsed: null,
+      model: MODEL_PRIMARY,
+      tokensPrompt: 0,
+      tokensCompletion: 0,
+      latencyMs,
+      status: 'error',
+      errorMessage: err instanceof Error ? err.message : 'Unknown error',
+      sourceId: patientThreadId,
+      sourceType: 'patient_thread',
+    });
+    throw err;
+  }
+
+  const latencyMs = Date.now() - startMs;
   const text = response.choices[0]?.message?.content || '';
   const jsonStr = extractJSON(text);
-  if (!jsonStr) return null;
+
+  const tokensPrompt = response.usage?.prompt_tokens || 0;
+  const tokensCompletion = response.usage?.completion_tokens || 0;
+
+  if (!jsonStr) {
+    await logLLMCall({
+      route: '/api/ai/predict',
+      analysisType: 'prediction',
+      promptMessages: messages,
+      responseRaw: text,
+      responseParsed: null,
+      model: response.model || MODEL_PRIMARY,
+      tokensPrompt,
+      tokensCompletion,
+      latencyMs,
+      status: 'fallback',
+      fallbackUsed: true,
+      errorMessage: 'LLM did not return valid JSON',
+      sourceId: patientThreadId,
+      sourceType: 'patient_thread',
+    });
+    return null;
+  }
 
   const predictions = JSON.parse(jsonStr);
   const result: PredictionResult = {
@@ -363,11 +569,25 @@ Return ONLY this JSON:
     predictions,
   };
 
+  await logLLMCall({
+    route: '/api/ai/predict',
+    analysisType: 'prediction',
+    promptMessages: messages,
+    responseRaw: text,
+    responseParsed: result,
+    model: response.model || MODEL_PRIMARY,
+    tokensPrompt,
+    tokensCompletion,
+    latencyMs,
+    status: 'success',
+    sourceId: patientThreadId,
+    sourceType: 'patient_thread',
+  });
+
   try {
-    const tokens = (response.usage?.prompt_tokens || 0) + (response.usage?.completion_tokens || 0);
     await sql`
       INSERT INTO ai_analysis (analysis_type, source_id, source_type, result, model, token_count)
-      VALUES ('prediction', ${patientThreadId}::uuid, 'patient_thread', ${JSON.stringify(result)}::jsonb, ${response.model || MODEL_PRIMARY}, ${tokens})
+      VALUES ('prediction', ${patientThreadId}::uuid, 'patient_thread', ${JSON.stringify(result)}::jsonb, ${response.model || MODEL_PRIMARY}, ${tokensPrompt + tokensCompletion})
     `;
   } catch {
     // Non-fatal

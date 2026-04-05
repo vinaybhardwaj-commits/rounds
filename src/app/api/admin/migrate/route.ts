@@ -785,11 +785,122 @@ export async function POST() {
 
     await run('financial_counselling_migration_record', `INSERT INTO _migrations (name) VALUES ('v17-financial-counselling-versioning') ON CONFLICT (name) DO NOTHING`);
 
+    // =========================================================
+    // Step 18: Admin Intelligence Center — Phase 1 Instrumentation
+    // Lifecycle tracking, LLM logging, chat activity, query audit
+    // =========================================================
+
+    // 18a. Profiles — lifecycle tracking fields
+    await run('profiles_add_first_login_at', `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS first_login_at TIMESTAMPTZ`);
+    await run('profiles_add_last_active_at', `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ`);
+    await run('profiles_add_login_count', `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS login_count INTEGER DEFAULT 0`);
+    await run('profiles_add_total_session_seconds', `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS total_session_seconds INTEGER DEFAULT 0`);
+
+    // 18b. Backfill lifecycle fields from existing session_events
+    await run('backfill_first_login', `
+      UPDATE profiles p SET first_login_at = sub.first_login
+      FROM (
+        SELECT profile_id, MIN(created_at) as first_login
+        FROM session_events WHERE event_type = 'session_start'
+        GROUP BY profile_id
+      ) sub
+      WHERE p.id = sub.profile_id AND p.first_login_at IS NULL
+    `);
+    await run('backfill_last_active', `
+      UPDATE profiles p SET last_active_at = sub.last_active
+      FROM (
+        SELECT profile_id, MAX(created_at) as last_active
+        FROM session_events WHERE event_type = 'session_start'
+        GROUP BY profile_id
+      ) sub
+      WHERE p.id = sub.profile_id AND (p.last_active_at IS NULL OR p.last_active_at < sub.last_active)
+    `);
+    await run('backfill_login_count', `
+      UPDATE profiles p SET login_count = sub.cnt
+      FROM (
+        SELECT profile_id, COUNT(DISTINCT session_id) as cnt
+        FROM session_events WHERE event_type = 'session_start'
+        GROUP BY profile_id
+      ) sub
+      WHERE p.id = sub.profile_id AND (p.login_count IS NULL OR p.login_count = 0)
+    `);
+    await run('backfill_total_session_seconds', `
+      UPDATE profiles p SET total_session_seconds = sub.total_secs
+      FROM (
+        SELECT profile_id, SUM(COALESCE((detail->>'duration_seconds')::int, 0)) as total_secs
+        FROM session_events WHERE event_type = 'session_end'
+        GROUP BY profile_id
+      ) sub
+      WHERE p.id = sub.profile_id AND (p.total_session_seconds IS NULL OR p.total_session_seconds = 0)
+    `);
+
+    // 18c. LLM Logs — full request/response logging for every LLM call
+    await run('llm_logs_table', `
+      CREATE TABLE IF NOT EXISTS llm_logs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        route VARCHAR(200) NOT NULL,
+        analysis_type VARCHAR(50) NOT NULL,
+        prompt_messages JSONB NOT NULL,
+        response_raw TEXT,
+        response_parsed JSONB,
+        model VARCHAR(100) NOT NULL,
+        tokens_prompt INTEGER DEFAULT 0,
+        tokens_completion INTEGER DEFAULT 0,
+        latency_ms INTEGER NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'success',
+        error_message TEXT,
+        cache_hit BOOLEAN DEFAULT false,
+        fallback_used BOOLEAN DEFAULT false,
+        source_id UUID,
+        source_type VARCHAR(50),
+        triggered_by UUID REFERENCES profiles(id),
+        metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run('idx_llm_logs_created', `CREATE INDEX IF NOT EXISTS idx_llm_logs_created ON llm_logs(created_at DESC)`);
+    await run('idx_llm_logs_type', `CREATE INDEX IF NOT EXISTS idx_llm_logs_type ON llm_logs(analysis_type, created_at DESC)`);
+    await run('idx_llm_logs_status', `CREATE INDEX IF NOT EXISTS idx_llm_logs_status ON llm_logs(status) WHERE status != 'success'`);
+
+    // 18d. Admin Query Log — audit trail for Database Explorer
+    await run('admin_query_log_table', `
+      CREATE TABLE IF NOT EXISTS admin_query_log (
+        id SERIAL PRIMARY KEY,
+        profile_id UUID NOT NULL REFERENCES profiles(id),
+        query_text TEXT NOT NULL,
+        row_count INTEGER,
+        execution_ms INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run('idx_admin_query_log_profile', `CREATE INDEX IF NOT EXISTS idx_admin_query_log_profile ON admin_query_log(profile_id, created_at DESC)`);
+
+    // 18e. Chat Activity Log — daily snapshots from GetStream
+    await run('chat_activity_log_table', `
+      CREATE TABLE IF NOT EXISTS chat_activity_log (
+        id SERIAL PRIMARY KEY,
+        channel_id VARCHAR(200) NOT NULL,
+        channel_name VARCHAR(200),
+        channel_type VARCHAR(50) NOT NULL DEFAULT 'department',
+        snapshot_date DATE NOT NULL,
+        message_count INTEGER DEFAULT 0,
+        unique_senders INTEGER DEFAULT 0,
+        human_messages INTEGER DEFAULT 0,
+        system_messages INTEGER DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(channel_id, snapshot_date)
+      )
+    `);
+    await run('idx_chat_activity_date', `CREATE INDEX IF NOT EXISTS idx_chat_activity_date ON chat_activity_log(snapshot_date DESC)`);
+    await run('idx_chat_activity_channel', `CREATE INDEX IF NOT EXISTS idx_chat_activity_channel ON chat_activity_log(channel_id, snapshot_date DESC)`);
+
+    await run('admin_intelligence_migration_record', `INSERT INTO _migrations (name) VALUES ('v18-admin-intelligence-phase1') ON CONFLICT (name) DO NOTHING`);
+
     // 9. Verify
     const tables = await sql`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
-      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages','insurance_claims','claim_events','discharge_milestones','surgery_postings','ot_readiness_items','ot_readiness_audit_log','ot_equipment_items','help_interactions','help_dismissals','app_errors','session_events','daily_active_users','deleted_profiles','files','patient_files','pac_clearances')
+      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages','insurance_claims','claim_events','discharge_milestones','surgery_postings','ot_readiness_items','ot_readiness_audit_log','ot_equipment_items','help_interactions','help_dismissals','app_errors','session_events','daily_active_users','deleted_profiles','files','patient_files','pac_clearances','llm_logs','admin_query_log','chat_activity_log')
       ORDER BY table_name
     `;
 
@@ -806,7 +917,7 @@ export async function POST() {
         tables_found: tables.map((t) => t.table_name),
         log: results,
       },
-      message: `Migration complete. ${successCount} executed, ${skipCount} skipped, ${errorCount} errors. ${tables.length}/22 tables found.`,
+      message: `Migration complete. ${successCount} executed, ${skipCount} skipped, ${errorCount} errors. ${tables.length}/25 tables found.`,
     });
   } catch (error) {
     console.error('POST /api/admin/migrate error:', error);
