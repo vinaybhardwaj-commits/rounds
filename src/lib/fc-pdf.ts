@@ -90,10 +90,25 @@ function formatDate(dateStr: string): string {
   }
 }
 
-/** Truncate text to fit width */
+/** Sanitize text to WinAnsi-safe characters (replace non-encodable Unicode) */
+function sanitizeForPdf(text: string): string {
+  return text
+    .replace(/₹/g, 'Rs.')
+    .replace(/[☑✓✔]/g, '[X]')
+    .replace(/[☐]/g, '[ ]')
+    .replace(/[⚠]/g, '!')
+    .replace(/[—–]/g, '-')
+    .replace(/['']/g, "'")
+    .replace(/[""]/g, '"')
+    // Remove any remaining non-WinAnsi characters (keep ASCII + Latin-1 Supplement)
+    .replace(/[^\x00-\xFF]/g, '?');
+}
+
+/** Truncate text to fit width (auto-sanitizes for WinAnsi) */
 function truncateText(text: string, font: PDFFont, fontSize: number, maxWidth: number): string {
-  if (font.widthOfTextAtSize(text, fontSize) <= maxWidth) return text;
-  let truncated = text;
+  const safe = sanitizeForPdf(text);
+  if (font.widthOfTextAtSize(safe, fontSize) <= maxWidth) return safe;
+  let truncated = safe;
   while (truncated.length > 0 && font.widthOfTextAtSize(truncated + '...', fontSize) > maxWidth) {
     truncated = truncated.slice(0, -1);
   }
@@ -148,9 +163,9 @@ export async function generateFCPdf(opts: FCPdfOptions): Promise<Buffer> {
     page.drawRectangle({ x, y: yTop - h, width: w, height: h, color: fillColor, borderColor, borderWidth: 0.5 });
   }
 
-  /** Draw text at position */
+  /** Draw text at position (auto-sanitizes for WinAnsi) */
   function drawText(text: string, x: number, yPos: number, font: PDFFont, size: number, color: ReturnType<typeof rgb>) {
-    page.drawText(text, { x, y: yPos, size, font, color });
+    page.drawText(sanitizeForPdf(text), { x, y: yPos, size, font, color });
   }
 
   // ─── Header / Letterhead ───────────────────────────────────
