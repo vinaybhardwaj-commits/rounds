@@ -119,34 +119,36 @@ export async function GET() {
     let durationDist: any[] = [];
     try {
       durationDist = await sql(`
-        SELECT
-          CASE
-            WHEN duration < 30 THEN '< 30s'
-            WHEN duration < 60 THEN '30s-1m'
-            WHEN duration < 300 THEN '1-5m'
-            WHEN duration < 600 THEN '5-10m'
-            WHEN duration < 1800 THEN '10-30m'
-            ELSE '30m+'
-          END as bucket,
-          COUNT(*)::int as count
-        FROM (
+        SELECT bucket, SUM(cnt)::int as count FROM (
           SELECT
-            session_id,
-            EXTRACT(EPOCH FROM (MAX(created_at) - MIN(created_at)))::int as duration
-          FROM session_events
-          WHERE created_at > NOW() - INTERVAL '30 days'
-          GROUP BY session_id
-        ) sessions
-        GROUP BY bucket
-        ORDER BY
-          CASE bucket
-            WHEN '< 30s' THEN 1
-            WHEN '30s-1m' THEN 2
-            WHEN '1-5m' THEN 3
-            WHEN '5-10m' THEN 4
-            WHEN '10-30m' THEN 5
-            ELSE 6
-          END
+            CASE
+              WHEN duration < 30 THEN '< 30s'
+              WHEN duration < 60 THEN '30s-1m'
+              WHEN duration < 300 THEN '1-5m'
+              WHEN duration < 600 THEN '5-10m'
+              WHEN duration < 1800 THEN '10-30m'
+              ELSE '30m+'
+            END as bucket,
+            CASE
+              WHEN duration < 30 THEN 1
+              WHEN duration < 60 THEN 2
+              WHEN duration < 300 THEN 3
+              WHEN duration < 600 THEN 4
+              WHEN duration < 1800 THEN 5
+              ELSE 6
+            END as sort_order,
+            1 as cnt
+          FROM (
+            SELECT
+              session_id,
+              EXTRACT(EPOCH FROM (MAX(created_at) - MIN(created_at)))::int as duration
+            FROM session_events
+            WHERE created_at > NOW() - INTERVAL '30 days'
+            GROUP BY session_id
+          ) sessions
+        ) bucketed
+        GROUP BY bucket, sort_order
+        ORDER BY sort_order
       `);
     } catch { /* skip */ }
 
