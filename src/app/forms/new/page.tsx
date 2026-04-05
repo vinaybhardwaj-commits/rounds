@@ -33,7 +33,7 @@ function NewFormPage() {
   const searchParams = useSearchParams();
 
   const formType = searchParams.get('type') as FormType | null;
-  const patientId = searchParams.get('patient_id');
+  const patientId = searchParams.get('patient_id') || searchParams.get('patient');
   const channelType = searchParams.get('channel_type');
   const channelId = searchParams.get('channel_id');
 
