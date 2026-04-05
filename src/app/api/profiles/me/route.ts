@@ -8,6 +8,33 @@ function sql(strings: TemplateStringsArray, ...values: unknown[]) {
   return _sql(strings, ...values);
 }
 
+// GET /api/profiles/me — get current user's profile
+export async function GET() {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
+  }
+
+  try {
+    const result = await sql`
+      SELECT id, email, full_name, display_name, avatar_url,
+             role, account_type, department, designation,
+             phone, status, is_active, created_at, last_login_at,
+             first_login_at, last_active_at, login_count, total_session_seconds
+      FROM profiles WHERE id = ${user.profileId}
+    `;
+
+    if (result.length === 0) {
+      return NextResponse.json({ success: false, error: 'Profile not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, data: result[0] });
+  } catch (error) {
+    console.error('GET /api/profiles/me error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to fetch profile' }, { status: 500 });
+  }
+}
+
 // PATCH /api/profiles/me — update current user's own profile
 export async function PATCH(request: NextRequest) {
   const user = await getCurrentUser();
