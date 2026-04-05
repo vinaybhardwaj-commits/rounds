@@ -757,6 +757,8 @@ export async function POST() {
       )
     `);
     await run('idx_patient_files_patient', `CREATE INDEX IF NOT EXISTS idx_patient_files_patient ON patient_files(patient_thread_id)`);
+    // Backfill: add protected column if table existed before v17
+    await run('patient_files_add_protected', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS protected BOOLEAN NOT NULL DEFAULT false`);
     await run('idx_patient_files_protected', `CREATE INDEX IF NOT EXISTS idx_patient_files_protected ON patient_files(protected) WHERE protected = true`);
     await run('idx_patient_files_created', `CREATE INDEX IF NOT EXISTS idx_patient_files_created ON patient_files(created_at DESC)`);
 
