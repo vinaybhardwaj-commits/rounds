@@ -40,7 +40,7 @@ import { FORM_TYPE_LABELS, FORMS_BY_STAGE } from '@/lib/form-registry';
 import { PredictionCard } from '@/components/ai/PredictionCard';
 import { SurgeryPanel } from '@/components/ot/SurgeryPanel';
 import { PatientFilesTab } from './PatientFilesTab';
-import { FCVersionHistory } from '@/components/forms/FCVersionHistory';
+import FCVersionHistory from '@/components/forms/FCVersionHistory';
 
 type DetailTab = 'overview' | 'files';
 

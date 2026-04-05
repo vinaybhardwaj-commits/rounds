@@ -102,6 +102,14 @@ export default function FCVersionHistory({
     fetchVersions();
   }, [fetchVersions]);
 
+  // Auto-dismiss success messages after 4 seconds
+  useEffect(() => {
+    if (msg?.type === 'success') {
+      const timer = setTimeout(() => setMsg(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [msg]);
+
   // Generate PDF for a form
   const handleGeneratePDF = async (formId: string) => {
     try {
@@ -224,8 +232,8 @@ export default function FCVersionHistory({
           {versions.map((version, idx) => {
             const versionNum = version.version_number || idx + 1;
             const fd = version.form_data || {};
-            const paymentMode = fd.payment_mode as string;
-            const insurerName = fd.insurance_provider as string;
+            const paymentMode = typeof fd.payment_mode === 'string' ? fd.payment_mode : '';
+            const insurerName = typeof fd.insurance_provider === 'string' ? fd.insurance_provider : '';
             const estimatedCost = fd.estimated_cost;
             const isGeneratingPDF = generatingPDF.has(version.id);
 
@@ -258,6 +266,7 @@ export default function FCVersionHistory({
 
                   {/* Status badge */}
                   <div
+                    aria-label={`Status: ${version.status}`}
                     className={`text-xs font-medium px-2.5 py-1 rounded-full ${
                       version.status === 'submitted'
                         ? 'bg-blue-100 text-blue-700'
@@ -320,7 +329,7 @@ export default function FCVersionHistory({
                 <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100">
                   {version.pdf_blob_url ? (
                     <button
-                      onClick={() => handleDownloadPDF(version.pdf_blob_url!)}
+                      onClick={() => version.pdf_blob_url && handleDownloadPDF(version.pdf_blob_url)}
                       className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors"
                     >
                       <Download className="h-4 w-4" />

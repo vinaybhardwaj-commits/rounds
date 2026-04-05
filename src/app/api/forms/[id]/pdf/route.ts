@@ -123,15 +123,40 @@ export async function POST(
       );
     }
 
+    // Atomically lock to prevent duplicate PDF generation (race condition guard)
+    const lockResult = await queryOne(
+      `UPDATE form_submissions SET locked = true, locked_at = NOW()
+       WHERE id = $1 AND locked = false RETURNING id`,
+      [id]
+    );
+    if (!lockResult) {
+      // Another request already locked it — re-fetch to get the PDF URL
+      const refetched = await queryOne(
+        'SELECT pdf_blob_url FROM form_submissions WHERE id = $1',
+        [id]
+      );
+      if (refetched?.pdf_blob_url) {
+        return NextResponse.json({ pdf_url: refetched.pdf_blob_url, submission_id: id, message: 'PDF already generated' });
+      }
+      return NextResponse.json({ error: 'Form is being processed by another request' }, { status: 409 });
+    }
+
     // Generate PDF
+    const version = submission.version_number || 1;
     const pdfBuffer = await generateFCPdf({
       formData: submission.form_data,
-      patientName: patient.patient_name,
-      uhid: patient.uhid,
-      submitterName: submitter.full_name,
+      patientName: patient.patient_name || 'Unknown Patient',
+      submissionId: submission.id,
+      versionNumber: version,
+      submittedBy: submitter.full_name || 'Unknown',
+      submittedAt: submission.created_at,
+      changeReason: submission.change_reason || undefined,
+      parentVersion: submission.parent_submission_id ? version - 1 : undefined,
     });
 
     if (!pdfBuffer) {
+      // Unlock on failure
+      await sqlQuery('UPDATE form_submissions SET locked = false, locked_at = NULL WHERE id = $1', [id]);
       return NextResponse.json(
         { error: 'Failed to generate PDF' },
         { status: 500 }
@@ -139,8 +164,8 @@ export async function POST(
     }
 
     // Generate filename
-    const version = submission.version || 1;
-    const filename = `fc-pdfs/${patient.patient_name.replace(/\s+/g, '-')}-v${version}-${submission.id}.pdf`;
+    const safeName = (patient.patient_name || 'patient').replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '-');
+    const filename = `fc-pdfs/${safeName}-v${version}-${submission.id}.pdf`;
 
     // Upload to Vercel Blob
     const blob = await put(filename, pdfBuffer, {
@@ -160,7 +185,7 @@ export async function POST(
         'application/pdf',
         blob.url,
         blob.url,
-        false,
+        true,
         'form_submission',
         user.id,
       ]

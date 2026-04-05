@@ -202,16 +202,18 @@ export async function POST(request: NextRequest) {
           const claim = await getOrCreateClaim(body.patient_thread_id, user.profileId);
 
           // Calculate room rent eligibility and proportional deduction
-          const sumInsured = fd.sum_insured ? Number(fd.sum_insured) : null;
+          const sumInsuredRaw = fd.sum_insured ? Number(fd.sum_insured) : NaN;
+          const sumInsured = !isNaN(sumInsuredRaw) ? sumInsuredRaw : null;
           const roomCategory = (fd.room_category as string) || null;
-          const actualRoomRent = fd.actual_room_rent ? Number(fd.actual_room_rent) : null;
+          const actualRoomRentRaw = fd.actual_room_rent ? Number(fd.actual_room_rent) : NaN;
+          const actualRoomRent = !isNaN(actualRoomRentRaw) ? actualRoomRentRaw : null;
           const isIcu = roomCategory === 'icu' || roomCategory === 'nicu';
           const eligibilityPct = isIcu ? ROOM_RENT_ELIGIBILITY_PCT.icu : ROOM_RENT_ELIGIBILITY_PCT.standard;
           const roomRentEligibility = sumInsured ? Math.round(sumInsured * eligibilityPct) : null;
           const hasWaiver = !!fd.has_room_rent_waiver;
 
           let proportionalDeductionPct: number | null = null;
-          if (!hasWaiver && roomRentEligibility && actualRoomRent && actualRoomRent > roomRentEligibility) {
+          if (!hasWaiver && roomRentEligibility && actualRoomRent && actualRoomRent > 0 && actualRoomRent > roomRentEligibility) {
             proportionalDeductionPct = Math.round(((actualRoomRent - roomRentEligibility) / actualRoomRent) * 10000) / 100;
           }
 
