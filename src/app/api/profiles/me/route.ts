@@ -17,11 +17,13 @@ export async function GET() {
 
   try {
     const result = await sql`
-      SELECT id, email, full_name, display_name, avatar_url,
-             role, account_type, department, designation,
-             phone, status, is_active, created_at, last_login_at,
-             first_login_at, last_active_at, login_count, total_session_seconds
-      FROM profiles WHERE id = ${user.profileId}
+      SELECT p.id, p.email, p.full_name, p.display_name, p.avatar_url,
+             p.role, p.account_type, p.department_id, d.name as department_name, d.slug as department,
+             p.designation, p.phone, p.status, p.is_active, p.created_at, p.last_login_at,
+             p.first_login_at, p.last_active_at, p.login_count, p.total_session_seconds
+      FROM profiles p
+      LEFT JOIN departments d ON p.department_id = d.id
+      WHERE p.id = ${user.profileId}
     `;
 
     if (result.length === 0) {
