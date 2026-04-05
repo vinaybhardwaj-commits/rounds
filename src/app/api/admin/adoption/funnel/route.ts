@@ -21,13 +21,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || 'all'; // 7d, 14d, 30d, all
 
-    // Build period filter
+    // Build period filter — only allow known safe values
     let periodFilter = '';
-    if (period !== 'all') {
-      const days = parseInt(period);
-      if (!isNaN(days)) {
-        periodFilter = `AND created_at > NOW() - INTERVAL '${days} days'`;
-      }
+    const periodDays: Record<string, number> = { '7d': 7, '14d': 14, '30d': 30 };
+    if (period !== 'all' && periodDays[period]) {
+      periodFilter = `AND created_at > NOW() - INTERVAL '${periodDays[period]} days'`;
     }
 
     // ── 1. Overall funnel counts ──

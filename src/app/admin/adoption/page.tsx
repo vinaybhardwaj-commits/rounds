@@ -40,7 +40,7 @@ interface StuckUser {
   email: string;
   approved_at?: string;
   first_login_at?: string;
-  last_active_at?: string;
+  last_active_at?: string | null;
   login_count?: number;
 }
 
@@ -154,7 +154,7 @@ const formatDate = (date: string | null): string => {
   });
 };
 
-const formatDaysAgo = (date: string | null): string => {
+const formatDaysAgo = (date: string | null | undefined): string => {
   if (!date) return '—';
   const now = new Date();
   const then = new Date(date);
@@ -295,7 +295,7 @@ function FunnelTab() {
                   </td>
                   {stages.map((stage) => {
                     const stageKey = stage.key as keyof CohortData;
-                    const count = cohort[stageKey];
+                    const count = cohort[stageKey] as number;
                     let rate = 0;
                     if (stageKey !== 'signed_up' && cohort.signed_up) {
                       rate = (count / cohort.signed_up) * 100;
@@ -418,8 +418,8 @@ function DepartmentsTab() {
         if (json.success) {
           setDepartments(
             json.data.sort((a: DepartmentData, b: DepartmentData) => {
-              const aRate = (a.logged_in_users / a.total_users) * 100;
-              const bRate = (b.logged_in_users / b.total_users) * 100;
+              const aRate = a.total_users > 0 ? (a.logged_in_users / a.total_users) * 100 : 0;
+              const bRate = b.total_users > 0 ? (b.logged_in_users / b.total_users) * 100 : 0;
               return aRate - bRate;
             })
           );
@@ -472,7 +472,7 @@ function DepartmentsTab() {
       {/* Department Cards */}
       <div className="space-y-3">
         {departments.map((dept) => {
-          const adoptionRate = (dept.logged_in_users / dept.total_users) * 100;
+          const adoptionRate = dept.total_users > 0 ? (dept.logged_in_users / dept.total_users) * 100 : 0;
           const isExpanded = expandedDept === dept.department_id;
 
           return (
@@ -602,10 +602,18 @@ function FrictionTab() {
     return <div className="p-5 text-sm text-gray-500">No friction data</div>;
   }
 
-  const maxCompletionRate = Math.max(...friction.form_dropoffs.map((f) => f.completion_rate), 100);
-  const maxErrors = Math.max(...friction.error_hotspots.map((e) => e.error_count), 1);
-  const maxDuration = Math.max(...friction.duration_distribution.map((d) => d.count), 1);
-  const maxFeatureUsers = Math.max(...friction.feature_usage.map((f) => f.unique_users), 1);
+  const maxCompletionRate = friction.form_dropoffs.length > 0
+    ? Math.max(...friction.form_dropoffs.map((f) => f.completion_rate), 100)
+    : 100;
+  const maxErrors = friction.error_hotspots.length > 0
+    ? Math.max(...friction.error_hotspots.map((e) => e.error_count))
+    : 1;
+  const maxDuration = friction.duration_distribution.length > 0
+    ? Math.max(...friction.duration_distribution.map((d) => d.count))
+    : 1;
+  const maxFeatureUsers = friction.feature_usage.length > 0
+    ? Math.max(...friction.feature_usage.map((f) => f.unique_users))
+    : 1;
 
   return (
     <div className="space-y-6">
@@ -849,7 +857,7 @@ function FrictionTab() {
 // Main Page Component
 export default function AdoptionPage() {
   const [userRole, setUserRole] = useState<string | null>(null);
-  const [badges, setBadges] = useState<any[]>([]);
+  const [badges, setBadges] = useState<{ approvals?: number; admissions?: number; escalations?: number }>({});
   const [healthBarData, setHealthBarData] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'funnel' | 'departments' | 'friction'>('funnel');
   const [dataLoading, setDataLoading] = useState(true);
@@ -873,14 +881,17 @@ export default function AdoptionPage() {
           }
         }
 
-        // Fetch badges
-        const badgesRes = await fetch('/api/admin/dashboard-stats');
-        if (badgesRes.ok) {
-          const badgesData = await badgesRes.json();
-          if (badgesData.success && badgesData.data?.badges) {
-            setBadges(badgesData.data.badges);
-          }
-        }
+        // Fetch badge counts
+        const [approvalsRes, escalationsRes, admissionsRes] = await Promise.all([
+          fetch('/api/admin/approvals').then(r => r.json()).catch(() => ({ data: [] })),
+          fetch('/api/escalation/log?resolved=false').then(r => r.json()).catch(() => ({ data: [] })),
+          fetch('/api/admission-tracker').then(r => r.json()).catch(() => ({ data: [] })),
+        ]);
+        setBadges({
+          approvals: approvalsRes.data?.length || 0,
+          escalations: escalationsRes.data?.length || 0,
+          admissions: admissionsRes.data?.length || 0,
+        });
       } catch (err) {
         console.error('Error fetching metadata:', err);
       } finally {

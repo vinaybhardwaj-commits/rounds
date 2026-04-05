@@ -31,41 +31,43 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '30'), 100);
     const offset = (page - 1) * limit;
 
-    // Build WHERE clauses
-    const conditions: string[] = [];
+    // Build WHERE clauses (pre-aggregate) and HAVING clauses (post-aggregate)
+    const whereConditions: string[] = [];
+    const havingConditions: string[] = [];
     const params: (string | number)[] = [];
     let paramIdx = 1;
 
     if (department) {
-      conditions.push(`d.slug = $${paramIdx}`);
+      whereConditions.push(`d.slug = $${paramIdx}`);
       params.push(department);
       paramIdx++;
     }
 
     if (search) {
-      conditions.push(`(p.full_name ILIKE $${paramIdx} OR p.email ILIKE $${paramIdx})`);
+      whereConditions.push(`(p.full_name ILIKE $${paramIdx} OR p.email ILIKE $${paramIdx})`);
       params.push(`%${search}%`);
       paramIdx++;
     }
 
     if (dateFrom) {
-      conditions.push(`MIN(se.created_at) >= $${paramIdx}::timestamptz`);
+      havingConditions.push(`MIN(se.created_at) >= $${paramIdx}::timestamptz`);
       params.push(dateFrom);
       paramIdx++;
     }
 
     if (dateTo) {
-      conditions.push(`MIN(se.created_at) <= $${paramIdx}::timestamptz`);
+      havingConditions.push(`MAX(se.created_at) <= $${paramIdx}::timestamptz`);
       params.push(dateTo);
       paramIdx++;
     }
 
     if (firstSessionOnly) {
-      conditions.push(`MIN(se.created_at) = p.first_login_at`);
+      // Use date-level comparison to avoid microsecond mismatches
+      havingConditions.push(`DATE(MIN(se.created_at)) = DATE(p.first_login_at)`);
     }
 
-    // Build the query — aggregate session_events by session_id
-    const whereClause = conditions.length > 0 ? 'HAVING ' + conditions.join(' AND ') : '';
+    const whereClause = whereConditions.length > 0 ? 'WHERE ' + whereConditions.join(' AND ') : '';
+    const havingClause = havingConditions.length > 0 ? 'HAVING ' + havingConditions.join(' AND ') : '';
 
     // Sort
     let orderBy = 'MAX(se.created_at) DESC'; // recent
@@ -88,14 +90,15 @@ export async function GET(request: NextRequest) {
         COUNT(*) FILTER (WHERE se.event_type = 'page_view')::int as page_count,
         COUNT(*) FILTER (WHERE se.event_type = 'error_encountered')::int as error_count,
         COUNT(*)::int as total_events,
-        CASE WHEN MIN(se.created_at) = p.first_login_at THEN true ELSE false END as is_first_session,
+        CASE WHEN DATE(MIN(se.created_at)) = DATE(p.first_login_at) THEN true ELSE false END as is_first_session,
         ARRAY_AGG(DISTINCT se.page) FILTER (WHERE se.page IS NOT NULL) as pages_visited
       FROM session_events se
       JOIN profiles p ON se.profile_id = p.id
       LEFT JOIN departments d ON p.department_id = d.id
+      ${whereClause}
       GROUP BY se.session_id, se.profile_id, p.full_name, p.email, p.avatar_url,
                d.name, d.slug, p.first_login_at
-      ${whereClause}
+      ${havingClause}
       ORDER BY ${orderBy}
       LIMIT $${paramIdx} OFFSET $${paramIdx + 1}
     `;
@@ -103,19 +106,20 @@ export async function GET(request: NextRequest) {
 
     const sessions = await sql(sessionsQuery, params);
 
-    // Get total count for pagination (separate query without LIMIT/OFFSET)
+    // Count query — applies the same WHERE/HAVING filters for accurate pagination
     const countParams = params.slice(0, -2); // Remove limit and offset
     const countQuery = `
-      SELECT COUNT(DISTINCT se.session_id)::int as total
-      FROM session_events se
-      JOIN profiles p ON se.profile_id = p.id
-      LEFT JOIN departments d ON p.department_id = d.id
-      ${department ? `WHERE d.slug = $1` : ''}
+      SELECT COUNT(*)::int as total FROM (
+        SELECT se.session_id
+        FROM session_events se
+        JOIN profiles p ON se.profile_id = p.id
+        LEFT JOIN departments d ON p.department_id = d.id
+        ${whereClause}
+        GROUP BY se.session_id, p.first_login_at
+        ${havingClause}
+      ) counted
     `;
-    const countResult = await sql(
-      countQuery,
-      department ? [department] : []
-    );
+    const countResult = await sql(countQuery, countParams);
 
     return NextResponse.json({
       success: true,

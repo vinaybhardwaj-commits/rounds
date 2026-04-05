@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Search,
   ChevronLeft,
@@ -581,7 +581,7 @@ export default function SessionsExplorer() {
       params.append('department', selectedDepartment);
     }
     if (firstSessionsOnly) {
-      params.append('first_session_only', 'true');
+      params.append('first_session', 'true');
     }
 
     fetch(`/api/admin/sessions?${params}`)
@@ -599,31 +599,28 @@ export default function SessionsExplorer() {
       .finally(() => setLoading(false));
   }, [page, searchQuery, selectedDepartment, firstSessionsOnly, sortBy]);
 
-  // Get unique departments from sessions
-  const departments = useMemo(() => {
-    const depts = new Set(sessions.map(s => s.department_name));
-    return Array.from(depts).sort();
-  }, [sessions]);
-
-  // Build health bar data
-  const healthBarData = {
-    llm: healthData?.llm || { status: 'down' as const, latency_ms: 0 },
-    errors_1h: 0,
-    error_sparkline: [],
-    active_sessions: sessions.length,
-    api_p95_ms: 0,
-    api_trend: 'stable' as const,
-    forms_today: 0,
-    forms_yesterday: 0,
-    last_deploy: { time: '', sha: '' },
-  };
+  // Fetch departments list independently (not derived from session results)
+  const [departments, setDepartments] = useState<{ name: string; slug: string }[]>([]);
+  useEffect(() => {
+    fetch('/api/admin/adoption/departments')
+      .then(r => r.json())
+      .then(d => {
+        if (d.success && Array.isArray(d.data)) {
+          setDepartments(
+            d.data.map((dept: any) => ({ name: dept.department_name, slug: dept.slug }))
+              .sort((a: any, b: any) => a.name.localeCompare(b.name))
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <AdminShell
       activeSection="sessions"
       userRole={userRole}
       badges={badges}
-      health={healthBarData}
+      health={healthData}
     >
       <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-200px)]">
         {/* LEFT PANEL: Session List (35%) */}
@@ -658,8 +655,8 @@ export default function SessionsExplorer() {
               >
                 <option value="">All departments</option>
                 {departments.map(dept => (
-                  <option key={dept} value={dept}>
-                    {dept}
+                  <option key={dept.slug} value={dept.slug}>
+                    {dept.name}
                   </option>
                 ))}
               </select>
