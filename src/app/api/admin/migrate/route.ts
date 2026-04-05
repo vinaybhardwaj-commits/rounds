@@ -739,36 +739,49 @@ export async function POST() {
     await run('idx_form_submissions_parent', `CREATE INDEX IF NOT EXISTS idx_form_submissions_parent ON form_submissions(parent_submission_id) WHERE parent_submission_id IS NOT NULL`);
     await run('idx_form_submissions_version', `CREATE INDEX IF NOT EXISTS idx_form_submissions_version ON form_submissions(patient_thread_id, form_type, version_number) WHERE form_type = 'financial_counseling'`);
 
-    // 17b. patient_files table for document management
-    await run('patient_files_table', `
-      CREATE TABLE IF NOT EXISTS patient_files (
+    // 17b. files table — stores actual file metadata
+    await run('files_table', `
+      CREATE TABLE IF NOT EXISTS files (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        patient_thread_id UUID NOT NULL REFERENCES patient_threads(id) ON DELETE CASCADE,
-        file_name VARCHAR(500) NOT NULL,
-        file_type VARCHAR(50),
-        file_size_bytes BIGINT,
-        file_url TEXT,
-        file_blob_url TEXT,
-        protected BOOLEAN NOT NULL DEFAULT false,
-        upload_source VARCHAR(100),
+        filename VARCHAR(500) NOT NULL,
+        original_filename VARCHAR(500),
+        mime_type VARCHAR(100),
+        size_bytes BIGINT,
+        blob_url TEXT NOT NULL,
+        blob_pathname TEXT,
         uploaded_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+        category VARCHAR(100) NOT NULL DEFAULT 'general',
+        description TEXT,
+        tags TEXT[] DEFAULT '{}',
+        metadata JSONB DEFAULT '{}',
+        is_deleted BOOLEAN NOT NULL DEFAULT false,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    await run('idx_files_uploaded_by', `CREATE INDEX IF NOT EXISTS idx_files_uploaded_by ON files(uploaded_by)`);
+    await run('idx_files_category', `CREATE INDEX IF NOT EXISTS idx_files_category ON files(category)`);
+    await run('idx_files_not_deleted', `CREATE INDEX IF NOT EXISTS idx_files_not_deleted ON files(is_deleted) WHERE is_deleted = false`);
+
+    // 17c. patient_files junction table — links files to patients
+    await run('patient_files_table_v2', `
+      CREATE TABLE IF NOT EXISTS patient_files (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_thread_id UUID NOT NULL REFERENCES patient_threads(id) ON DELETE CASCADE,
+        file_id UUID REFERENCES files(id) ON DELETE CASCADE,
+        linked_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+        link_context VARCHAR(100) DEFAULT 'manual_link',
+        notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
     await run('idx_patient_files_patient', `CREATE INDEX IF NOT EXISTS idx_patient_files_patient ON patient_files(patient_thread_id)`);
-    // Backfill: add all columns if table existed before v17 with a different schema
-    await run('patient_files_nullable_file_id', `ALTER TABLE patient_files ALTER COLUMN file_id DROP NOT NULL`);
-    await run('patient_files_add_file_name', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS file_name VARCHAR(500) NOT NULL DEFAULT ''`);
-    await run('patient_files_add_file_type', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS file_type VARCHAR(50)`);
-    await run('patient_files_add_file_size_bytes', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS file_size_bytes BIGINT`);
-    await run('patient_files_add_file_url', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS file_url TEXT`);
-    await run('patient_files_add_file_blob_url', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS file_blob_url TEXT`);
-    await run('patient_files_add_upload_source', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS upload_source VARCHAR(50) DEFAULT 'manual'`);
-    await run('patient_files_add_uploaded_by', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS uploaded_by UUID`);
-    await run('patient_files_add_protected', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS protected BOOLEAN NOT NULL DEFAULT false`);
-    await run('idx_patient_files_protected', `CREATE INDEX IF NOT EXISTS idx_patient_files_protected ON patient_files(protected) WHERE protected = true`);
-    await run('idx_patient_files_created', `CREATE INDEX IF NOT EXISTS idx_patient_files_created ON patient_files(created_at DESC)`);
+    await run('idx_patient_files_file', `CREATE INDEX IF NOT EXISTS idx_patient_files_file ON patient_files(file_id)`);
+    // Ensure file_id column exists (backfill for tables created with earlier schema)
+    await run('patient_files_add_file_id', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS file_id UUID REFERENCES files(id) ON DELETE CASCADE`);
+    await run('patient_files_add_linked_by', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS linked_by UUID REFERENCES profiles(id) ON DELETE SET NULL`);
+    await run('patient_files_add_link_context', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS link_context VARCHAR(100) DEFAULT 'manual_link'`);
+    await run('patient_files_add_notes', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS notes TEXT`);
 
     await run('financial_counselling_migration_record', `INSERT INTO _migrations (name) VALUES ('v17-financial-counselling-versioning') ON CONFLICT (name) DO NOTHING`);
 
@@ -776,7 +789,7 @@ export async function POST() {
     const tables = await sql`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
-      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages','insurance_claims','claim_events','discharge_milestones','surgery_postings','ot_readiness_items','ot_readiness_audit_log','ot_equipment_items','help_interactions','help_dismissals','app_errors','session_events','daily_active_users','deleted_profiles','patient_files','pac_clearances')
+      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages','insurance_claims','claim_events','discharge_milestones','surgery_postings','ot_readiness_items','ot_readiness_audit_log','ot_equipment_items','help_interactions','help_dismissals','app_errors','session_events','daily_active_users','deleted_profiles','files','patient_files','pac_clearances')
       ORDER BY table_name
     `;
 

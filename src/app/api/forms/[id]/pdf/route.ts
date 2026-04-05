@@ -192,27 +192,42 @@ export async function POST(
       contentType: 'application/pdf',
     });
 
-    // Create patient_files record (non-fatal — PDF is already on blob storage)
+    // Create file record + link to patient (non-fatal — PDF is already on blob storage)
     let fileRecord: { id?: string } = {};
     try {
-      fileRecord = await queryOne(
-        `INSERT INTO patient_files
-         (patient_thread_id, file_name, file_type, file_url, file_blob_url, protected, upload_source, uploaded_by, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-         RETURNING id, file_url, file_blob_url`,
+      // Step 1: Insert into `files` table (the actual file record)
+      const dbFilename = `FC-${(patient.uhid || 'Unknown').replace(/[^a-zA-Z0-9._-]/g, '_')}-v${version}.pdf`;
+      const fileRow = await queryOne(
+        `INSERT INTO files (filename, original_filename, mime_type, size_bytes, blob_url, blob_pathname, uploaded_by, category, description, tags, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         RETURNING id`,
         [
-          submission.patient_thread_id,
-          `FC Form - ${patient.uhid || 'Unknown'}`,
+          dbFilename,
+          `FC Form - ${patient.patient_name || 'Unknown'} - v${version}.pdf`,
           'application/pdf',
+          pdfBuffer.length,
           blob.url,
-          blob.url,
-          true,
-          'form_submission',
-          user.id,
+          filename, // the blob pathname we used for upload
+          user.profileId,
+          'insurance', // category for the Files tab filter
+          `Financial Counseling form v${version}`,
+          ['financial-counseling', 'auto-generated'],
+          JSON.stringify({ source: 'form_submission', form_type: 'financial_counseling', submission_id: id, version }),
         ]
-      ) || {};
+      );
+
+      if (fileRow?.id) {
+        // Step 2: Link the file to the patient via `patient_files` junction table
+        const linkRow = await queryOne(
+          `INSERT INTO patient_files (patient_thread_id, file_id, linked_by, link_context)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id`,
+          [submission.patient_thread_id, fileRow.id, user.profileId, 'form_submission']
+        );
+        fileRecord = { id: linkRow?.id || fileRow.id };
+      }
     } catch (fileErr) {
-      console.error('[POST /api/forms/[id]/pdf] patient_files insert failed (non-fatal):', fileErr);
+      console.error('[POST /api/forms/[id]/pdf] file record insert failed (non-fatal):', fileErr);
     }
 
     // Update form_submissions to lock and add PDF URLs
