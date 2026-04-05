@@ -757,7 +757,14 @@ export async function POST() {
       )
     `);
     await run('idx_patient_files_patient', `CREATE INDEX IF NOT EXISTS idx_patient_files_patient ON patient_files(patient_thread_id)`);
-    // Backfill: add protected column if table existed before v17
+    // Backfill: add all columns if table existed before v17 with a different schema
+    await run('patient_files_add_file_name', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS file_name VARCHAR(500) NOT NULL DEFAULT ''`);
+    await run('patient_files_add_file_type', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS file_type VARCHAR(50)`);
+    await run('patient_files_add_file_size_bytes', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS file_size_bytes BIGINT`);
+    await run('patient_files_add_file_url', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS file_url TEXT`);
+    await run('patient_files_add_file_blob_url', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS file_blob_url TEXT`);
+    await run('patient_files_add_upload_source', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS upload_source VARCHAR(50) DEFAULT 'manual'`);
+    await run('patient_files_add_uploaded_by', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS uploaded_by UUID`);
     await run('patient_files_add_protected', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS protected BOOLEAN NOT NULL DEFAULT false`);
     await run('idx_patient_files_protected', `CREATE INDEX IF NOT EXISTS idx_patient_files_protected ON patient_files(protected) WHERE protected = true`);
     await run('idx_patient_files_created', `CREATE INDEX IF NOT EXISTS idx_patient_files_created ON patient_files(created_at DESC)`);
