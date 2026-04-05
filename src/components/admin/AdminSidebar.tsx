@@ -223,7 +223,7 @@ export function AdminSidebar({
 
                           {/* Collapsed badge still shows */}
                           {isCollapsed && badgeValue !== undefined && badgeValue > 0 && (
-                            <span className="absolute right-1 top-1 flex-shrink-0 inline-flex items-center justify-center w-4 h-4 text-xs font-bold text-white bg-red-500 rounded-full">
+                            <span className="flex-shrink-0 inline-flex items-center justify-center w-4 h-4 text-xs font-bold text-white bg-red-500 rounded-full ml-auto">
                               {badgeValue > 9 ? '9+' : badgeValue}
                             </span>
                           )}

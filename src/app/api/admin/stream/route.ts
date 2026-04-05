@@ -48,14 +48,21 @@ export async function GET(request: NextRequest) {
   const sql = neon(process.env.POSTGRES_URL!);
   let lastCheck = new Date();
 
+  let pollIntervalRef: ReturnType<typeof setInterval> | null = null;
+  let heartbeatIntervalRef: ReturnType<typeof setInterval> | null = null;
+
   const stream = new ReadableStream(
     {
       async start(controller) {
         const encoder = new TextEncoder();
 
         function sendEvent(eventType: string, data: unknown) {
-          const message = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
-          controller.enqueue(encoder.encode(message));
+          try {
+            const message = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
+            controller.enqueue(encoder.encode(message));
+          } catch {
+            // Controller may be closed
+          }
         }
 
         try {
@@ -64,7 +71,7 @@ export async function GET(request: NextRequest) {
             const [initialActivity, initialErrors, initialLlm] = await Promise.all([
               sql(`SELECT profile_id as user_id, event_type, page, feature, detail, created_at FROM session_events ORDER BY created_at DESC LIMIT 10`).catch(() => []),
               sql(`SELECT profile_id as user_id, message, component, severity, created_at FROM app_errors ORDER BY created_at DESC LIMIT 5`).catch(() => []),
-              sql(`SELECT triggered_by as user_id, analysis_type, status, model, latency_ms, tokens_prompt + tokens_completion as tokens, created_at FROM llm_logs ORDER BY created_at DESC LIMIT 5`).catch(() => []),
+              sql(`SELECT triggered_by as user_id, analysis_type, status, model, latency_ms, COALESCE(tokens_prompt, 0) + COALESCE(tokens_completion, 0) as tokens, created_at FROM llm_logs ORDER BY created_at DESC LIMIT 5`).catch(() => []),
             ]);
 
             for (const evt of initialActivity) {
@@ -82,15 +89,15 @@ export async function GET(request: NextRequest) {
 
           // Polling loop
           const startTime = Date.now();
-          const heartbeatInterval = setInterval(() => {
+          heartbeatIntervalRef = setInterval(() => {
             sendEvent('heartbeat', { timestamp: new Date().toISOString() });
           }, HEARTBEAT_INTERVAL);
 
-          const pollInterval = setInterval(async () => {
+          pollIntervalRef = setInterval(async () => {
             try {
               if (Date.now() - startTime > MAX_LIFETIME) {
-                clearInterval(pollInterval);
-                clearInterval(heartbeatInterval);
+                if (pollIntervalRef) clearInterval(pollIntervalRef);
+                if (heartbeatIntervalRef) clearInterval(heartbeatIntervalRef);
                 controller.close();
                 return;
               }
@@ -207,7 +214,9 @@ export async function GET(request: NextRequest) {
         }
       },
       cancel() {
-        // Clean up when client disconnects
+        // Clean up intervals when client disconnects
+        if (pollIntervalRef) clearInterval(pollIntervalRef);
+        if (heartbeatIntervalRef) clearInterval(heartbeatIntervalRef);
       },
     },
     {

@@ -31,17 +31,17 @@ interface HealthBarProps {
  * Displays LLM status, error rate, active sessions, API latency, forms submitted, and last deploy.
  */
 export function HealthBar({ health }: HealthBarProps) {
-  // Default mock data for development
+  // Zero state while waiting for first API response
   const defaultHealth: HealthStatus = {
-    llm: { status: 'healthy', latency_ms: 2100 },
-    errors_1h: 2,
-    error_sparkline: [1, 2, 1, 3, 2, 1],
-    active_sessions: 24,
-    api_p95_ms: 340,
+    llm: { status: 'down', latency_ms: 0 },
+    errors_1h: 0,
+    error_sparkline: [],
+    active_sessions: 0,
+    api_p95_ms: 0,
     api_trend: 'stable',
-    forms_today: 156,
-    forms_yesterday: 142,
-    last_deploy: { time: '2h ago', sha: 'a14f9a0' },
+    forms_today: 0,
+    forms_yesterday: 0,
+    last_deploy: { time: '', sha: '' },
   };
 
   const data = health || defaultHealth;
@@ -72,7 +72,7 @@ export function HealthBar({ health }: HealthBarProps) {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 h-12 bg-gray-900 border-b border-gray-800">
-      <div className="h-full px-6 flex items-center justify-between gap-8">
+      <div className="h-full px-4 md:px-6 flex items-center justify-between gap-4 md:gap-8 overflow-x-auto scrollbar-hide">
         {/* LLM Tunnel */}
         <Link
           href="/admin/llm"

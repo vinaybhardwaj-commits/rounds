@@ -29,7 +29,7 @@ function categorize(evt: StreamEvent): string {
   if (evt.type === 'llm') return 'ai';
   if (evt.category) return evt.category;
   const msg = evt.message.toLowerCase();
-  if (msg.includes('login') || msg.includes('session')) return 'session';
+  if (msg.includes('login') || msg.includes('session') || msg.includes('page_view')) return 'session';
   if (msg.includes('form')) return 'form';
   if (msg.includes('help')) return 'help';
   if (msg.includes('stage')) return 'workflow';

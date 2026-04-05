@@ -38,7 +38,10 @@ export function AdminShell({
   badges = { approvals: 0, admissions: 0, escalations: 0 },
   health,
 }: AdminShellProps) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Start collapsed on mobile (< 1024px)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    typeof window !== 'undefined' ? window.innerWidth < 1024 : false
+  );
 
   return (
     <div className="h-screen bg-even-white overflow-hidden flex flex-col">

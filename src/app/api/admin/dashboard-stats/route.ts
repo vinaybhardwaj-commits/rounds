@@ -188,21 +188,20 @@ export async function GET() {
     }
 
     try {
-      // Signal 2: Department gone dark (no activity in 7 days)
+      // Signal 2: Department gone dark (has users but no activity in 7 days)
       const darkDeptResult = await sql(`
         SELECT d.name, d.slug
         FROM departments d
-        WHERE d.id NOT IN (
-          SELECT DISTINCT profile_id FROM profiles WHERE department_id = d.id
-        ) OR d.id IN (
-          SELECT department_id FROM profiles
-          GROUP BY department_id
-          HAVING NOT EXISTS (
-            SELECT 1 FROM session_events
-            WHERE profile_id IN (SELECT id FROM profiles WHERE department_id = d.id)
-            AND created_at > NOW() - INTERVAL '7 days'
+        WHERE d.is_active = true
+          AND EXISTS (
+            SELECT 1 FROM profiles p WHERE p.department_id = d.id AND p.status = 'active'
           )
-        )
+          AND NOT EXISTS (
+            SELECT 1 FROM session_events se
+            JOIN profiles p ON se.profile_id = p.id
+            WHERE p.department_id = d.id
+              AND se.created_at > NOW() - INTERVAL '7 days'
+          )
         LIMIT 5
       `);
 
@@ -321,6 +320,7 @@ export async function GET() {
         count: row.count,
         affected_users: row.affected_users,
         severity: row.severity,
+        is_new: row.count <= 2, // Flag as "new" if only 1-2 occurrences
         last_seen: row.last_seen,
       }));
     } catch (err) {
