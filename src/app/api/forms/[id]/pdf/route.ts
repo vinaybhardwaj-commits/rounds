@@ -192,23 +192,28 @@ export async function POST(
       contentType: 'application/pdf',
     });
 
-    // Create patient_files record
-    const fileRecord = await queryOne(
-      `INSERT INTO patient_files
-       (patient_thread_id, file_name, file_type, file_url, file_blob_url, protected, upload_source, uploaded_by, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-       RETURNING id, file_url, file_blob_url`,
-      [
-        submission.patient_thread_id,
-        `FC Form - ${patient.uhid}`,
-        'application/pdf',
-        blob.url,
-        blob.url,
-        true,
-        'form_submission',
-        user.id,
-      ]
-    );
+    // Create patient_files record (non-fatal — PDF is already on blob storage)
+    let fileRecord: { id?: string } = {};
+    try {
+      fileRecord = await queryOne(
+        `INSERT INTO patient_files
+         (patient_thread_id, file_name, file_type, file_url, file_blob_url, protected, upload_source, uploaded_by, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+         RETURNING id, file_url, file_blob_url`,
+        [
+          submission.patient_thread_id,
+          `FC Form - ${patient.uhid || 'Unknown'}`,
+          'application/pdf',
+          blob.url,
+          blob.url,
+          true,
+          'form_submission',
+          user.id,
+        ]
+      ) || {};
+    } catch (fileErr) {
+      console.error('[POST /api/forms/[id]/pdf] patient_files insert failed (non-fatal):', fileErr);
+    }
 
     // Update form_submissions to lock and add PDF URLs
     const updatedSubmission = await queryOne(

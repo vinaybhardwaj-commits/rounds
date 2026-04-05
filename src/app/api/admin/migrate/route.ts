@@ -758,6 +758,7 @@ export async function POST() {
     `);
     await run('idx_patient_files_patient', `CREATE INDEX IF NOT EXISTS idx_patient_files_patient ON patient_files(patient_thread_id)`);
     // Backfill: add all columns if table existed before v17 with a different schema
+    await run('patient_files_nullable_file_id', `ALTER TABLE patient_files ALTER COLUMN file_id DROP NOT NULL`);
     await run('patient_files_add_file_name', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS file_name VARCHAR(500) NOT NULL DEFAULT ''`);
     await run('patient_files_add_file_type', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS file_type VARCHAR(50)`);
     await run('patient_files_add_file_size_bytes', `ALTER TABLE patient_files ADD COLUMN IF NOT EXISTS file_size_bytes BIGINT`);
