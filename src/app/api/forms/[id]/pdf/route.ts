@@ -88,13 +88,32 @@ export async function POST(
       );
     }
 
-    // If already locked, return existing PDF URL
+    // If already locked WITH a PDF, return existing PDF URL
     if (submission.locked && submission.pdf_blob_url) {
       return NextResponse.json({
         pdf_url: submission.pdf_blob_url,
         submission_id: submission.id,
         message: 'PDF already generated',
       });
+    }
+
+    // Recovery: if locked WITHOUT a PDF (failed previous attempt), unlock after 60s
+    if (submission.locked && !submission.pdf_blob_url) {
+      const lockedAt = submission.locked_at ? new Date(submission.locked_at).getTime() : 0;
+      const staleLockMs = 60_000; // 60 seconds
+      if (Date.now() - lockedAt > staleLockMs) {
+        await sqlQuery(
+          'UPDATE form_submissions SET locked = false, locked_at = NULL WHERE id = $1',
+          [id]
+        );
+        // Re-fetch the now-unlocked submission to continue
+        submission.locked = false;
+      } else {
+        return NextResponse.json(
+          { error: 'PDF generation in progress, please retry shortly' },
+          { status: 409 }
+        );
+      }
     }
 
     // Fetch patient info
