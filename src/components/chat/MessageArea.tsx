@@ -194,6 +194,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const [slashQuery, setSlashQuery] = useState<string>('');
   const [deleteTarget, setDeleteTarget] = useState<DisplayMessage | null>(null);
   const [showDeletedAccordion, setShowDeletedAccordion] = useState(false);
   const [deletedRecords, setDeletedRecords] = useState<DeletedMessageRecord[]>([]);
@@ -445,10 +446,19 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
     // Slash menu
     if (val === '/') {
       setShowSlashMenu(true);
+      setSlashQuery('');
       setMentionQuery(null);
       return;
-    } else if (!val.startsWith('/')) {
+    } else if (val.startsWith('/')) {
+      // Track slash command query for filtering
+      const query = val.slice(1).split(/\s/)[0]; // Get text after / until space
+      setSlashQuery(query);
+      setShowSlashMenu(true);
+      setMentionQuery(null);
+      return;
+    } else {
       setShowSlashMenu(false);
+      setSlashQuery('');
     }
 
     // Detect @mention: look backwards from cursor for an unmatched @
@@ -560,9 +570,60 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
     }
   };
 
+  const handleSlashCommand = (query: string, patientId?: string) => {
+    const channelData = channel?.data as Record<string, unknown> | undefined;
+    const currentStage = (channelData?.current_stage as PatientStage) || null;
+
+    // /fc - Open Financial Counselling form
+    if (query === 'fc') {
+      setShowSlashMenu(false);
+      setMessageText('');
+      const params = new URLSearchParams();
+      params.set('type', 'financial_counseling');
+      if (patientId) params.set('patient', patientId);
+      if (channel?.type) params.set('channel_type', channel.type);
+      if (channel?.id) params.set('channel_id', channel.id);
+      router.push(`/forms/new?${params.toString()}`);
+      return true;
+    }
+
+    // /fc-history - Show FC version history for current patient
+    if (query === 'fc-history') {
+      if (!patientId) {
+        alert('FC history requires a patient thread');
+        return false;
+      }
+      setShowSlashMenu(false);
+      setMessageText('');
+      // Navigate to FC form with history view (if available)
+      const params = new URLSearchParams();
+      params.set('type', 'financial_counseling');
+      params.set('patient', patientId);
+      params.set('view', 'history');
+      if (channel?.type) params.set('channel_type', channel.type);
+      if (channel?.id) params.set('channel_id', channel.id);
+      router.push(`/forms?${params.toString()}`);
+      return true;
+    }
+
+    return false;
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+
+      // Check if this is a slash command that should be handled directly
+      if (messageText.startsWith('/')) {
+        const query = messageText.slice(1).trim();
+        const channelData = channel?.data as Record<string, unknown> | undefined;
+        const patientId = (channelData?.patient_thread_id as string) || undefined;
+
+        if (handleSlashCommand(query, patientId)) {
+          return; // Command was handled
+        }
+      }
+
       sendMessage();
     }
   };
@@ -1126,6 +1187,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
             {showSlashMenu && channel && (
               <SlashCommandMenu
                 channel={channel}
+                slashQuery={slashQuery}
                 advancingStage={advancingStage}
                 onSelectForm={(formType, patientId) => {
                   setShowSlashMenu(false);
@@ -1354,6 +1416,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
 // in patient thread channels. Only forms in non-patient channels.
 function SlashCommandMenu({
   channel,
+  slashQuery,
   advancingStage,
   onSelectForm,
   onAdvanceStage,
@@ -1363,6 +1426,7 @@ function SlashCommandMenu({
   onClose,
 }: {
   channel: Channel;
+  slashQuery?: string;
   advancingStage: boolean;
   onSelectForm: (formType: FormType, patientId?: string) => void;
   onAdvanceStage: (patientId: string, newStage: string) => void;
@@ -1408,6 +1472,21 @@ function SlashCommandMenu({
   // Extra forms (not in current stage)
   const allForms = Object.keys(FORM_TYPE_LABELS) as FormType[];
   const extraForms = isPatientThread ? allForms.filter((f) => !forms.includes(f)) : [];
+
+  // Filter forms if a slash query is present
+  const filterFormsByQuery = (formList: FormType[], query?: string): FormType[] => {
+    if (!query) return formList;
+    const lowerQuery = query.toLowerCase();
+    return formList.filter((formType) => {
+      const label = FORM_TYPE_LABELS[formType].toLowerCase();
+      const formTypeStr = formType.toLowerCase();
+      // Match both the form type name and display label
+      return label.includes(lowerQuery) || formTypeStr.includes(lowerQuery);
+    });
+  };
+
+  const filteredForms = filterFormsByQuery(forms, slashQuery);
+  const filteredExtraForms = filterFormsByQuery(extraForms, slashQuery);
 
   // Stage transition icon/color logic
   const getStageIcon = (target: PatientStage): string => {
@@ -1550,17 +1629,18 @@ function SlashCommandMenu({
       )}
 
       {/* Forms */}
-      {forms.length > 0 && (
+      {filteredForms.length > 0 && (
         <>
           <div className="px-3 py-2 border-t border-gray-100">
             <p className="text-xs font-semibold text-gray-500">
+              {slashQuery && `Matching: `}
               {isPatientThread && currentStage
                 ? `Forms for ${PATIENT_STAGE_LABELS[currentStage]}`
                 : 'Available Forms'}
             </p>
           </div>
           <div className="py-1">
-            {forms.map((formType) => (
+            {filteredForms.map((formType) => (
               <button
                 key={formType}
                 onClick={() => onSelectForm(formType, patientId)}
@@ -1580,7 +1660,7 @@ function SlashCommandMenu({
       )}
 
       {/* Extra forms for patient threads */}
-      {extraForms.length > 0 && (
+      {filteredExtraForms.length > 0 && (
         <>
           <div className="px-3 py-1.5 border-t border-gray-100">
             <p className="text-[10px] text-gray-400 uppercase tracking-wider">
@@ -1588,7 +1668,7 @@ function SlashCommandMenu({
             </p>
           </div>
           <div className="py-1">
-            {extraForms.map((formType) => (
+            {filteredExtraForms.map((formType) => (
               <button
                 key={formType}
                 onClick={() => onSelectForm(formType, patientId)}

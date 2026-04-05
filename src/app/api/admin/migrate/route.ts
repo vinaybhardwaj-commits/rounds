@@ -727,11 +727,46 @@ export async function POST() {
     `);
     await run('idx_deleted_profiles_original', `CREATE INDEX IF NOT EXISTS idx_deleted_profiles_original ON deleted_profiles(original_id)`);
 
+    // ── Step 17: Financial Counselling Versioning & Document Protection ──
+    // 17a. form_submissions versioning and document locking columns
+    await run('fs_parent_submission_id', `ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS parent_submission_id UUID REFERENCES form_submissions(id)`);
+    await run('fs_version_number', `ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS version_number INTEGER NOT NULL DEFAULT 1`);
+    await run('fs_pdf_url', `ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS pdf_url TEXT`);
+    await run('fs_pdf_blob_url', `ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS pdf_blob_url TEXT`);
+    await run('fs_locked', `ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS locked BOOLEAN NOT NULL DEFAULT false`);
+    await run('fs_locked_at', `ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS locked_at TIMESTAMPTZ`);
+    await run('fs_change_reason', `ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS change_reason TEXT`);
+    await run('idx_form_submissions_parent', `CREATE INDEX IF NOT EXISTS idx_form_submissions_parent ON form_submissions(parent_submission_id) WHERE parent_submission_id IS NOT NULL`);
+    await run('idx_form_submissions_version', `CREATE INDEX IF NOT EXISTS idx_form_submissions_version ON form_submissions(patient_thread_id, form_type, version_number) WHERE form_type = 'financial_counseling'`);
+
+    // 17b. patient_files table for document management
+    await run('patient_files_table', `
+      CREATE TABLE IF NOT EXISTS patient_files (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_thread_id UUID NOT NULL REFERENCES patient_threads(id) ON DELETE CASCADE,
+        file_name VARCHAR(500) NOT NULL,
+        file_type VARCHAR(50),
+        file_size_bytes BIGINT,
+        file_url TEXT,
+        file_blob_url TEXT,
+        protected BOOLEAN NOT NULL DEFAULT false,
+        upload_source VARCHAR(100),
+        uploaded_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run('idx_patient_files_patient', `CREATE INDEX IF NOT EXISTS idx_patient_files_patient ON patient_files(patient_thread_id)`);
+    await run('idx_patient_files_protected', `CREATE INDEX IF NOT EXISTS idx_patient_files_protected ON patient_files(protected) WHERE protected = true`);
+    await run('idx_patient_files_created', `CREATE INDEX IF NOT EXISTS idx_patient_files_created ON patient_files(created_at DESC)`);
+
+    await run('financial_counselling_migration_record', `INSERT INTO _migrations (name) VALUES ('v17-financial-counselling-versioning') ON CONFLICT (name) DO NOTHING`);
+
     // 9. Verify
     const tables = await sql`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
-      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages','insurance_claims','claim_events','discharge_milestones','surgery_postings','ot_readiness_items','ot_readiness_audit_log','ot_equipment_items','help_interactions','help_dismissals','app_errors','session_events','daily_active_users','deleted_profiles','pac_clearances')
+      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages','insurance_claims','claim_events','discharge_milestones','surgery_postings','ot_readiness_items','ot_readiness_audit_log','ot_equipment_items','help_interactions','help_dismissals','app_errors','session_events','daily_active_users','deleted_profiles','patient_files','pac_clearances')
       ORDER BY table_name
     `;
 

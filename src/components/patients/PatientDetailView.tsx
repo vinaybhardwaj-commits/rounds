@@ -40,6 +40,7 @@ import { FORM_TYPE_LABELS, FORMS_BY_STAGE } from '@/lib/form-registry';
 import { PredictionCard } from '@/components/ai/PredictionCard';
 import { SurgeryPanel } from '@/components/ot/SurgeryPanel';
 import { PatientFilesTab } from './PatientFilesTab';
+import { FCVersionHistory } from '@/components/forms/FCVersionHistory';
 
 type DetailTab = 'overview' | 'files';
 
@@ -1094,6 +1095,18 @@ export function PatientDetailView({
             </div>
           )}
         </div>
+
+        {/* ── Financial Counselling Version History ── */}
+        {patient.forms && patient.forms.some((f: { form_type: string }) => f.form_type === 'financial_counseling') && (
+          <div className="mx-4 mb-4">
+            <FCVersionHistory
+              patientThreadId={patient.id}
+              onOpenForm={(formId) => {
+                window.location.href = `/forms/${formId}`;
+              }}
+            />
+          </div>
+        )}
 
         {/* ── Form History ── */}
         {patient.forms && patient.forms.length > 0 && (

@@ -117,6 +117,36 @@ export async function POST(request: NextRequest) {
 
     const formId = result.id;
 
+    // ── Financial Counselling Version Chain Logic ──
+    // If this is a financial_counseling form with a patient_thread_id, link to previous versions
+    if (form_type === 'financial_counseling' && body.patient_thread_id) {
+      try {
+        const prevSubmission = await queryOne<{ id: string; version_number: number }>(
+          `SELECT id, version_number FROM form_submissions
+           WHERE form_type = 'financial_counseling'
+             AND patient_thread_id = $1
+             AND id != $2
+           ORDER BY version_number DESC LIMIT 1`,
+          [body.patient_thread_id, formId]
+        );
+
+        if (prevSubmission) {
+          const newVersionNumber = (prevSubmission.version_number || 0) + 1;
+          const changeReason = body.change_reason || null;
+
+          await sqlQuery(
+            `UPDATE form_submissions
+             SET parent_submission_id = $1, version_number = $2, change_reason = $3
+             WHERE id = $4`,
+            [prevSubmission.id, newVersionNumber, changeReason, formId]
+          );
+        }
+      } catch (err) {
+        console.error('[VersionChain] Failed to link financial_counseling versions:', err);
+        // Non-fatal — form submission still succeeds
+      }
+    }
+
     // Auto-generate readiness items from schema (only for submitted, not draft)
     let readinessItemsCreated = 0;
     if (schema && status !== 'draft') {
@@ -166,7 +196,7 @@ export async function POST(request: NextRequest) {
     // create/update the insurance_claims row and admission_tracker billing fields.
     if (form_type === 'financial_counseling' && status !== 'draft' && body.patient_thread_id) {
       const fd = form_data as Record<string, unknown>;
-      if (fd.payment_mode === 'insurance') {
+      if (fd.payment_mode === 'insurance' || fd.payment_mode === 'insurance_cash') {
         try {
           // Get or create insurance claim
           const claim = await getOrCreateClaim(body.patient_thread_id, user.profileId);
@@ -294,7 +324,17 @@ export async function POST(request: NextRequest) {
           );
 
           if (patient) {
-            const sysMsg = `📋 **Financial counseling complete** by ${actorName}\n${counselingDesc}`;
+            // Check if this is a versioned submission
+            let versionNote = '';
+            const submissionData = await queryOne<{ version_number: number | null }>(
+              `SELECT version_number FROM form_submissions WHERE id = $1`,
+              [formId]
+            );
+            if (submissionData?.version_number && submissionData.version_number > 1) {
+              versionNote = ` (v${submissionData.version_number})`;
+            }
+
+            const sysMsg = `📋 **Financial counseling complete**${versionNote} by ${actorName}\n${counselingDesc}`;
             if (patient.getstream_channel_id) {
               try {
                 await sendSystemMessage('patient-thread', patient.getstream_channel_id, sysMsg);
@@ -302,7 +342,7 @@ export async function POST(request: NextRequest) {
             }
             try {
               await sendSystemMessage('department', 'billing',
-                `📋 ${patient.patient_name}: Financial counseling complete — by ${actorName}`);
+                `📋 ${patient.patient_name}: Financial counseling complete${versionNote} — by ${actorName}`);
             } catch { /* non-fatal */ }
           }
         } catch (err) {
