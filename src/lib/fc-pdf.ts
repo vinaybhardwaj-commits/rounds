@@ -55,7 +55,7 @@ function formatValue(key: string, value: unknown): string {
   if (key.includes('cost') || key.includes('amount') || key.includes('insured') || key.includes('rent') || key === 'package_amount') {
     const num = Number(value);
     if (!isNaN(num) && num > 0) {
-      return '₹ ' + num.toLocaleString('en-IN');
+      return 'Rs. ' + num.toLocaleString('en-IN');
     }
   }
 
@@ -184,7 +184,7 @@ export async function generateFCPdf(opts: FCPdfOptions): Promise<Buffer> {
           if (rawValue === undefined && field.type !== 'checkbox') continue;
 
           const displayValue = field.type === 'checkbox'
-            ? (rawValue ? '☑ Yes' : '☐ No')
+            ? (rawValue ? '[X] Yes' : '[ ] No')
             : field.type === 'date'
               ? formatDate(String(rawValue || ''))
               : formatValue(field.key, rawValue);
@@ -241,17 +241,17 @@ export async function generateFCPdf(opts: FCPdfOptions): Promise<Buffer> {
 
         doc.fontSize(FONT_SIZE.small).fillColor(COLORS.gray).font('Helvetica');
         doc.text(
-          `Sum Insured: ₹${sumInsured.toLocaleString('en-IN')}  |  ` +
+          `Sum Insured: Rs.${sumInsured.toLocaleString('en-IN')}  |  ` +
           `Rate: ${isICU ? '1.5%' : '1%'} (${isICU ? 'ICU' : 'Standard'})  |  ` +
-          `Eligible Rent: ₹${eligibleRent.toLocaleString('en-IN')}/day  |  ` +
-          `Actual Rent: ₹${actualRent.toLocaleString('en-IN')}/day`,
+          `Eligible Rent: Rs.${eligibleRent.toLocaleString('en-IN')}/day  |  ` +
+          `Actual Rent: Rs.${actualRent.toLocaleString('en-IN')}/day`,
           PAGE_MARGIN + 8, calcY + 22, { width: CONTENT_WIDTH - 16 }
         );
 
         doc.fontSize(FONT_SIZE.body).fillColor(textColor).font('Helvetica-Bold');
         const riskText = proportionalDeduction > 0
-          ? `⚠ PROPORTIONAL DEDUCTION RISK: ${proportionalDeduction}% — Insurance may deduct ${proportionalDeduction}% from ENTIRE bill`
-          : '✓ Room rent within eligibility — no proportional deduction risk';
+          ? `WARNING: PROPORTIONAL DEDUCTION RISK: ${proportionalDeduction}% -- Insurance may deduct ${proportionalDeduction}% from ENTIRE bill`
+          : 'OK: Room rent within eligibility -- no proportional deduction risk';
         doc.text(riskText, PAGE_MARGIN + 8, calcY + 40, { width: CONTENT_WIDTH - 16 });
 
         doc.y = calcY + 68;
