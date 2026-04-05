@@ -4,13 +4,6 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  // Keep pdfkit as external (not bundled) so its AFM font data files resolve correctly on Vercel
-  serverComponentsExternalPackages: ['pdfkit'],
-  experimental: {
-    outputFileTracingIncludes: {
-      '/api/forms/[id]/pdf': ['./node_modules/pdfkit/**/*'],
-    },
-  },
   // Security + PWA headers
   async headers() {
     return [

@@ -5,18 +5,35 @@
  * The PDF includes hospital letterhead, all form fields in a clean tabular
  * layout, room rent eligibility calculations, and signature areas.
  *
- * Uses pdfkit for pure-JS PDF generation (no binary deps, Vercel-compatible).
+ * Uses pdf-lib for pure-JS PDF generation — zero filesystem dependencies,
+ * fully Vercel-serverless compatible.
  */
 
-import PDFDocument from 'pdfkit';
+import { PDFDocument, StandardFonts, rgb, PDFPage, PDFFont } from 'pdf-lib';
 import { FINANCIAL_COUNSELING } from './form-registry';
 
 // ─── Layout constants ──────────────────────────────────────────────
 const PAGE_MARGIN = 50;
 const PAGE_WIDTH = 595.28; // A4
+const PAGE_HEIGHT = 841.89; // A4
 const CONTENT_WIDTH = PAGE_WIDTH - 2 * PAGE_MARGIN;
-const FONT_SIZE = { title: 18, heading: 12, body: 10, small: 8 };
-const COLORS = { navy: '#0A1F44', blue: '#2563EB', gray: '#6B7280', lightGray: '#F3F4F6', red: '#DC2626', border: '#D1D5DB' };
+const FONT_SIZE = { title: 18, heading: 12, body: 10, small: 8, tiny: 7 };
+
+// pdf-lib uses rgb(0-1) not hex
+const COLORS = {
+  navy: rgb(10 / 255, 31 / 255, 68 / 255),
+  blue: rgb(37 / 255, 99 / 255, 235 / 255),
+  gray: rgb(107 / 255, 114 / 255, 128 / 255),
+  lightGray: rgb(243 / 255, 244 / 255, 246 / 255),
+  red: rgb(220 / 255, 38 / 255, 38 / 255),
+  border: rgb(209 / 255, 213 / 255, 219 / 255),
+  white: rgb(1, 1, 1),
+  rowBg: rgb(250 / 255, 250 / 255, 250 / 255),
+  sectionBg: rgb(229 / 255, 231 / 255, 235 / 255),
+  greenBg: rgb(240 / 255, 253 / 255, 244 / 255),
+  redBg: rgb(254 / 255, 242 / 255, 242 / 255),
+  green: rgb(22 / 255, 101 / 255, 52 / 255),
+};
 
 // ─── Field labels from schema (to display human-readable labels) ──
 const FIELD_LABELS: Record<string, string> = {};
@@ -41,7 +58,7 @@ for (const section of FINANCIAL_COUNSELING.sections) {
 
 /** Format a value for display — resolves select option labels, formats currency */
 function formatValue(key: string, value: unknown): string {
-  if (value === null || value === undefined || value === '') return '—';
+  if (value === null || value === undefined || value === '') return '';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
 
   const strVal = String(value);
@@ -73,7 +90,17 @@ function formatDate(dateStr: string): string {
   }
 }
 
-interface FCPdfOptions {
+/** Truncate text to fit width */
+function truncateText(text: string, font: PDFFont, fontSize: number, maxWidth: number): string {
+  if (font.widthOfTextAtSize(text, fontSize) <= maxWidth) return text;
+  let truncated = text;
+  while (truncated.length > 0 && font.widthOfTextAtSize(truncated + '...', fontSize) > maxWidth) {
+    truncated = truncated.slice(0, -1);
+  }
+  return truncated + '...';
+}
+
+export interface FCPdfOptions {
   formData: Record<string, unknown>;
   patientName: string;
   submissionId: string;
@@ -89,206 +116,228 @@ interface FCPdfOptions {
  * Returns a Buffer containing the PDF bytes.
  */
 export async function generateFCPdf(opts: FCPdfOptions): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    try {
-      const doc = new PDFDocument({
-        size: 'A4',
-        margins: { top: PAGE_MARGIN, bottom: PAGE_MARGIN, left: PAGE_MARGIN, right: PAGE_MARGIN },
-        info: {
-          Title: `Financial Counselling - ${opts.patientName} - v${opts.versionNumber}`,
-          Author: 'Even Hospital Race Course Road — Rounds v5',
-          Subject: 'Financial Counselling Sheet',
-          Creator: 'Rounds v5 FC-PDF Generator',
-        },
-      });
+  const pdfDoc = await PDFDocument.create();
 
-      const chunks: Buffer[] = [];
-      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-      doc.on('error', reject);
+  pdfDoc.setTitle(`Financial Counselling - ${opts.patientName} - v${opts.versionNumber}`);
+  pdfDoc.setAuthor('Even Hospital Race Course Road - Rounds v5');
+  pdfDoc.setSubject('Financial Counselling Sheet');
+  pdfDoc.setCreator('Rounds v5 FC-PDF Generator');
 
-      // ─── Header / Letterhead ───────────────────────────────────
-      doc.fontSize(FONT_SIZE.title).fillColor(COLORS.navy).font('Helvetica-Bold');
-      doc.text('Even Hospital', PAGE_MARGIN, PAGE_MARGIN, { align: 'center', width: CONTENT_WIDTH });
-      doc.fontSize(FONT_SIZE.small).fillColor(COLORS.gray).font('Helvetica');
-      doc.text('Race Course Road, Bengaluru', { align: 'center', width: CONTENT_WIDTH });
-      doc.moveDown(0.5);
+  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-      // Title bar
-      const titleY = doc.y;
-      doc.rect(PAGE_MARGIN, titleY, CONTENT_WIDTH, 28).fill(COLORS.navy);
-      doc.fontSize(FONT_SIZE.heading).fillColor('#FFFFFF').font('Helvetica-Bold');
-      doc.text('FINANCIAL COUNSELLING SHEET', PAGE_MARGIN + 10, titleY + 8, { width: CONTENT_WIDTH - 20 });
-      doc.y = titleY + 36;
+  // Cursor tracking (pdf-lib draws from bottom-left, so y decreases as we go down)
+  let page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  let y = PAGE_HEIGHT - PAGE_MARGIN;
 
-      // Version & meta bar
-      doc.fontSize(FONT_SIZE.small).fillColor(COLORS.gray).font('Helvetica');
-      const metaLine = [
-        `Version: ${opts.versionNumber}`,
-        `Date: ${formatDate(opts.submittedAt)}`,
-        `By: ${opts.submittedBy}`,
-        `ID: ${opts.submissionId.substring(0, 8)}`,
-      ].join('  |  ');
-      doc.text(metaLine, PAGE_MARGIN, doc.y, { width: CONTENT_WIDTH });
-
-      if (opts.changeReason && opts.parentVersion) {
-        doc.fillColor(COLORS.red).font('Helvetica-Bold');
-        doc.text(`Revision from v${opts.parentVersion}: ${opts.changeReason}`, PAGE_MARGIN, doc.y + 2, { width: CONTENT_WIDTH });
-        doc.font('Helvetica').fillColor(COLORS.gray);
-      }
-
-      doc.moveDown(0.8);
-
-      // ─── Patient Name Banner ───────────────────────────────────
-      const bannerY = doc.y;
-      doc.rect(PAGE_MARGIN, bannerY, CONTENT_WIDTH, 24).fill(COLORS.lightGray);
-      doc.fontSize(FONT_SIZE.heading).fillColor(COLORS.navy).font('Helvetica-Bold');
-      doc.text(`Patient: ${opts.patientName}`, PAGE_MARGIN + 8, bannerY + 6, { width: CONTENT_WIDTH - 16 });
-      doc.y = bannerY + 32;
-
-      // ─── Form Sections ─────────────────────────────────────────
-      const formData = opts.formData;
-
-      for (const section of FINANCIAL_COUNSELING.sections) {
-        // Check if section has any visible data
-        const visibleFields = section.fields.filter(f => {
-          // Check conditional visibility
-          if (f.visibleWhen) {
-            const depVal = formData[f.visibleWhen.field];
-            if (f.visibleWhen.operator === 'eq' && depVal !== f.visibleWhen.value) return false;
-            if (f.visibleWhen.operator === 'neq' && depVal === f.visibleWhen.value) return false;
-            if (f.visibleWhen.operator === 'in' && Array.isArray(f.visibleWhen.value) && !f.visibleWhen.value.includes(depVal as string)) return false;
-            if (f.visibleWhen.operator === 'truthy' && !depVal) return false;
-          }
-          return true;
-        });
-
-        if (visibleFields.length === 0) continue;
-
-        // Check page space — add new page if needed
-        if (doc.y > 700) {
-          doc.addPage();
-        }
-
-        // Section heading
-        doc.moveDown(0.3);
-        const sectionY = doc.y;
-        doc.rect(PAGE_MARGIN, sectionY, CONTENT_WIDTH, 20).fill('#E5E7EB');
-        doc.fontSize(FONT_SIZE.body).fillColor(COLORS.navy).font('Helvetica-Bold');
-        doc.text(section.title.toUpperCase(), PAGE_MARGIN + 6, sectionY + 5, { width: CONTENT_WIDTH - 12 });
-        doc.y = sectionY + 24;
-
-        // Fields as key-value rows
-        for (const field of visibleFields) {
-          const rawValue = formData[field.key];
-          if (rawValue === undefined && field.type !== 'checkbox') continue;
-
-          const displayValue = field.type === 'checkbox'
-            ? (rawValue ? '[X] Yes' : '[ ] No')
-            : field.type === 'date'
-              ? formatDate(String(rawValue || ''))
-              : formatValue(field.key, rawValue);
-
-          if (displayValue === '—' && field.type !== 'checkbox') continue;
-
-          // Check page space
-          if (doc.y > 750) {
-            doc.addPage();
-          }
-
-          const rowY = doc.y;
-          // Light alternating row background
-          doc.rect(PAGE_MARGIN, rowY, CONTENT_WIDTH, 16).fill('#FAFAFA');
-          doc.rect(PAGE_MARGIN, rowY, CONTENT_WIDTH, 16).stroke(COLORS.border);
-
-          // Label (left 40%)
-          doc.fontSize(FONT_SIZE.small).fillColor(COLORS.gray).font('Helvetica');
-          doc.text(field.label, PAGE_MARGIN + 4, rowY + 4, { width: CONTENT_WIDTH * 0.4 - 8, lineBreak: false });
-
-          // Value (right 60%)
-          doc.fontSize(FONT_SIZE.body).fillColor(COLORS.navy).font('Helvetica-Bold');
-          doc.text(displayValue, PAGE_MARGIN + CONTENT_WIDTH * 0.4, rowY + 3, { width: CONTENT_WIDTH * 0.6 - 4, lineBreak: false });
-
-          doc.y = rowY + 16;
-        }
-      }
-
-      // ─── Room Rent Eligibility Calculation Box ──────────────────
-      const payMode = formData.payment_mode;
-      const sumInsured = Number(formData.sum_insured) || 0;
-      const actualRent = Number(formData.actual_room_rent) || 0;
-      const hasWaiver = formData.has_room_rent_waiver === true;
-      const roomCat = String(formData.room_category || '');
-
-      if ((payMode === 'insurance' || payMode === 'insurance_cash') && sumInsured > 0 && !hasWaiver) {
-        if (doc.y > 680) doc.addPage();
-
-        doc.moveDown(0.8);
-        const calcY = doc.y;
-        const isICU = roomCat === 'icu' || roomCat === 'nicu';
-        const eligibilityPct = isICU ? 0.015 : 0.01;
-        const eligibleRent = Math.round(sumInsured * eligibilityPct);
-        const proportionalDeduction = actualRent > eligibleRent
-          ? Math.round(((actualRent - eligibleRent) / actualRent) * 100)
-          : 0;
-
-        const boxColor = proportionalDeduction > 0 ? '#FEF2F2' : '#F0FDF4';
-        const textColor = proportionalDeduction > 0 ? COLORS.red : '#166534';
-
-        doc.rect(PAGE_MARGIN, calcY, CONTENT_WIDTH, 60).fill(boxColor).stroke(COLORS.border);
-        doc.fontSize(FONT_SIZE.body).fillColor(COLORS.navy).font('Helvetica-Bold');
-        doc.text('ROOM RENT ELIGIBILITY CALCULATION', PAGE_MARGIN + 8, calcY + 6, { width: CONTENT_WIDTH - 16 });
-
-        doc.fontSize(FONT_SIZE.small).fillColor(COLORS.gray).font('Helvetica');
-        doc.text(
-          `Sum Insured: Rs.${sumInsured.toLocaleString('en-IN')}  |  ` +
-          `Rate: ${isICU ? '1.5%' : '1%'} (${isICU ? 'ICU' : 'Standard'})  |  ` +
-          `Eligible Rent: Rs.${eligibleRent.toLocaleString('en-IN')}/day  |  ` +
-          `Actual Rent: Rs.${actualRent.toLocaleString('en-IN')}/day`,
-          PAGE_MARGIN + 8, calcY + 22, { width: CONTENT_WIDTH - 16 }
-        );
-
-        doc.fontSize(FONT_SIZE.body).fillColor(textColor).font('Helvetica-Bold');
-        const riskText = proportionalDeduction > 0
-          ? `WARNING: PROPORTIONAL DEDUCTION RISK: ${proportionalDeduction}% -- Insurance may deduct ${proportionalDeduction}% from ENTIRE bill`
-          : 'OK: Room rent within eligibility -- no proportional deduction risk';
-        doc.text(riskText, PAGE_MARGIN + 8, calcY + 40, { width: CONTENT_WIDTH - 16 });
-
-        doc.y = calcY + 68;
-      }
-
-      // ─── Signature Area ─────────────────────────────────────────
-      if (doc.y > 640) doc.addPage();
-
-      doc.moveDown(2);
-      const sigY = doc.y;
-
-      // Three signature blocks
-      const sigWidth = CONTENT_WIDTH / 3 - 10;
-      const sigLabels = ['Patient / Attendant', 'Counsellor', 'Witness'];
-      for (let i = 0; i < 3; i++) {
-        const x = PAGE_MARGIN + i * (sigWidth + 15);
-        doc.moveTo(x, sigY + 30).lineTo(x + sigWidth, sigY + 30).stroke(COLORS.border);
-        doc.fontSize(FONT_SIZE.small).fillColor(COLORS.gray).font('Helvetica');
-        doc.text(sigLabels[i], x, sigY + 34, { width: sigWidth, align: 'center' });
-        doc.text('Signature & Date', x, sigY + 44, { width: sigWidth, align: 'center' });
-      }
-
-      // ─── Footer ─────────────────────────────────────────────────
-      doc.fontSize(FONT_SIZE.small - 1).fillColor(COLORS.gray).font('Helvetica');
-      const footerY = doc.page.height - PAGE_MARGIN - 20;
-      doc.text(
-        `System-generated by Rounds v5 | Document ID: ${opts.submissionId} | Generated: ${new Date().toISOString()}`,
-        PAGE_MARGIN, footerY, { width: CONTENT_WIDTH, align: 'center' }
-      );
-      doc.text(
-        'This document is a legal record of the financial counselling session. Any alterations require a new version.',
-        PAGE_MARGIN, footerY + 10, { width: CONTENT_WIDTH, align: 'center' }
-      );
-
-      doc.end();
-    } catch (err) {
-      reject(err);
+  /** Get a new page if needed, returns current y */
+  function ensureSpace(needed: number): void {
+    if (y - needed < PAGE_MARGIN + 30) {
+      page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      y = PAGE_HEIGHT - PAGE_MARGIN;
     }
-  });
+  }
+
+  /** Draw a filled rectangle */
+  function drawRect(x: number, yTop: number, w: number, h: number, color: ReturnType<typeof rgb>) {
+    page.drawRectangle({ x, y: yTop - h, width: w, height: h, color });
+  }
+
+  /** Draw a bordered rectangle */
+  function drawBorderedRect(x: number, yTop: number, w: number, h: number, fillColor: ReturnType<typeof rgb>, borderColor: ReturnType<typeof rgb>) {
+    page.drawRectangle({ x, y: yTop - h, width: w, height: h, color: fillColor, borderColor, borderWidth: 0.5 });
+  }
+
+  /** Draw text at position */
+  function drawText(text: string, x: number, yPos: number, font: PDFFont, size: number, color: ReturnType<typeof rgb>) {
+    page.drawText(text, { x, y: yPos, size, font, color });
+  }
+
+  // ─── Header / Letterhead ───────────────────────────────────
+  const titleText = 'Even Hospital';
+  const titleWidth = helveticaBold.widthOfTextAtSize(titleText, FONT_SIZE.title);
+  drawText(titleText, PAGE_MARGIN + (CONTENT_WIDTH - titleWidth) / 2, y, helveticaBold, FONT_SIZE.title, COLORS.navy);
+  y -= FONT_SIZE.title + 4;
+
+  const subText = 'Race Course Road, Bengaluru';
+  const subWidth = helvetica.widthOfTextAtSize(subText, FONT_SIZE.small);
+  drawText(subText, PAGE_MARGIN + (CONTENT_WIDTH - subWidth) / 2, y, helvetica, FONT_SIZE.small, COLORS.gray);
+  y -= FONT_SIZE.small + 12;
+
+  // Title bar
+  drawRect(PAGE_MARGIN, y, CONTENT_WIDTH, 28, COLORS.navy);
+  drawText('FINANCIAL COUNSELLING SHEET', PAGE_MARGIN + 10, y - 18, helveticaBold, FONT_SIZE.heading, COLORS.white);
+  y -= 36;
+
+  // Version & meta bar
+  const metaLine = [
+    `Version: ${opts.versionNumber}`,
+    `Date: ${formatDate(opts.submittedAt)}`,
+    `By: ${opts.submittedBy}`,
+    `ID: ${opts.submissionId.substring(0, 8)}`,
+  ].join('  |  ');
+  drawText(metaLine, PAGE_MARGIN, y, helvetica, FONT_SIZE.small, COLORS.gray);
+  y -= FONT_SIZE.small + 4;
+
+  if (opts.changeReason && opts.parentVersion) {
+    const revText = `Revision from v${opts.parentVersion}: ${opts.changeReason}`;
+    drawText(revText, PAGE_MARGIN, y, helveticaBold, FONT_SIZE.small, COLORS.red);
+    y -= FONT_SIZE.small + 4;
+  }
+
+  y -= 8;
+
+  // ─── Patient Name Banner ───────────────────────────────────
+  drawRect(PAGE_MARGIN, y, CONTENT_WIDTH, 24, COLORS.lightGray);
+  drawText(`Patient: ${opts.patientName}`, PAGE_MARGIN + 8, y - 16, helveticaBold, FONT_SIZE.heading, COLORS.navy);
+  y -= 32;
+
+  // ─── Form Sections ─────────────────────────────────────────
+  const formData = opts.formData;
+
+  for (const section of FINANCIAL_COUNSELING.sections) {
+    // Check if section has any visible data
+    const visibleFields = section.fields.filter(f => {
+      if (f.visibleWhen) {
+        const depVal = formData[f.visibleWhen.field];
+        if (f.visibleWhen.operator === 'eq' && depVal !== f.visibleWhen.value) return false;
+        if (f.visibleWhen.operator === 'neq' && depVal === f.visibleWhen.value) return false;
+        if (f.visibleWhen.operator === 'in' && Array.isArray(f.visibleWhen.value) && !f.visibleWhen.value.includes(depVal as string)) return false;
+        if (f.visibleWhen.operator === 'truthy' && !depVal) return false;
+      }
+      return true;
+    });
+
+    if (visibleFields.length === 0) continue;
+
+    // Filter to fields that actually have data
+    const fieldsWithData = visibleFields.filter(field => {
+      const rawValue = formData[field.key];
+      if (field.type === 'checkbox') return true;
+      if (rawValue === undefined || rawValue === null || rawValue === '') return false;
+      const displayValue = field.type === 'date'
+        ? formatDate(String(rawValue || ''))
+        : formatValue(field.key, rawValue);
+      return displayValue !== '';
+    });
+
+    if (fieldsWithData.length === 0) continue;
+
+    ensureSpace(20 + fieldsWithData.length * 18);
+
+    // Section heading
+    y -= 4;
+    drawRect(PAGE_MARGIN, y, CONTENT_WIDTH, 20, COLORS.sectionBg);
+    drawText(section.title.toUpperCase(), PAGE_MARGIN + 6, y - 14, helveticaBold, FONT_SIZE.body, COLORS.navy);
+    y -= 24;
+
+    // Fields as key-value rows
+    for (const field of fieldsWithData) {
+      const rawValue = formData[field.key];
+
+      const displayValue = field.type === 'checkbox'
+        ? (rawValue ? '[X] Yes' : '[ ] No')
+        : field.type === 'date'
+          ? formatDate(String(rawValue || ''))
+          : formatValue(field.key, rawValue);
+
+      ensureSpace(18);
+
+      // Row background + border
+      drawBorderedRect(PAGE_MARGIN, y, CONTENT_WIDTH, 16, COLORS.rowBg, COLORS.border);
+
+      // Label (left 40%)
+      const labelMaxW = CONTENT_WIDTH * 0.4 - 12;
+      const truncLabel = truncateText(field.label, helvetica, FONT_SIZE.small, labelMaxW);
+      drawText(truncLabel, PAGE_MARGIN + 4, y - 11, helvetica, FONT_SIZE.small, COLORS.gray);
+
+      // Value (right 60%)
+      const valueMaxW = CONTENT_WIDTH * 0.6 - 8;
+      const truncValue = truncateText(displayValue, helveticaBold, FONT_SIZE.body, valueMaxW);
+      drawText(truncValue, PAGE_MARGIN + CONTENT_WIDTH * 0.4, y - 12, helveticaBold, FONT_SIZE.body, COLORS.navy);
+
+      y -= 16;
+    }
+  }
+
+  // ─── Room Rent Eligibility Calculation Box ──────────────────
+  const payMode = formData.payment_mode;
+  const sumInsured = Number(formData.sum_insured) || 0;
+  const actualRent = Number(formData.actual_room_rent) || 0;
+  const hasWaiver = formData.has_room_rent_waiver === true;
+  const roomCat = String(formData.room_category || '');
+
+  if ((payMode === 'insurance' || payMode === 'insurance_cash') && sumInsured > 0 && !hasWaiver) {
+    ensureSpace(72);
+    y -= 10;
+
+    const isICU = roomCat === 'icu' || roomCat === 'nicu';
+    const eligibilityPct = isICU ? 0.015 : 0.01;
+    const eligibleRent = Math.round(sumInsured * eligibilityPct);
+    const proportionalDeduction = actualRent > eligibleRent
+      ? Math.round(((actualRent - eligibleRent) / actualRent) * 100)
+      : 0;
+
+    const boxColor = proportionalDeduction > 0 ? COLORS.redBg : COLORS.greenBg;
+    const textColor = proportionalDeduction > 0 ? COLORS.red : COLORS.green;
+
+    drawBorderedRect(PAGE_MARGIN, y, CONTENT_WIDTH, 60, boxColor, COLORS.border);
+
+    drawText('ROOM RENT ELIGIBILITY CALCULATION', PAGE_MARGIN + 8, y - 14, helveticaBold, FONT_SIZE.body, COLORS.navy);
+
+    const calcLine =
+      `Sum Insured: Rs.${sumInsured.toLocaleString('en-IN')}  |  ` +
+      `Rate: ${isICU ? '1.5%' : '1%'} (${isICU ? 'ICU' : 'Standard'})  |  ` +
+      `Eligible Rent: Rs.${eligibleRent.toLocaleString('en-IN')}/day  |  ` +
+      `Actual Rent: Rs.${actualRent.toLocaleString('en-IN')}/day`;
+    drawText(calcLine, PAGE_MARGIN + 8, y - 30, helvetica, FONT_SIZE.small, COLORS.gray);
+
+    const riskText = proportionalDeduction > 0
+      ? `WARNING: PROPORTIONAL DEDUCTION RISK: ${proportionalDeduction}% -- Insurance may deduct ${proportionalDeduction}% from ENTIRE bill`
+      : 'OK: Room rent within eligibility -- no proportional deduction risk';
+    drawText(riskText, PAGE_MARGIN + 8, y - 48, helveticaBold, FONT_SIZE.body, textColor);
+
+    y -= 68;
+  }
+
+  // ─── Signature Area ─────────────────────────────────────────
+  ensureSpace(80);
+  y -= 30;
+
+  const sigWidth = CONTENT_WIDTH / 3 - 10;
+  const sigLabels = ['Patient / Attendant', 'Counsellor', 'Witness'];
+  for (let i = 0; i < 3; i++) {
+    const x = PAGE_MARGIN + i * (sigWidth + 15);
+
+    // Signature line
+    page.drawLine({
+      start: { x, y: y },
+      end: { x: x + sigWidth, y: y },
+      thickness: 0.5,
+      color: COLORS.border,
+    });
+
+    // Label under line
+    const labelW = helvetica.widthOfTextAtSize(sigLabels[i], FONT_SIZE.small);
+    drawText(sigLabels[i], x + (sigWidth - labelW) / 2, y - 12, helvetica, FONT_SIZE.small, COLORS.gray);
+
+    const subLabel = 'Signature & Date';
+    const subLabelW = helvetica.widthOfTextAtSize(subLabel, FONT_SIZE.small);
+    drawText(subLabel, x + (sigWidth - subLabelW) / 2, y - 22, helvetica, FONT_SIZE.small, COLORS.gray);
+  }
+
+  // ─── Footer ─────────────────────────────────────────────────
+  const footerY = PAGE_MARGIN + 10;
+  const footerLine1 = `System-generated by Rounds v5 | Document ID: ${opts.submissionId} | Generated: ${new Date().toISOString()}`;
+  const footerLine2 = 'This document is a legal record of the financial counselling session. Any alterations require a new version.';
+
+  const f1w = helvetica.widthOfTextAtSize(footerLine1, FONT_SIZE.tiny);
+  drawText(footerLine1, PAGE_MARGIN + (CONTENT_WIDTH - f1w) / 2, footerY + 10, helvetica, FONT_SIZE.tiny, COLORS.gray);
+
+  const f2w = helvetica.widthOfTextAtSize(footerLine2, FONT_SIZE.tiny);
+  drawText(footerLine2, PAGE_MARGIN + (CONTENT_WIDTH - f2w) / 2, footerY, helvetica, FONT_SIZE.tiny, COLORS.gray);
+
+  // Serialize to bytes
+  const pdfBytes = await pdfDoc.save();
+  return Buffer.from(pdfBytes);
 }
