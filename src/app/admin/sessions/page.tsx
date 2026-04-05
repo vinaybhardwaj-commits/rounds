@@ -561,7 +561,17 @@ export default function SessionsExplorer() {
 
     fetch('/api/admin/health')
       .then(r => r.json())
-      .then(d => setHealthData(d))
+      .then(d => setHealthData({
+        llm: { status: d.status || 'down', latency_ms: d.latency_ms || 0 },
+        errors_1h: 0,
+        error_sparkline: [],
+        active_sessions: 0,
+        api_p95_ms: 0,
+        api_trend: 'stable' as const,
+        forms_today: 0,
+        forms_yesterday: 0,
+        last_deploy: { time: '', sha: '' },
+      }))
       .catch(() => {});
   }, []);
 

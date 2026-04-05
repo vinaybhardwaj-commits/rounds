@@ -876,9 +876,17 @@ export default function AdoptionPage() {
         const healthRes = await fetch('/api/admin/health');
         if (healthRes.ok) {
           const healthData = await healthRes.json();
-          if (healthData.success) {
-            setHealthBarData(healthData.data);
-          }
+          setHealthBarData({
+            llm: { status: healthData.status || 'down', latency_ms: healthData.latency_ms || 0 },
+            errors_1h: 0,
+            error_sparkline: [],
+            active_sessions: 0,
+            api_p95_ms: 0,
+            api_trend: 'stable' as const,
+            forms_today: 0,
+            forms_yesterday: 0,
+            last_deploy: { time: '', sha: '' },
+          });
         }
 
         // Fetch badge counts
