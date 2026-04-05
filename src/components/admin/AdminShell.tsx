@@ -59,9 +59,11 @@ export function AdminShell({
           badges={badges}
         />
 
-        {/* Content area */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="p-6 md:p-8">
+        {/* Content area — add left margin on mobile to clear fixed sidebar */}
+        <main className={`flex-1 overflow-y-auto transition-all duration-200 ${
+          sidebarCollapsed ? 'ml-16 lg:ml-0' : 'ml-0'
+        }`}>
+          <div className="p-4 md:p-6 lg:p-8">
             {children}
           </div>
         </main>
