@@ -9,13 +9,19 @@
 
 import { neon } from '@neondatabase/serverless';
 
-const DATABASE_URL = process.env.POSTGRES_URL;
-if (!DATABASE_URL) {
-  console.error('POSTGRES_URL environment variable is required');
-  process.exit(1);
+// Lazy init — only fails when actually called, not at import time
+let _sql: ReturnType<typeof neon> | null = null;
+function getSql() {
+  if (!_sql) {
+    const url = process.env.POSTGRES_URL;
+    if (!url) throw new Error('POSTGRES_URL environment variable is required');
+    _sql = neon(url);
+  }
+  return _sql;
 }
 
-const sql = neon(DATABASE_URL);
+// Tagged template wrapper so `sql\`...\`` still works
+const sql = (strings: TemplateStringsArray, ...values: unknown[]) => getSql()(strings, ...values);
 
 // ── Department rubric data (extracted from EHRC-WhatsApp-Chat-Analysis-Rubric.md) ──
 
@@ -331,7 +337,7 @@ const GLOBAL_ISSUES = {
 
 // ── Seed execution ──
 
-async function seedRubric() {
+export async function seedRubric() {
   console.log('Seeding WhatsApp Analysis rubric...\n');
 
   let seeded = 0;
@@ -395,9 +401,12 @@ async function seedRubric() {
   console.log('Version records created for all entries.');
 }
 
-seedRubric()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error('Seed failed:', err);
-    process.exit(1);
-  });
+// Run as CLI script: npx tsx src/lib/wa-engine/seed-rubric.ts
+if (typeof require !== 'undefined' && require.main === module) {
+  seedRubric()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error('Seed failed:', err);
+      process.exit(1);
+    });
+}
