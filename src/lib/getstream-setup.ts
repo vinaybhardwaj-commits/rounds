@@ -114,6 +114,26 @@ const CHANNEL_TYPE_CONFIGS = [
       automod: 'disabled',
     },
   },
+  {
+    name: 'whatsapp-analysis',
+    description: 'WhatsApp chat analysis thread — upload exports, view AI analysis, discuss findings',
+    config: {
+      max_message_length: 10000, // analysis cards can be large
+      typing_events: true,
+      read_events: true,
+      connect_events: true,
+      search: true,
+      reactions: true,
+      replies: true, // threaded discussion on analysis results
+      quotes: true,
+      uploads: true, // .txt file uploads
+      url_enrichment: false, // no URL previews needed
+      custom_events: true, // for analysis progress updates
+      mutes: true,
+      message_retention: '365',
+      automod: 'disabled',
+    },
+  },
 ];
 
 /**
