@@ -13,14 +13,14 @@ import type { ParsedWhatsAppMessage } from './types';
 
 type ExportFormat = 'ios' | 'android' | 'unknown';
 
-// iOS: [DD/MM/YY, HH:MM:SS] Sender: Message
-const IOS_PATTERN = /^\[(\d{1,2}\/\d{1,2}\/\d{2,4}),\s+(\d{1,2}:\d{2}:\d{2})\]\s+(.+?):\s([\s\S]*)$/;
-// Android: DD/MM/YYYY, HH:MM - Sender: Message
-const ANDROID_PATTERN = /^(\d{1,2}\/\d{1,2}\/\d{2,4}),\s+(\d{1,2}:\d{2})\s+-\s+(.+?):\s([\s\S]*)$/;
+// iOS: [DD/MM/YY, H:MM:SS AM/PM] Sender: Message  (AM/PM optional, Unicode LTR marks stripped)
+const IOS_PATTERN = /^\[(\d{1,2}\/\d{1,2}\/\d{2,4}),\s+(\d{1,2}:\d{2}:\d{2}(?:\s*[AaPp][Mm])?)\]\s+(.+?):\s([\s\S]*)$/;
+// Android: DD/MM/YYYY, HH:MM - Sender: Message  (also handles H:MM AM/PM)
+const ANDROID_PATTERN = /^(\d{1,2}\/\d{1,2}\/\d{2,4}),\s+(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AaPp][Mm])?)\s+-\s+(.+?):\s([\s\S]*)$/;
 
 // System message patterns (these have no "Sender:" part)
-const IOS_SYSTEM_PATTERN = /^\[(\d{1,2}\/\d{1,2}\/\d{2,4}),\s+(\d{1,2}:\d{2}:\d{2})\]\s+(.+)$/;
-const ANDROID_SYSTEM_PATTERN = /^(\d{1,2}\/\d{1,2}\/\d{2,4}),\s+(\d{1,2}:\d{2})\s+-\s+(.+)$/;
+const IOS_SYSTEM_PATTERN = /^\[(\d{1,2}\/\d{1,2}\/\d{2,4}),\s+(\d{1,2}:\d{2}:\d{2}(?:\s*[AaPp][Mm])?)\]\s+(.+)$/;
+const ANDROID_SYSTEM_PATTERN = /^(\d{1,2}\/\d{1,2}\/\d{2,4}),\s+(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AaPp][Mm])?)\s+-\s+(.+)$/;
 
 // Timestamp boundary: start of a new message line
 const TIMESTAMP_BOUNDARY = /^\[?\d{1,2}\/\d{1,2}\/\d{2,4}[,\s]+\d{1,2}:\d{2}/;
@@ -59,6 +59,12 @@ const SYSTEM_INDICATORS = [
   'Contact card omitted',
   'GIF omitted',
   'Your security code with',
+  'location omitted',
+  'live location shared',
+  'Missed voice call',
+  'Missed video call',
+  'Waiting for this message',
+  'created this group',
 ];
 
 /**
@@ -79,17 +85,29 @@ function detectFormat(content: string): ExportFormat {
 
 /**
  * Parse a date string from WhatsApp export into a Date object.
- * Handles DD/MM/YY, DD/MM/YYYY with various time formats.
+ * Handles DD/MM/YY, DD/MM/YYYY with various time formats including AM/PM.
  */
 function parseTimestamp(dateStr: string, timeStr: string): Date {
   const [day, month, yearRaw] = dateStr.split('/').map(Number);
   const year = yearRaw < 100 ? 2000 + yearRaw : yearRaw;
 
+  // Check for AM/PM suffix
+  const upperTime = timeStr.toUpperCase().trim();
+  const isPM = upperTime.endsWith('PM');
+  const isAM = upperTime.endsWith('AM');
+
+  // Strip AM/PM for parsing
+  const cleanTime = timeStr.replace(/\s*[AaPp][Mm]\s*$/,'');
+
   // Time can be HH:MM or HH:MM:SS
-  const timeParts = timeStr.split(':').map(Number);
-  const hours = timeParts[0];
+  const timeParts = cleanTime.split(':').map(Number);
+  let hours = timeParts[0];
   const minutes = timeParts[1];
   const seconds = timeParts[2] || 0;
+
+  // Convert 12-hour to 24-hour
+  if (isPM && hours < 12) hours += 12;
+  if (isAM && hours === 12) hours = 0;
 
   return new Date(year, month - 1, day, hours, minutes, seconds);
 }
@@ -227,6 +245,11 @@ function parseBlock(
 
   if (!dateStr || !timeStr) return null; // Could not parse
 
+  // Clean sender: strip leading ~ and whitespace (WhatsApp contact alias prefix)
+  if (sender) {
+    sender = sender.replace(/^~\s*/, '').trim();
+  }
+
   const timestamp = parseTimestamp(dateStr, timeStr);
   if (isNaN(timestamp.getTime())) return null; // Invalid date
 
@@ -261,8 +284,11 @@ export function parseWhatsAppExport(
 ): ParsedWhatsAppMessage[] {
   if (!content || content.trim().length === 0) return [];
 
-  // Strip BOM if present
-  const cleaned = content.replace(/^\uFEFF/, '');
+  // Strip BOM, Unicode directional marks (LTR U+200E, RTL U+200F, zero-width spaces), and \r
+  const cleaned = content
+    .replace(/^\uFEFF/, '')
+    .replace(/[\u200E\u200F\u200B\u200C\u200D\uFEFF]/g, '')
+    .replace(/\r/g, '');
 
   // Detect format
   const format = detectFormat(cleaned);
