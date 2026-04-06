@@ -29,8 +29,8 @@ export default function WAAnalysisPage() {
       try {
         const profileRes = await fetch('/api/profiles/me');
         const profileData = await profileRes.json();
-        if (profileData.profile) {
-          setUserRole(profileData.profile.role);
+        if (profileData.data?.role) {
+          setUserRole(profileData.data.role);
         }
       } catch { /* ignore */ }
 
