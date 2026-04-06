@@ -566,10 +566,17 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
     }
   };
 
-  // Handle file upload
+  // Handle file upload — in WA channel, paperclip routes to analysis pipeline
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !channel) return;
+
+    // In WhatsApp Insights channel: route .txt through analysis API
+    if (channel.type === 'whatsapp-analysis') {
+      // Delegate to the WA upload handler (reuse same logic)
+      handleWAUpload(e);
+      return;
+    }
 
     setUploading(true);
     try {
@@ -1221,10 +1228,14 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
 
       {/* Composer */}
       <div className="px-3 py-2 bg-white border-t border-gray-200">
-        {uploading && (
+        {(uploading || (isWAChannel && waUploading)) && (
           <div className="flex items-center gap-2 mb-2 px-1">
-            <div className="w-4 h-4 border-2 border-even-blue/20 border-t-even-blue rounded-full animate-spin" />
-            <span className="text-xs text-gray-500">Uploading file...</span>
+            <div className={`w-4 h-4 border-2 rounded-full animate-spin ${
+              isWAChannel ? 'border-green-200 border-t-green-600' : 'border-even-blue/20 border-t-even-blue'
+            }`} />
+            <span className="text-xs text-gray-500">
+              {isWAChannel ? 'Analyzing WhatsApp chat...' : 'Uploading file...'}
+            </span>
           </div>
         )}
         <div className="flex items-end gap-2">
@@ -1233,15 +1244,23 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
             type="file"
             className="hidden"
             onChange={handleFileUpload}
-            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"
+            accept={isWAChannel ? '.txt' : 'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt'}
           />
+          {/* In WA channel: only super_admin sees paperclip (routes to analysis). Others: normal upload. */}
+          {(!isWAChannel || isSuperAdmin) && (
           <button
             onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="p-2 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0 disabled:opacity-50"
+            disabled={uploading || waUploading}
+            className={`p-2 transition-colors flex-shrink-0 disabled:opacity-50 ${
+              isWAChannel
+                ? 'text-green-500 hover:text-green-700'
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
+            title={isWAChannel ? 'Upload WhatsApp chat export (.txt)' : 'Attach file'}
           >
-            <Paperclip size={18} />
+            {isWAChannel ? <Upload size={18} /> : <Paperclip size={18} />}
           </button>
+          )}
           <div className="flex-1 relative">
             {/* Slash command menu */}
             {showSlashMenu && channel && (
