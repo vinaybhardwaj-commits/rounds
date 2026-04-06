@@ -81,6 +81,7 @@ const navItems: NavItem[] = [
   { group: 'OPERATIONS', label: 'Admission Tracker', href: '/admin/admissions', icon: <Activity size={iconSize} />, badge: 0 },
   { group: 'OPERATIONS', label: 'Escalation Log', href: '/admin/escalations', icon: <AlertTriangle size={iconSize} />, badge: 0 },
   { group: 'OPERATIONS', label: 'Patient Changelog', href: '/admin/changelog', icon: <ClipboardList size={iconSize} /> },
+  { group: 'OPERATIONS', label: 'WhatsApp Analysis', href: '/admin/wa-analysis', icon: <MessageSquare size={iconSize} /> },
   { group: 'OPERATIONS', label: 'Chat System Setup', href: '/admin/chat-system', icon: <MessageSquare size={iconSize} /> },
   { group: 'OPERATIONS', label: 'LeadSquared Integration', href: '/admin/leadsquared', icon: <Link2 size={iconSize} /> },
   {
