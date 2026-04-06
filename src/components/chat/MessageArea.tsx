@@ -27,6 +27,8 @@ import {
   ChevronDown,
   ChevronRight,
   AtSign,
+  Upload,
+  Loader2,
 } from 'lucide-react';
 import type { Channel, MessageResponse } from 'stream-chat';
 import { useChatContext } from '@/providers/ChatProvider';
@@ -147,6 +149,7 @@ const CHANNEL_TYPE_ICONS: Record<string, React.ElementType> = {
   'patient-thread': Activity,
   direct: MessageSquare,
   'ops-broadcast': Megaphone,
+  'whatsapp-analysis': MessageSquare,
 };
 
 const REACTION_EMOJIS = [
@@ -668,8 +671,48 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
   const ChannelIcon = CHANNEL_TYPE_ICONS[channel.type] || Hash;
   const memberCount = Object.keys(channel.state?.members || {}).length;
 
+  // WhatsApp Insights upload state (super_admin only)
+  const isWAChannel = channel.type === 'whatsapp-analysis';
+  const isSuperAdmin = ((client?.user as Record<string, unknown>)?.rounds_role as string) === 'super_admin';
+  const waFileRef = useRef<HTMLInputElement>(null);
+  const [waUploading, setWaUploading] = useState(false);
+
+  const handleWAUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith('.txt')) {
+      alert('Only .txt files accepted');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File too large (max 5MB)');
+      return;
+    }
+    setWaUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/wa-analysis/upload', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!data.success) {
+        alert(data.error || 'Upload failed');
+      }
+      // Message is posted to channel by the API — it'll appear automatically via real-time
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setWaUploading(false);
+      if (waFileRef.current) waFileRef.current.value = '';
+    }
+  }, []);
+
   return (
     <div className="flex-1 flex flex-col min-w-0">
+      {/* Hidden WA file input */}
+      {isWAChannel && isSuperAdmin && (
+        <input ref={waFileRef} type="file" accept=".txt" className="hidden" onChange={handleWAUpload} />
+      )}
+
       {/* Channel header */}
       <div className="flex items-center gap-3 px-4 py-2.5 bg-white border-b border-gray-200">
         <button
@@ -678,7 +721,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
         >
           <Menu size={18} className="text-gray-600" />
         </button>
-        <ChannelIcon size={18} className="text-even-blue flex-shrink-0" />
+        <ChannelIcon size={18} className={isWAChannel ? 'text-green-600 flex-shrink-0' : 'text-even-blue flex-shrink-0'} />
         <div className="flex-1 min-w-0">
           <h2 className="text-sm font-semibold text-even-navy truncate">
             {channelName}
@@ -687,23 +730,39 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
             <p className="text-[11px] text-gray-400 truncate">{channelDesc}</p>
           )}
         </div>
-        <button
-          onClick={() => {
-            // Build URL with channel context for form-in-chat integration
-            const params = new URLSearchParams();
-            if (channel.type) params.set('channel_type', channel.type);
-            if (channel.id) params.set('channel_id', channel.id);
-            // Extract patient_thread_id from channel custom data if available
-            const ptId = (channel.data as Record<string, unknown>)?.patient_thread_id;
-            if (ptId && typeof ptId === 'string') params.set('patient_id', ptId);
-            const qs = params.toString();
-            router.push(`/forms${qs ? `?${qs}` : ''}`);
-          }}
-          className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-even-blue transition-colors"
-          title="New Form"
-        >
-          <ClipboardList size={16} />
-        </button>
+        {/* WA Upload button — super_admin only, only in WA Insights channel */}
+        {isWAChannel && isSuperAdmin && (
+          <button
+            onClick={() => waFileRef.current?.click()}
+            disabled={waUploading}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg
+                       bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50
+                       transition-colors"
+            title="Upload WhatsApp export (.txt)"
+          >
+            {waUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+            {waUploading ? 'Analyzing...' : 'Upload Chat'}
+          </button>
+        )}
+        {!isWAChannel && (
+          <button
+            onClick={() => {
+              // Build URL with channel context for form-in-chat integration
+              const params = new URLSearchParams();
+              if (channel.type) params.set('channel_type', channel.type);
+              if (channel.id) params.set('channel_id', channel.id);
+              // Extract patient_thread_id from channel custom data if available
+              const ptId = (channel.data as Record<string, unknown>)?.patient_thread_id;
+              if (ptId && typeof ptId === 'string') params.set('patient_id', ptId);
+              const qs = params.toString();
+              router.push(`/forms${qs ? `?${qs}` : ''}`);
+            }}
+            className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-even-blue transition-colors"
+            title="New Form"
+          >
+            <ClipboardList size={16} />
+          </button>
+        )}
         <div className="flex items-center gap-1 text-xs text-gray-400">
           <Users size={13} />
           <span>{memberCount}</span>

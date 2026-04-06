@@ -255,6 +255,14 @@ export async function autoJoinDefaultChannels(
     }
   }
 
+  // Join WhatsApp Insights channel (visible to all users)
+  try {
+    const waInsights = client.channel('whatsapp-analysis', 'whatsapp-insights');
+    await waInsights.addMembers([userId]);
+  } catch {
+    // Channel may not exist yet — fine
+  }
+
   // Join ALL cross-functional channels
   const crossFunctionalIds = [
     'ops-daily-huddle',

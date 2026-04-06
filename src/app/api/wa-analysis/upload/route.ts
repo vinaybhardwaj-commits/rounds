@@ -9,9 +9,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { getCurrentUser } from '@/lib/auth';
+import { getStreamServerClient } from '@/lib/getstream';
 import { parseWhatsAppExport } from '@/lib/wa-engine/parser';
 import { deduplicateMessages, recordProcessedHashes } from '@/lib/wa-engine/dedup';
 import type { AnalysisCardPayload, AnalysisStatus } from '@/lib/wa-engine/types';
+
+const WA_CHANNEL_ID = 'whatsapp-insights';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
@@ -165,6 +168,37 @@ export async function POST(request: NextRequest) {
       rubric_proposals_count: 0, // WA.4: populated after rubric evolution
       processing_time_ms: processingTime,
     };
+
+    // ── Post result to WhatsApp Insights channel ──
+    try {
+      const streamClient = getStreamServerClient();
+      const channel = streamClient.channel('whatsapp-analysis', WA_CHANNEL_ID);
+
+      if (status === 'no_new_messages') {
+        await channel.sendMessage({
+          text: `📎 **${file.name}** — All ${userMessages.length} messages already analyzed. No new data.`,
+          user_id: user.profileId,
+          wa_analysis: cardPayload,
+        });
+      } else {
+        const dateRange = dateStart && dateEnd
+          ? `${dateStart.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} – ${dateEnd.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`
+          : '';
+        await channel.sendMessage({
+          text: [
+            `📎 **${sourceGroup}** — ${newMessages.length} new messages analyzed`,
+            duplicateCount > 0 ? `(${duplicateCount} duplicates skipped)` : '',
+            dateRange ? `📅 ${dateRange}` : '',
+            `⏱ ${processingTime}ms`,
+          ].filter(Boolean).join('\n'),
+          user_id: user.profileId,
+          wa_analysis: cardPayload,
+        });
+      }
+    } catch (channelErr) {
+      // Non-fatal — analysis is saved, just channel post failed
+      console.error('Failed to post to WA Insights channel:', channelErr);
+    }
 
     return NextResponse.json({
       success: true,

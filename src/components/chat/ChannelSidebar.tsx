@@ -13,6 +13,7 @@ import {
   Hash,
   Users,
   MessageCircle,
+  MessageSquare,
   Megaphone,
   ChevronDown,
   ChevronRight,
@@ -57,6 +58,7 @@ const CHANNEL_ICONS: Record<string, React.ElementType> = {
   'patient-thread': Activity,
   direct: MessageCircle,
   'ops-broadcast': Megaphone,
+  'whatsapp-analysis': MessageSquare,
 };
 
 // --- Helpers ---
@@ -135,7 +137,7 @@ export function ChannelSidebar({
       const opts = { watch: true, state: true };
 
       // Query each channel type in parallel with appropriate limits
-      const [deptChannels, cfChannels, ptChannels, directChannels, broadcastChannels] =
+      const [deptChannels, cfChannels, ptChannels, directChannels, broadcastChannels, waChannels] =
         await Promise.all([
           client.queryChannels(
             { type: 'department', members: { $in: [userId] } }, sort, { ...opts, limit: 30 }
@@ -152,6 +154,9 @@ export function ChannelSidebar({
           client.queryChannels(
             { type: 'ops-broadcast', members: { $in: [userId] } }, sort, { ...opts, limit: 5 }
           ).catch(() => [] as Channel[]),
+          client.queryChannels(
+            { type: 'whatsapp-analysis', members: { $in: [userId] } }, sort, { ...opts, limit: 5 }
+          ).catch(() => [] as Channel[]),
         ]);
 
       const groups: Record<string, Channel[]> = {};
@@ -163,6 +168,7 @@ export function ChannelSidebar({
       if (cfChannels.length > 0) groups['cross-functional'] = cfChannels;
       if (directChannels.length > 0) groups['direct'] = directChannels;
       if (broadcastChannels.length > 0) groups['ops-broadcast'] = broadcastChannels;
+      if (waChannels.length > 0) groups['whatsapp-analysis'] = waChannels;
 
       // Split patient threads into active vs archived
       for (const ch of ptChannels) {
@@ -184,6 +190,7 @@ export function ChannelSidebar({
       }
 
       const orderedTypes = [
+        { type: 'whatsapp-analysis', label: 'WhatsApp Insights', icon: MessageSquare, defaultOpen: true },
         { type: 'department', label: 'Departments', icon: Hash, defaultOpen: true },
         { type: 'direct', label: 'Direct Messages', icon: MessageCircle, defaultOpen: true },
         { type: 'cross-functional', label: 'Cross-Functional', icon: Users, defaultOpen: true },

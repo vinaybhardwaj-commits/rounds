@@ -50,6 +50,13 @@ const CROSS_FUNCTIONAL_CHANNELS = [
   },
 ];
 
+// WhatsApp Insights persistent channel (visible to all, upload by super_admin)
+const WHATSAPP_INSIGHTS = {
+  id: 'whatsapp-insights',
+  name: 'WhatsApp Insights',
+  description: 'Automated analysis of WhatsApp group chats — insights, metrics, and alerts shared hospital-wide',
+};
+
 // The hospital-wide ops broadcast channel
 const OPS_BROADCAST = {
   id: 'hospital-broadcast',
@@ -204,7 +211,30 @@ export async function POST() {
       results.push(`[cross] ${result} (${allStaffIds.length} staff)`);
     }
 
-    // 4. Create/ensure ops broadcast channel + add ALL active staff
+    // 4. Create/ensure WhatsApp Insights channel + add ALL active staff
+    const waResult = await ensureChannelWithMember(
+      client,
+      'whatsapp-analysis',
+      WHATSAPP_INSIGHTS.id,
+      { name: WHATSAPP_INSIGHTS.name, description: WHATSAPP_INSIGHTS.description },
+      callerUserId
+    );
+
+    if (allStaffIds.length > 0) {
+      try {
+        const waChannel = client.channel('whatsapp-analysis', WHATSAPP_INSIGHTS.id);
+        for (let i = 0; i < allStaffIds.length; i += 100) {
+          const batch = allStaffIds.slice(i, i + 100);
+          await waChannel.addMembers(batch);
+        }
+      } catch {
+        // Non-fatal
+      }
+    }
+
+    results.push(`[wa-insights] ${waResult} (${allStaffIds.length} staff)`);
+
+    // 5. Create/ensure ops broadcast channel + add ALL active staff
     const broadcastResult = await ensureChannelWithMember(
       client,
       'ops-broadcast',
