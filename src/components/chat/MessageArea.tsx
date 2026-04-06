@@ -216,6 +216,38 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
   const activeChannelRef = useRef<Channel | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
 
+  // WhatsApp Insights upload hooks (must be before early returns)
+  const waFileRef = useRef<HTMLInputElement>(null);
+  const [waUploading, setWaUploading] = useState(false);
+  const handleWAUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith('.txt')) {
+      alert('Only .txt files accepted');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File too large (max 5MB)');
+      return;
+    }
+    setWaUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/wa-analysis/upload', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!data.success) {
+        alert(data.error || 'Upload failed');
+      }
+      // Message is posted to channel by the API — it'll appear automatically via real-time
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setWaUploading(false);
+      if (waFileRef.current) waFileRef.current.value = '';
+    }
+  }, []);
+
   // Scroll to a specific message (from search navigation)
   useEffect(() => {
     if (!scrollToMessageId || messages.length === 0) return;
@@ -671,40 +703,9 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
   const ChannelIcon = CHANNEL_TYPE_ICONS[channel.type] || Hash;
   const memberCount = Object.keys(channel.state?.members || {}).length;
 
-  // WhatsApp Insights upload state (super_admin only)
+  // WhatsApp Insights derived state (super_admin only)
   const isWAChannel = channel.type === 'whatsapp-analysis';
   const isSuperAdmin = ((client?.user as Record<string, unknown>)?.rounds_role as string) === 'super_admin';
-  const waFileRef = useRef<HTMLInputElement>(null);
-  const [waUploading, setWaUploading] = useState(false);
-
-  const handleWAUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.name.endsWith('.txt')) {
-      alert('Only .txt files accepted');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      alert('File too large (max 5MB)');
-      return;
-    }
-    setWaUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch('/api/wa-analysis/upload', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!data.success) {
-        alert(data.error || 'Upload failed');
-      }
-      // Message is posted to channel by the API — it'll appear automatically via real-time
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Upload failed');
-    } finally {
-      setWaUploading(false);
-      if (waFileRef.current) waFileRef.current.value = '';
-    }
-  }, []);
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
