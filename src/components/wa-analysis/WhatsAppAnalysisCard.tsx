@@ -98,7 +98,12 @@ export default function WhatsAppAnalysisCard({ payload }: WhatsAppAnalysisCardPr
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
-  const { severity_summary: sev } = payload;
+  // Guard against completely malformed payloads from old GetStream messages
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const sev = payload.severity_summary || { red: 0, amber: 0, data_points: 0 };
 
   // Fetch detailed data when any section is first expanded
   const loadDetails = async () => {
@@ -197,7 +202,7 @@ export default function WhatsAppAnalysisCard({ payload }: WhatsAppAnalysisCardPr
           <Activity size={12} /> {sev.data_points} Data Points
         </span>
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-          <Clock size={12} /> {(payload.processing_time_ms / 1000).toFixed(1)}s
+          <Clock size={12} /> {((payload.processing_time_ms || 0) / 1000).toFixed(1)}s
         </span>
       </div>
 
@@ -236,7 +241,7 @@ export default function WhatsAppAnalysisCard({ payload }: WhatsAppAnalysisCardPr
 
       {/* Department sections (expandable) */}
       <div className="divide-y divide-gray-100">
-        {payload.departments_with_data.map(slug => {
+        {(payload.departments_with_data || []).map(slug => {
           const expanded = expandedDepts.has(slug);
           const dept = deptData.find(d => d.department_slug === slug);
           const pointCount = dept?.points?.length || '...';
