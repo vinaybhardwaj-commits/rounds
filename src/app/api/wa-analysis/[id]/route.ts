@@ -56,6 +56,18 @@ export async function GET(
       [id],
     );
 
+    // Group points by department for the analysis card
+    const deptMap = new Map<string, typeof points>();
+    for (const p of points) {
+      const slug = (p as { department_slug: string }).department_slug;
+      if (!deptMap.has(slug)) deptMap.set(slug, []);
+      deptMap.get(slug)!.push(p);
+    }
+    const departments = Array.from(deptMap.entries()).map(([slug, pts]) => ({
+      department_slug: slug,
+      points: pts,
+    }));
+
     return NextResponse.json({
       success: true,
       data: {
@@ -63,6 +75,7 @@ export async function GET(
         extracted_points: points,
         global_flags: flags,
         rubric_proposals: proposals,
+        departments, // grouped for analysis card
       },
     });
   } catch (error) {

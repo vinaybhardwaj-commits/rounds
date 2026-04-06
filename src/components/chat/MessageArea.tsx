@@ -36,6 +36,7 @@ import { MessageTypeBadge } from './MessageTypeBadge';
 import { ReadReceipt, computeReadStatus } from './ReadReceipt';
 import { DeleteMessageModal } from './DeleteMessageModal';
 import FormCard from '@/components/forms/FormCard';
+import WhatsAppAnalysisCard from '@/components/wa-analysis/WhatsAppAnalysisCard';
 import type { MessageType, MessagePriority, FormType, PatientStage, DischargeMilestoneStep, ClaimEventType } from '@/types';
 import { PATIENT_STAGE_LABELS, VALID_STAGE_TRANSITIONS, DISCHARGE_MILESTONE_LABELS, CLAIM_STATUS_LABELS } from '@/types';
 import { FORM_TYPE_LABELS, FORMS_BY_STAGE } from '@/lib/form-registry';
@@ -67,6 +68,8 @@ interface DisplayMessage {
   own_reactions: string[];
   attachments: AttachmentData[];
   mentioned_user_ids: string[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  wa_analysis?: any; // WhatsApp analysis card payload (custom GetStream message data)
   raw: MessageResponse;
 }
 
@@ -334,6 +337,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
         own_reactions: ownReactions,
         attachments,
         mentioned_user_ids: (msg.mentioned_users || []).map((u: Record<string, unknown>) => (u.id as string) || ''),
+        wa_analysis: msgExtra.wa_analysis || undefined,
         raw: msg,
       };
     },
@@ -1044,6 +1048,11 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
                           ? renderTextWithMentions(msg.text, msg.mentioned_user_ids, client?.userID || '')
                           : msg.text}
                       </p>
+                    )}
+
+                    {/* WhatsApp Analysis Card */}
+                    {msg.wa_analysis && msg.wa_analysis.type === 'wa_analysis' && (
+                      <WhatsAppAnalysisCard payload={msg.wa_analysis} />
                     )}
 
                     {/* Attachments */}
