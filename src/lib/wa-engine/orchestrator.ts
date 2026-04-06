@@ -16,6 +16,13 @@ import { extractByDepartment } from './extract';
 import { synthesizeResults } from './synthesize';
 import type { AnalysisCardPayload, AnalysisStatus } from './types';
 
+// Max messages to send through the LLM pipeline per upload.
+// Keeps processing within Vercel's 60s function timeout.
+// In daily use, new messages are typically 50-150 so this cap
+// is invisible. For initial backlog, upload the same file
+// multiple times — dedup ensures no double-counting.
+const MAX_MESSAGES_PER_RUN = 300;
+
 /**
  * Run the complete WhatsApp analysis pipeline.
  * Called by POST /api/wa-analysis/upload after file is received.
@@ -44,7 +51,17 @@ export async function runAnalysis(
     const systemMsgCount = allMessages.length - userMessages.length;
 
     // ── 2. Dedup ──
-    const { newMessages, duplicateCount } = await deduplicateMessages(allMessages);
+    const { newMessages: allNewMessages, duplicateCount } = await deduplicateMessages(allMessages);
+
+    // Cap messages to stay within Vercel timeout.
+    // Take the MOST RECENT messages first (sorted by timestamp desc).
+    let newMessages = allNewMessages;
+    let cappedCount = 0;
+    if (allNewMessages.length > MAX_MESSAGES_PER_RUN) {
+      const sorted = [...allNewMessages].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+      newMessages = sorted.slice(0, MAX_MESSAGES_PER_RUN);
+      cappedCount = allNewMessages.length - MAX_MESSAGES_PER_RUN;
+    }
 
     // Date range
     const timestamps = userMessages.map(m => m.timestamp).filter(d => !isNaN(d.getTime()));

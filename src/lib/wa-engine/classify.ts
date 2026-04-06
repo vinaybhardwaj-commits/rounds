@@ -11,7 +11,9 @@ import { neon } from '@neondatabase/serverless';
 import llm, { MODEL_PRIMARY } from '@/lib/llm';
 import type { ParsedWhatsAppMessage, ClassifiedMessage } from './types';
 
-const BATCH_SIZE = 80;
+// 150 messages per batch keeps prompts manageable while minimizing
+// the number of LLM calls (important for Vercel 60s timeout).
+const BATCH_SIZE = 150;
 
 interface DeptRegistry {
   slug: string;
