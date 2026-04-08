@@ -896,6 +896,26 @@ export async function POST() {
 
     await run('admin_intelligence_migration_record', `INSERT INTO _migrations (name) VALUES ('v18-admin-intelligence-phase1') ON CONFLICT (name) DO NOTHING`);
 
+    // ── Step 19: R.1 — Expand form_type CHECK constraint for new form types ──
+    await run('form_type_check_expand', `
+      DO $$
+      BEGIN
+        -- Drop the old CHECK constraint (name may vary, so drop by column check)
+        ALTER TABLE form_submissions DROP CONSTRAINT IF EXISTS form_submissions_form_type_check;
+        -- Add expanded constraint with new form types
+        ALTER TABLE form_submissions ADD CONSTRAINT form_submissions_form_type_check
+          CHECK (form_type IN (
+            'marketing_cc_handoff','consolidated_marketing_handoff',
+            'admission_advice','financial_counseling',
+            'ot_billing_clearance','admission_checklist','surgery_posting','surgery_booking',
+            'pre_op_nursing_checklist','who_safety_checklist','nursing_shift_handoff',
+            'discharge_readiness','post_discharge_followup','daily_department_update',
+            'pac_clearance'
+          ));
+      END $$
+    `);
+    await run('r1_form_types_migration', `INSERT INTO _migrations (name) VALUES ('v19-r1-form-type-expand') ON CONFLICT (name) DO NOTHING`);
+
     // 9. Verify
     const tables = await sql`
       SELECT table_name FROM information_schema.tables

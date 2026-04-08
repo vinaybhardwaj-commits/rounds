@@ -1668,9 +1668,13 @@ export const PAC_CLEARANCE: FormSchema = {
 // ============================================
 
 export const FORM_REGISTRY: Record<FormType, FormSchema> = {
-  marketing_cc_handoff: MARKETING_CC_HANDOFF,
+  // Consolidated Marketing Handoff — placeholder schema until R.2a builds the full 3-section form
+  consolidated_marketing_handoff: MARKETING_CC_HANDOFF,
+  marketing_cc_handoff: MARKETING_CC_HANDOFF,  // legacy — kept for existing form submissions
   admission_advice: ADMISSION_ADVICE,
   financial_counseling: FINANCIAL_COUNSELING,
+  // Surgery Booking — placeholder schema until R.2c builds the standalone form
+  surgery_booking: SURGERY_POSTING,
   ot_billing_clearance: OT_BILLING_CLEARANCE,
   admission_checklist: ADMISSION_CHECKLIST,
   surgery_posting: SURGERY_POSTING,
@@ -1688,9 +1692,11 @@ export const FORM_REGISTRY: Record<FormType, FormSchema> = {
 // ============================================
 
 export const FORM_TYPE_LABELS: Record<FormType, string> = {
-  marketing_cc_handoff: 'Marketing → CC Handoff',
+  consolidated_marketing_handoff: 'Marketing Handoff',
+  marketing_cc_handoff: 'Marketing → CC Handoff',  // legacy label for existing submissions
   admission_advice: 'Admission Advice',
   financial_counseling: 'Financial Counseling',
+  surgery_booking: 'Surgery Booking',
   ot_billing_clearance: 'OT Billing Clearance',
   admission_checklist: 'Admission Checklist',
   surgery_posting: 'Surgery Posting',
@@ -1703,13 +1709,17 @@ export const FORM_TYPE_LABELS: Record<FormType, string> = {
   pac_clearance: 'PAC Clearance',
 };
 
-/** Forms grouped by patient journey stage for quick access */
+/**
+ * Forms grouped by patient journey stage for quick access.
+ * Updated for Intake-to-Outcome Pivot PRD v1.1 (8 Apr 2026):
+ * - opd/pre_admission: Consolidated Marketing Handoff replaces separate forms
+ * - admitted/pre_op: Standalone Financial Counseling + Surgery Booking for post-admission use
+ */
 export const FORMS_BY_STAGE: Record<string, FormType[]> = {
-  opd: ['marketing_cc_handoff', 'admission_advice'],
-  pre_admission: ['marketing_cc_handoff', 'admission_advice', 'financial_counseling'],
-  admitted: ['admission_checklist', 'financial_counseling', 'nursing_shift_handoff'],
-  // NOTE: surgery_posting removed — now a first-class entity via /api/ot/postings (OT Surgery Readiness)
-  pre_op: ['pre_op_nursing_checklist', 'ot_billing_clearance', 'pac_clearance'],
+  opd: ['consolidated_marketing_handoff', 'admission_advice'],
+  pre_admission: ['consolidated_marketing_handoff', 'admission_advice'],
+  admitted: ['financial_counseling', 'surgery_booking', 'admission_checklist', 'nursing_shift_handoff'],
+  pre_op: ['financial_counseling', 'surgery_booking', 'ot_billing_clearance', 'pre_op_nursing_checklist', 'pac_clearance'],
   surgery: ['who_safety_checklist'],
   post_op: ['nursing_shift_handoff'],
   discharge: ['discharge_readiness'],
@@ -1719,3 +1729,21 @@ export const FORMS_BY_STAGE: Record<string, FormType[]> = {
   long_term_followup: ['post_discharge_followup'],
   any: ['daily_department_update'], // stage-agnostic
 };
+
+/** All form types across all stages — used by the "Show all forms" toggle */
+export const ALL_FORM_TYPES: FormType[] = [
+  'consolidated_marketing_handoff',
+  'admission_advice',
+  'financial_counseling',
+  'surgery_booking',
+  'ot_billing_clearance',
+  'admission_checklist',
+  'surgery_posting',
+  'pre_op_nursing_checklist',
+  'who_safety_checklist',
+  'nursing_shift_handoff',
+  'discharge_readiness',
+  'post_discharge_followup',
+  'pac_clearance',
+  'daily_department_update',
+];

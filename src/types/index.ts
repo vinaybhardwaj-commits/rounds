@@ -127,9 +127,11 @@ export type ChannelType =
 // ============================================
 
 export type FormType =
-  | 'marketing_cc_handoff'
+  | 'consolidated_marketing_handoff'
+  | 'marketing_cc_handoff'       // legacy — kept for existing form submissions
   | 'admission_advice'
   | 'financial_counseling'
+  | 'surgery_booking'
   | 'ot_billing_clearance'
   | 'admission_checklist'
   | 'surgery_posting'

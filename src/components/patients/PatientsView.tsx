@@ -60,9 +60,11 @@ interface PatientsViewProps {
 
 // Short labels for chiclets
 const CHICLET_LABELS: Partial<Record<FormType, string>> = {
+  consolidated_marketing_handoff: 'Mktg Handoff',
   marketing_cc_handoff: 'CC Handoff',
   admission_advice: 'Adm Advice',
   financial_counseling: 'Fin Counsel',
+  surgery_booking: 'Surgery Book',
   ot_billing_clearance: 'OT Billing',
   admission_checklist: 'Adm Checklist',
   surgery_posting: 'Surgery Post',

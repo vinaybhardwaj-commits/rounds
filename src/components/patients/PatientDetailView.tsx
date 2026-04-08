@@ -36,7 +36,7 @@ import {
   PAC_STATUS_COLORS,
   PAC_RELEVANT_STAGES,
 } from '@/types';
-import { FORM_TYPE_LABELS, FORMS_BY_STAGE } from '@/lib/form-registry';
+import { FORM_TYPE_LABELS, FORMS_BY_STAGE, ALL_FORM_TYPES } from '@/lib/form-registry';
 import { PredictionCard } from '@/components/ai/PredictionCard';
 import { SurgeryPanel } from '@/components/ot/SurgeryPanel';
 import { PatientFilesTab } from './PatientFilesTab';
@@ -195,6 +195,7 @@ export function PatientDetailView({
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editSaving, setEditSaving] = useState(false);
+  const [showAllForms, setShowAllForms] = useState(false);
 
   // Dropdown data for inline edit
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -411,10 +412,12 @@ export function PatientDetailView({
     return idx <= currentStageIdx && !BRANCH_STAGES.includes(s as PatientStage);
   });
 
-  const stageForms = [
-    ...(FORMS_BY_STAGE[patient.current_stage] || []),
-    ...(FORMS_BY_STAGE['any'] || []),
-  ];
+  const stageForms = showAllForms
+    ? ALL_FORM_TYPES
+    : [
+        ...(FORMS_BY_STAGE[patient.current_stage] || []),
+        ...(FORMS_BY_STAGE['any'] || []),
+      ];
   const completedFormTypes = new Set((patient.forms || []).map(f => f.form_type));
 
   let bedDisplay = patient.bed_number;
@@ -1074,7 +1077,17 @@ export function PatientDetailView({
 
         {/* ── Stage-Relevant Forms ── */}
         <div className="mx-4 mb-4">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Forms for this Stage</h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              {showAllForms ? 'All Forms' : 'Forms for this Stage'}
+            </h3>
+            <button
+              onClick={() => setShowAllForms(!showAllForms)}
+              className="text-[11px] text-even-blue hover:text-even-navy transition-colors font-medium"
+            >
+              {showAllForms ? 'Show stage forms' : 'Show all forms'}
+            </button>
+          </div>
           {stageForms.length === 0 ? (
             <p className="text-xs text-gray-400 py-2">No forms for this stage.</p>
           ) : (

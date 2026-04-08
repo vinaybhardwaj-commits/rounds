@@ -46,9 +46,10 @@ type ViewState = 'list' | 'pick-patient' | 'fill' | 'success';
 // ─── All form types in display order ─────────────────
 
 const ALL_FORMS: { type: FormType; stages: string[] }[] = [
-  { type: 'marketing_cc_handoff', stages: ['opd', 'pre_admission'] },
+  { type: 'consolidated_marketing_handoff', stages: ['opd', 'pre_admission'] },
   { type: 'admission_advice', stages: ['opd', 'pre_admission'] },
-  { type: 'financial_counseling', stages: ['pre_admission'] },
+  { type: 'financial_counseling', stages: ['admitted', 'pre_op'] },
+  { type: 'surgery_booking', stages: ['admitted', 'pre_op'] },
   { type: 'admission_checklist', stages: ['admitted'] },
   { type: 'nursing_shift_handoff', stages: ['admitted', 'post_op'] },
   { type: 'surgery_posting', stages: ['pre_op'] },
