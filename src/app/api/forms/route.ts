@@ -523,9 +523,9 @@ export async function POST(request: NextRequest) {
             );
             // Log the stage change
             await sqlQuery(
-              `INSERT INTO escalation_log (patient_thread_id, escalation_type, from_value, to_value, reason, escalated_by)
-               VALUES ($1, 'stage_change', $2, 'admitted', 'Consolidated Marketing Handoff submitted', $3)`,
-              [body.patient_thread_id, patient.current_stage, user.profileId]
+              `INSERT INTO escalation_log (patient_thread_id, source_type, source_id, escalated_from, escalated_to, reason, level)
+               VALUES ($1, 'form_submission', $2, $3, 'admitted', 'Consolidated Marketing Handoff submitted', 'info')`,
+              [body.patient_thread_id, formId, patient.current_stage]
             );
           } catch (err) {
             console.error('[ConsolidatedHandoff] Stage transition error:', err);
