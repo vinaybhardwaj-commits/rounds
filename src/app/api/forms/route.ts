@@ -372,6 +372,7 @@ export async function POST(request: NextRequest) {
           console.error('[FinancialCounseling] Claim hook error:', err);
           // Non-fatal — form submission still succeeds
         }
+      }
       // Non-insurance patients (cash, corporate, credit) — still route to patient thread, billing, and CC
       if (fd.payment_mode && fd.payment_mode !== 'insurance' && fd.payment_mode !== 'insurance_cash') {
         try {
