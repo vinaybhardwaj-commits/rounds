@@ -115,6 +115,21 @@ export async function PATCH(
             params
           );
         }
+      } else {
+        // No admission_tracker row yet — create one with minimal required fields from the patient thread
+        await query(
+          `INSERT INTO admission_tracker (patient_thread_id, patient_name, uhid, ip_number, admission_date, bed_number, room_number)
+           VALUES ($1, $2, COALESCE($3, ''), COALESCE($4, ''), COALESCE($5, NOW()), $6, $7)`,
+          [
+            id,
+            patient.patient_name,
+            patient.uhid || '',
+            patient.ip_number || '',
+            patient.admission_date || null,
+            bed_number || null,
+            room_number || null,
+          ]
+        );
       }
 
       // Log bed change

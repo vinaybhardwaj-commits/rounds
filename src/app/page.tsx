@@ -30,12 +30,20 @@ export default async function HomePage() {
   // Generate a stream token for the client
   let streamToken: string | null = null;
   try {
-    // Ensure user exists in GetStream (idempotent)
+    // Fetch full profile for GetStream sync (use real name, not email prefix)
+    const sql2 = neon(process.env.POSTGRES_URL!);
+    const profileRows = await sql2`
+      SELECT full_name, department_id FROM profiles WHERE id = ${user.profileId}
+    `;
+    const profile = profileRows[0] as Record<string, unknown> | undefined;
+
+    // Ensure user exists in GetStream with correct profile data (idempotent)
     await syncUserToGetStream({
       id: user.profileId,
-      name: user.email.split('@')[0], // fallback name from email
+      name: (profile?.full_name as string) || user.email.split('@')[0],
       email: user.email,
       role: user.role,
+      department_id: (profile?.department_id as string) || null,
     });
     streamToken = generateStreamToken(user.profileId);
   } catch (error) {

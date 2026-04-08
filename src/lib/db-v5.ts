@@ -67,7 +67,8 @@ export async function createPatientThread(input: CreatePatientThreadInput) {
 export async function getPatientThread(id: string) {
   return queryOne(
     `SELECT pt.*, p.full_name as primary_consultant_name, d.name as department_name,
-            at.bed_number, at.room_number, at.room_category, at.financial_category
+            at.bed_number, at.room_number, at.room_category,
+            COALESCE(at.financial_category, pt.financial_category) as financial_category
      FROM patient_threads pt
      LEFT JOIN profiles p ON pt.primary_consultant_id = p.id
      LEFT JOIN departments d ON pt.department_id = d.id
@@ -108,7 +109,8 @@ export async function listPatientThreads(filters?: {
 
   return query(
     `SELECT pt.*, p.full_name as primary_consultant_name, d.name as department_name,
-            at.bed_number, at.room_number, at.room_category, at.financial_category
+            at.bed_number, at.room_number, at.room_category,
+            COALESCE(at.financial_category, pt.financial_category) as financial_category
      FROM patient_threads pt
      LEFT JOIN profiles p ON pt.primary_consultant_id = p.id
      LEFT JOIN departments d ON pt.department_id = d.id

@@ -45,6 +45,7 @@ export function NewMessageDialog({
   const [results, setResults] = useState<UserResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState<string | null>(null);
+  const [dmError, setDmError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -64,6 +65,7 @@ export function NewMessageDialog({
       setGroupName('');
       setGroupDescription('');
       setGroupError(null);
+      setDmError(null);
     }
   }, [isOpen]);
 
@@ -122,6 +124,7 @@ export function NewMessageDialog({
     if (!client) return;
 
     setCreating(targetUser.id);
+    setDmError(null);
     try {
       const channel = client.channel('direct', {
         members: [client.userID!, targetUser.id],
@@ -132,6 +135,7 @@ export function NewMessageDialog({
       onClose();
     } catch (err) {
       console.error('Failed to create DM channel:', err);
+      setDmError(`Could not open chat with ${targetUser.name}. Please try again or ask them to log in first.`);
     } finally {
       setCreating(null);
     }
@@ -246,6 +250,13 @@ export function NewMessageDialog({
                 />
               </div>
             </div>
+
+            {/* DM Error */}
+            {dmError && (
+              <div className="mx-4 mt-2 p-2 bg-red-50 text-red-700 text-sm rounded-lg">
+                {dmError}
+              </div>
+            )}
 
             {/* Results */}
             <div className="flex-1 overflow-y-auto">
