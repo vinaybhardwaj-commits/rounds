@@ -908,7 +908,7 @@ export async function POST() {
             'marketing_cc_handoff','consolidated_marketing_handoff',
             'admission_advice','financial_counseling',
             'ot_billing_clearance','admission_checklist','surgery_posting','surgery_booking',
-            'pre_op_nursing_checklist','who_safety_checklist','nursing_shift_handoff',
+            'pre_op_nursing_checklist','pre_surgery_checklist','who_safety_checklist','nursing_shift_handoff',
             'discharge_readiness','post_discharge_followup','daily_department_update',
             'pac_clearance'
           ));
