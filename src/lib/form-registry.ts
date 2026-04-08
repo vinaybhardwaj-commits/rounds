@@ -787,9 +787,9 @@ export const ADMISSION_ADVICE: FormSchema = {
 
 export const FINANCIAL_COUNSELING: FormSchema = {
   formType: 'financial_counseling',
-  title: 'Financial Counseling Sheet',
+  title: 'Financial Counseling',
   description: 'Capture financial discussion, insurance details, room rent eligibility, and patient consent before admission or when clinical circumstances change.',
-  version: 3,
+  version: 4,
   stages: ['opd', 'pre_admission', 'admitted', 'pre_op', 'surgery', 'post_op'],
   submitterRoles: ['billing_executive', 'insurance_coordinator', 'customer_care', 'marketing_sales', 'super_admin'],
   requiresPatient: true,
@@ -937,6 +937,12 @@ export const FINANCIAL_COUNSELING: FormSchema = {
         { key: 'co_pay_pct', label: 'Co-pay Percentage (%)', type: 'number', validation: { min: 0, max: 100 },
           visibleWhen: { field: 'payment_mode', operator: 'in', value: ['insurance', 'insurance_cash'] }, width: 'half',
           helpText: 'Patient co-pay percentage from insurance policy (0 if none)' },
+        { key: 'insurance_coverage_amount', label: 'Insurance Coverage Amount (₹)', type: 'number', validation: { min: 0 },
+          visibleWhen: { field: 'payment_mode', operator: 'in', value: ['insurance', 'insurance_cash'] }, width: 'half',
+          helpText: 'Approved or expected coverage amount from insurer for this admission' },
+        { key: 'copay_amount', label: 'Co-pay / Patient Responsibility (₹)', type: 'number', validation: { min: 0 },
+          visibleWhen: { field: 'payment_mode', operator: 'in', value: ['insurance', 'insurance_cash'] }, width: 'half',
+          helpText: 'Actual amount patient must pay out of pocket (auto-calculate: estimated cost − coverage if known)' },
       ],
     },
     // §5 — Cost Estimate (existing, with package amount from Google Form)
@@ -956,7 +962,8 @@ export const FINANCIAL_COUNSELING: FormSchema = {
         { key: 'estimated_cost', label: 'Estimated Total Cost (₹)', type: 'number', validation: { required: true, min: 0 }, width: 'half',
           helpText: 'Total estimated cost including implants, extras, etc.' },
         { key: 'cost_breakdown', label: 'Cost Breakdown', type: 'textarea', placeholder: 'Room, surgery, investigations, implants, etc.', helpText: 'Itemized cost components' },
-        { key: 'exclusions', label: 'Exclusions (if any)', type: 'textarea', placeholder: 'Items NOT covered in estimate', helpText: 'What is the patient responsible for beyond this estimate?' },
+        { key: 'inclusions', label: 'Inclusions Summary', type: 'textarea', placeholder: 'What is covered: room, nursing, surgeon fee, anaesthesia, meals, etc.', helpText: 'What is included in the estimate — helps set patient expectations' },
+        { key: 'exclusions', label: 'Exclusions / Caveats', type: 'textarea', placeholder: 'Items NOT covered: implants above ₹X, ICU beyond 2 days, etc.', helpText: 'What is NOT covered — patient is responsible for these beyond the estimate' },
       ],
     },
     // §6 — Deposit & Payment (existing)

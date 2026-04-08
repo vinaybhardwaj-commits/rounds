@@ -346,10 +346,96 @@ export async function POST(request: NextRequest) {
               await sendSystemMessage('department', 'billing',
                 `📋 ${patient.patient_name}: Financial counseling complete${versionNote} — by ${actorName}`);
             } catch { /* non-fatal */ }
+
+            // CC channel — financial summary for customer care follow-up
+            try {
+              const ccLines = [
+                `💰 **Financial Counseling**${versionNote} — ${patient.patient_name}`,
+                `Submitted by: ${actorName}`,
+              ];
+              if (fd.payment_mode) ccLines.push(`Payment: ${fd.payment_mode}`);
+              if (fd.estimated_cost) ccLines.push(`Est. Cost: ₹${Number(fd.estimated_cost).toLocaleString('en-IN')}`);
+              if (fd.insurance_provider) ccLines.push(`Insurer: ${fd.insurance_provider}`);
+              if (fd.insurance_coverage_amount) ccLines.push(`Coverage: ₹${Number(fd.insurance_coverage_amount).toLocaleString('en-IN')}`);
+              if (fd.copay_amount) ccLines.push(`Co-pay: ₹${Number(fd.copay_amount).toLocaleString('en-IN')}`);
+              if (fd.deposit_collected && fd.deposit_collected_amount) {
+                ccLines.push(`Deposit: ₹${Number(fd.deposit_collected_amount).toLocaleString('en-IN')} ✅ Collected`);
+              } else if (fd.deposit_amount) {
+                ccLines.push(`Deposit Required: ₹${Number(fd.deposit_amount).toLocaleString('en-IN')} — ⏳ Pending`);
+              }
+              if (fd.estimate_acknowledged) ccLines.push(`✅ Patient acknowledged costs`);
+              ccLines.push(`🔗 View patient thread for full context`);
+              await sendSystemMessage('department', 'customer-care', ccLines.join('\n'));
+            } catch { /* non-fatal */ }
           }
         } catch (err) {
           console.error('[FinancialCounseling] Claim hook error:', err);
           // Non-fatal — form submission still succeeds
+        }
+      // Non-insurance patients (cash, corporate, credit) — still route to patient thread, billing, and CC
+      if (fd.payment_mode && fd.payment_mode !== 'insurance' && fd.payment_mode !== 'insurance_cash') {
+        try {
+          const profile = await queryOne<{ full_name: string }>(
+            `SELECT full_name FROM profiles WHERE id = $1`,
+            [user.profileId]
+          );
+          const actorName = profile?.full_name || user.email;
+
+          const patient = await queryOne<{
+            patient_name: string;
+            getstream_channel_id: string | null;
+          }>(
+            `SELECT patient_name, getstream_channel_id FROM patient_threads WHERE id = $1`,
+            [body.patient_thread_id]
+          );
+
+          if (patient) {
+            let versionNote = '';
+            const submissionData = await queryOne<{ version_number: number | null }>(
+              `SELECT version_number FROM form_submissions WHERE id = $1`,
+              [formId]
+            );
+            if (submissionData?.version_number && submissionData.version_number > 1) {
+              versionNote = ` (v${submissionData.version_number})`;
+            }
+
+            let counselingDesc = `Payment: ${fd.payment_mode}`;
+            if (fd.estimated_cost) counselingDesc += ` | Est. Cost: ₹${Number(fd.estimated_cost).toLocaleString('en-IN')}`;
+            if (fd.deposit_collected && fd.deposit_collected_amount) {
+              counselingDesc += `\nDeposit: ₹${Number(fd.deposit_collected_amount).toLocaleString('en-IN')} (Collected)`;
+            }
+
+            const sysMsg = `📋 **Financial counseling complete**${versionNote} by ${actorName}\n${counselingDesc}`;
+
+            // Patient thread
+            if (patient.getstream_channel_id) {
+              try { await sendSystemMessage('patient-thread', patient.getstream_channel_id, sysMsg); } catch { /* non-fatal */ }
+            }
+            // Billing channel
+            try {
+              await sendSystemMessage('department', 'billing',
+                `📋 ${patient.patient_name}: Financial counseling complete${versionNote} — by ${actorName}`);
+            } catch { /* non-fatal */ }
+            // CC channel
+            try {
+              const ccLines = [
+                `💰 **Financial Counseling**${versionNote} — ${patient.patient_name}`,
+                `Submitted by: ${actorName}`,
+                `Payment: ${fd.payment_mode}`,
+              ];
+              if (fd.estimated_cost) ccLines.push(`Est. Cost: ₹${Number(fd.estimated_cost).toLocaleString('en-IN')}`);
+              if (fd.deposit_collected && fd.deposit_collected_amount) {
+                ccLines.push(`Deposit: ₹${Number(fd.deposit_collected_amount).toLocaleString('en-IN')} ✅ Collected`);
+              } else if (fd.deposit_amount) {
+                ccLines.push(`Deposit Required: ₹${Number(fd.deposit_amount).toLocaleString('en-IN')} — ⏳ Pending`);
+              }
+              if (fd.estimate_acknowledged) ccLines.push(`✅ Patient acknowledged costs`);
+              ccLines.push(`🔗 View patient thread for full context`);
+              await sendSystemMessage('department', 'customer-care', ccLines.join('\n'));
+            } catch { /* non-fatal */ }
+          }
+        } catch (err) {
+          console.error('[FinancialCounseling] Cash routing error:', err);
         }
       }
     }
