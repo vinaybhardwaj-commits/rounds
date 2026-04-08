@@ -267,6 +267,200 @@ function evaluateRequiredIf(
 // -------------------------------------------
 // 1. MARKETING → CUSTOMER CARE HANDOFF
 // The first handoff in the patient journey.
+// Consolidated Marketing Handoff (R.2a)
+// Three-section form: Clinical Handoff + Financial Counseling (first pass) + Surgery Booking
+// Routes intelligently to patient thread, CC dept channel, and OT dept channel.
+// -------------------------------------------
+
+export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
+  formType: 'consolidated_marketing_handoff',
+  title: 'Marketing Handoff',
+  description: 'Hand off a patient lead from Marketing to Customer Care for admission coordination.',
+  version: 1,
+  stages: ['opd', 'pre_admission'],
+  submitterRoles: ['marketing_executive', 'marketing', 'super_admin'],
+  requiresPatient: true,
+  sections: [
+    // ── Section A: Clinical Handoff ──
+    {
+      id: 'clinical_handoff',
+      title: 'Section A — Clinical Handoff',
+      description: 'Clinical summary, triage level, and patient context for the care team.',
+      fields: [
+        { key: 'clinical_summary', label: 'Clinical Summary', type: 'textarea', validation: { required: true, maxLength: 2000 }, helpText: '2–3 sentence clinical context for downstream teams', placeholder: 'Brief clinical context: what the patient needs, history, current status' },
+        { key: 'priority', label: 'Priority', type: 'select', validation: { required: true }, options: [
+          { value: 'routine', label: 'Routine' },
+          { value: 'urgent', label: 'Urgent' },
+          { value: 'emergency', label: 'Emergency' },
+        ], width: 'half' },
+        { key: 'target_opd_doctor', label: 'Target OPD Doctor', type: 'text', validation: { required: true }, placeholder: 'Consulting doctor name', width: 'half' },
+        { key: 'target_department', label: 'Target Department', type: 'text', validation: { required: true }, placeholder: 'e.g. Orthopaedics, General Surgery', width: 'half' },
+        { key: 'insurance_status', label: 'Insurance Status', type: 'select', validation: { required: true }, options: [
+          { value: 'insured', label: 'Insured' },
+          { value: 'uninsured', label: 'Uninsured' },
+          { value: 'unknown', label: 'Unknown' },
+        ], width: 'half' },
+        { key: 'patient_objections', label: 'Patient Objections / Concerns', type: 'textarea', placeholder: 'Hesitations, competitive concerns, family objections' },
+        { key: 'competitor_hospitals', label: 'Competitor Hospitals Considered', type: 'text', placeholder: 'Which other hospitals is the patient considering?', width: 'half' },
+        { key: 'why_chose_even', label: 'Why Patient Chose Even', type: 'text', placeholder: 'Stated reason for selecting Even Hospital', width: 'half' },
+        { key: 'preferred_admission_date', label: 'Preferred Admission Date', type: 'date', width: 'half' },
+        { key: 'room_category_preference', label: 'Room Category Preference', type: 'select', options: [
+          { value: 'general', label: 'General Ward' },
+          { value: 'semi_private', label: 'Semi-Private' },
+          { value: 'private', label: 'Private' },
+          { value: 'suite', label: 'Suite' },
+        ], width: 'half' },
+        { key: 'lead_quality_score', label: 'Lead Quality Score', type: 'select', options: [
+          { value: '1', label: '1 — Cold' },
+          { value: '2', label: '2 — Warm' },
+          { value: '3', label: '3 — Interested' },
+          { value: '4', label: '4 — High Intent' },
+          { value: '5', label: '5 — Confirmed' },
+        ], width: 'half' },
+        { key: 'special_notes', label: 'Special Notes', type: 'textarea', placeholder: 'Anything else for the care team: VIP, language preference, accessibility needs' },
+      ],
+    },
+
+    // ── Section B: Financial Counseling (First Pass) ──
+    {
+      id: 'financial_counseling_first_pass',
+      title: 'Section B — Financial Counseling (First Pass)',
+      description: 'Marketing\'s initial financial assessment. Fields left blank will be flagged as "Pending — CC to complete."',
+      fields: [
+        { key: 'insurer_name', label: 'Insurer Name', type: 'text', visibleWhen: { field: 'insurance_status', operator: 'eq', value: 'insured' }, placeholder: 'Insurance company name', width: 'half' },
+        { key: 'policy_member_id', label: 'Policy / Member ID', type: 'text', visibleWhen: { field: 'insurance_status', operator: 'eq', value: 'insured' }, placeholder: 'Policy number for TPA lookup', width: 'half' },
+        { key: 'insurance_tpa_details', label: 'Insurance & TPA Details', type: 'textarea', visibleWhen: { field: 'insurance_status', operator: 'eq', value: 'insured' }, placeholder: 'TPA name, network status, sub-limits, any known exclusions' },
+        { key: 'package_name', label: 'Package Name', type: 'text', placeholder: 'e.g. Appendicectomy with 3-night stay', width: 'half' },
+        { key: 'estimated_total_cost', label: 'Estimated Total Cost (₹)', type: 'number', placeholder: 'Total estimate in INR', width: 'half' },
+        { key: 'insurance_coverage_amount', label: 'Insurance Coverage Amount (₹)', type: 'number', visibleWhen: { field: 'insurance_status', operator: 'eq', value: 'insured' }, placeholder: 'Covered amount from policy', width: 'half' },
+        { key: 'copay_patient_responsibility', label: 'Co-pay / Patient Responsibility (₹)', type: 'number', visibleWhen: { field: 'insurance_status', operator: 'eq', value: 'insured' }, placeholder: 'Patient out-of-pocket amount', width: 'half' },
+        { key: 'payment_mode', label: 'Payment Mode', type: 'select', options: [
+          { value: 'cash', label: 'Cash' },
+          { value: 'insurance', label: 'Insurance' },
+          { value: 'pdc', label: 'PDC (Post-Dated Cheque)' },
+          { value: 'emi', label: 'EMI' },
+          { value: 'mixed', label: 'Mixed' },
+        ], width: 'half' },
+        { key: 'deposit_required', label: 'Deposit Required (₹)', type: 'number', placeholder: 'Amount to collect before admission', width: 'half' },
+        { key: 'deposit_collected', label: 'Deposit Already Collected?', type: 'checkbox' },
+        { key: 'deposit_collected_amount', label: 'Deposit Amount Collected (₹)', type: 'number', visibleWhen: { field: 'deposit_collected', operator: 'truthy' }, placeholder: 'Actual deposit received', width: 'half' },
+        { key: 'patient_family_acknowledged', label: 'Patient / family acknowledged costs', type: 'checkbox', helpText: 'Timestamp is auto-logged on submission' },
+        { key: 'counselor_notes', label: 'Counselor Notes', type: 'textarea', placeholder: 'Context from the financial discussion — concerns, negotiation, special arrangements' },
+      ],
+    },
+
+    // ── Section C: Surgery Booking ──
+    {
+      id: 'surgery_booking',
+      title: 'Section C — Surgery Booking',
+      description: 'Surgical plan, clinical risk profile, and OT scheduling. Fields left blank are flagged "Pending — OT/Anaesthesia to complete."',
+      fields: [
+        { key: 'surgeon_name', label: 'Surgeon Name', type: 'text', validation: { required: true }, placeholder: 'Who will operate (may differ from OPD doctor)', width: 'half' },
+        { key: 'surgical_specialty', label: 'Surgical Specialty', type: 'select', validation: { required: true }, options: [
+          { value: 'general_surgery', label: 'General Surgery' },
+          { value: 'orthopaedics', label: 'Orthopaedics' },
+          { value: 'ent', label: 'ENT' },
+          { value: 'urology', label: 'Urology' },
+          { value: 'gynaecology', label: 'Gynaecology' },
+          { value: 'ophthalmology', label: 'Ophthalmology' },
+          { value: 'neurosurgery', label: 'Neurosurgery' },
+          { value: 'cardiothoracic', label: 'Cardiothoracic' },
+          { value: 'plastic_surgery', label: 'Plastic Surgery' },
+          { value: 'paediatric_surgery', label: 'Paediatric Surgery' },
+          { value: 'vascular_surgery', label: 'Vascular Surgery' },
+          { value: 'gastro_surgery', label: 'GI / Laparoscopic Surgery' },
+          { value: 'other', label: 'Other' },
+        ], width: 'half' },
+        { key: 'proposed_procedure', label: 'Proposed Procedure', type: 'text', validation: { required: true }, placeholder: 'What surgery is planned' },
+        { key: 'laterality', label: 'Laterality', type: 'select', options: [
+          { value: 'left', label: 'Left' },
+          { value: 'right', label: 'Right' },
+          { value: 'bilateral', label: 'Bilateral' },
+          { value: 'na', label: 'N/A' },
+        ], width: 'half' },
+        { key: 'surgery_urgency', label: 'Urgency', type: 'select', validation: { required: true }, options: [
+          { value: 'elective', label: 'Elective' },
+          { value: 'urgent', label: 'Urgent' },
+          { value: 'emergency', label: 'Emergency' },
+        ], width: 'half' },
+        { key: 'clinical_justification', label: 'Clinical Justification', type: 'textarea', placeholder: 'Indication for surgery' },
+        { key: 'known_comorbidities', label: 'Known Co-morbidities', type: 'multiselect', options: [
+          { value: 'diabetes', label: 'Diabetes' },
+          { value: 'cardiac_disease', label: 'Cardiac Disease' },
+          { value: 'renal_disease', label: 'Renal Disease' },
+          { value: 'respiratory_disease', label: 'Respiratory Disease' },
+          { value: 'hypertension', label: 'Hypertension' },
+          { value: 'thyroid', label: 'Thyroid' },
+          { value: 'obesity', label: 'Obesity (BMI > 35)' },
+          { value: 'anaemia', label: 'Anaemia' },
+          { value: 'thrombocytopenia', label: 'Thrombocytopenia' },
+          { value: 'none', label: 'None' },
+        ] },
+        { key: 'comorbidities_controlled', label: 'Are co-morbidities well controlled?', type: 'select', options: [
+          { value: 'yes', label: 'Yes' },
+          { value: 'no', label: 'No' },
+          { value: 'unknown', label: 'Unknown' },
+        ], helpText: 'Diabetes: HbA1c < 8, RBS < 180 · BP: < 150/100 on ≥2 readings · TSH: < 5 · Heart disease/CVD: cardiology clearance obtained · Renal: eGFR > 60 · BMI > 35: documented · Hb > 8 · Platelets > 80,000 · Respiratory: SpO2 > 94% on room air · Fever: resolved > 1 week ago', width: 'half' },
+        { key: 'habits', label: 'Habits', type: 'multiselect', options: [
+          { value: 'smoking', label: 'Smoking' },
+          { value: 'alcohol', label: 'Alcohol' },
+          { value: 'tobacco_chewing', label: 'Tobacco Chewing' },
+          { value: 'none', label: 'None' },
+        ], width: 'half' },
+        { key: 'habits_stopped', label: 'Habits stopped 3+ days ago?', type: 'select', visibleWhen: { field: 'habits', operator: 'truthy' }, options: [
+          { value: 'yes', label: 'Yes' },
+          { value: 'no', label: 'No' },
+        ], width: 'half' },
+        { key: 'current_medication', label: 'Current Medication', type: 'textarea', placeholder: 'Active prescriptions, especially anticoagulants' },
+        { key: 'referred_from_practitioner', label: 'Referred from Private Practitioner?', type: 'select', options: [
+          { value: 'yes', label: 'Yes' },
+          { value: 'no', label: 'No' },
+        ], width: 'half' },
+        { key: 'referring_doctor', label: 'Referring Doctor / Clinic', type: 'text', visibleWhen: { field: 'referred_from_practitioner', operator: 'eq', value: 'yes' }, placeholder: 'Name of referring practitioner', width: 'half' },
+        { key: 'pac_status', label: 'PAC Status', type: 'select', options: [
+          { value: 'not_done', label: 'Not Done' },
+          { value: 'done_fit', label: 'Done — Fit' },
+          { value: 'done_unfit', label: 'Done — Unfit' },
+          { value: 'pending_review', label: 'Pending Review' },
+        ], width: 'half' },
+        { key: 'preferred_surgery_date', label: 'Preferred Surgery Date', type: 'date', width: 'half' },
+        { key: 'preferred_surgery_time', label: 'Preferred Surgery Time', type: 'select', options: [
+          { value: 'morning', label: 'Morning' },
+          { value: 'afternoon', label: 'Afternoon' },
+          { value: 'no_preference', label: 'No Preference' },
+        ], width: 'half' },
+        { key: 'estimated_duration', label: 'Estimated Duration', type: 'text', placeholder: 'e.g. 2 hours', width: 'half' },
+        { key: 'anaesthesia_type', label: 'Anaesthesia Type', type: 'select', options: [
+          { value: 'general', label: 'General (GA)' },
+          { value: 'regional', label: 'Regional' },
+          { value: 'local', label: 'Local' },
+          { value: 'sedation', label: 'Sedation' },
+          { value: 'tbd', label: 'TBD' },
+        ], width: 'half' },
+        { key: 'support_requirements', label: 'Support Requirements', type: 'textarea', placeholder: 'ICU bed, ventilator, blood products, etc.' },
+        { key: 'special_requirements', label: 'Special Requirements', type: 'textarea', placeholder: 'Implants, consumables, special equipment' },
+      ],
+    },
+
+    // ── Handoff Confirmation ──
+    {
+      id: 'handoff_confirmation',
+      title: 'Handoff Confirmation',
+      description: 'Confirm before submitting. This will route information to the CC team and OT team automatically.',
+      fields: [
+        { key: 'check_contact_verified', label: 'Patient contact information verified', type: 'checkbox',
+          readinessItem: { itemName: 'Contact info verified', category: 'consent', responsibleRole: 'marketing_executive', slaHours: 1 } },
+        { key: 'check_docs_collected', label: 'Relevant documents collected (insurance card, referral letter, reports)', type: 'checkbox',
+          readinessItem: { itemName: 'Documents collected', category: 'investigation', responsibleRole: 'marketing_executive', slaHours: 2 } },
+        { key: 'check_cost_discussed', label: 'Approximate cost / package info shared with patient', type: 'checkbox',
+          readinessItem: { itemName: 'Cost estimate shared', category: 'billing', responsibleRole: 'marketing_executive', slaHours: 4 } },
+      ],
+    },
+  ],
+};
+
+// -------------------------------------------
+// 1b. MARKETING → CC HANDOFF (Legacy)
 // Marketing team fills this when handing off
 // a patient lead to Customer Care.
 // -------------------------------------------
@@ -1668,8 +1862,7 @@ export const PAC_CLEARANCE: FormSchema = {
 // ============================================
 
 export const FORM_REGISTRY: Record<FormType, FormSchema> = {
-  // Consolidated Marketing Handoff — placeholder schema until R.2a builds the full 3-section form
-  consolidated_marketing_handoff: MARKETING_CC_HANDOFF,
+  consolidated_marketing_handoff: CONSOLIDATED_MARKETING_HANDOFF,
   marketing_cc_handoff: MARKETING_CC_HANDOFF,  // legacy — kept for existing form submissions
   admission_advice: ADMISSION_ADVICE,
   financial_counseling: FINANCIAL_COUNSELING,

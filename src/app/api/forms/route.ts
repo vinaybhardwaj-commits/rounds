@@ -378,6 +378,165 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ── Consolidated Marketing Handoff → Triple-Route Hook ──
+    // Posts rich summary cards to: patient thread, CC dept channel, OT dept channel
+    // Also advances patient stage to 'admitted'
+    if (form_type === 'consolidated_marketing_handoff' && status !== 'draft' && body.patient_thread_id) {
+      try {
+        const fd = form_data as Record<string, unknown>;
+
+        // Get patient info + submitter name
+        const patient = await queryOne<{
+          patient_name: string;
+          uhid: string | null;
+          getstream_channel_id: string | null;
+          current_stage: string;
+        }>(
+          `SELECT patient_name, uhid, getstream_channel_id, current_stage FROM patient_threads WHERE id = $1`,
+          [body.patient_thread_id]
+        );
+        const profile = await queryOne<{ full_name: string }>(
+          `SELECT full_name FROM profiles WHERE id = $1`,
+          [user.profileId]
+        );
+        const submitterName = profile?.full_name || user.email;
+        const pName = patient?.patient_name || 'Unknown';
+        const pUhid = patient?.uhid || '—';
+
+        // Helper: mark blank fields as "Pending"
+        const val = (v: unknown, label?: string) => {
+          if (v === undefined || v === null || v === '') return `⏳ Pending${label ? ' — ' + label : ''}`;
+          return String(v);
+        };
+        const currency = (v: unknown) => {
+          if (v === undefined || v === null || v === '') return '⏳ Pending';
+          return `₹${Number(v).toLocaleString('en-IN')}`;
+        };
+
+        // ── 1. Patient Thread — Full summary card (all 3 sections) ──
+        if (patient?.getstream_channel_id) {
+          const lines: string[] = [
+            `📋 **Marketing Handoff** submitted by ${submitterName}`,
+            '',
+            `**Section A — Clinical Handoff**`,
+            `Priority: ${val(fd.priority)} | OPD Doctor: ${val(fd.target_opd_doctor)} | Dept: ${val(fd.target_department)}`,
+            `Clinical Summary: ${val(fd.clinical_summary)}`,
+            `Insurance: ${val(fd.insurance_status)} | Room: ${val(fd.room_category_preference)} | Admission: ${val(fd.preferred_admission_date)}`,
+          ];
+          if (fd.patient_objections) lines.push(`Concerns: ${fd.patient_objections}`);
+          if (fd.special_notes) lines.push(`Notes: ${fd.special_notes}`);
+
+          lines.push('', `**Section B — Financial Counseling**`);
+          lines.push(`Payment: ${val(fd.payment_mode)} | Est. Cost: ${currency(fd.estimated_total_cost)}`);
+          if (fd.insurance_status === 'insured') {
+            lines.push(`Insurer: ${val(fd.insurer_name)} | Policy: ${val(fd.policy_member_id)}`);
+            lines.push(`Coverage: ${currency(fd.insurance_coverage_amount)} | Co-pay: ${currency(fd.copay_patient_responsibility)}`);
+          }
+          if (fd.deposit_required) lines.push(`Deposit Required: ${currency(fd.deposit_required)}${fd.deposit_collected ? ' ✅ Collected: ' + currency(fd.deposit_collected_amount) : ''}`);
+
+          lines.push('', `**Section C — Surgery Booking**`);
+          lines.push(`Surgeon: ${val(fd.surgeon_name)} | Specialty: ${val(fd.surgical_specialty)}`);
+          lines.push(`Procedure: ${val(fd.proposed_procedure)} | Urgency: ${val(fd.surgery_urgency)}`);
+          if (fd.known_comorbidities && Array.isArray(fd.known_comorbidities) && fd.known_comorbidities.length > 0) {
+            lines.push(`Co-morbidities: ${(fd.known_comorbidities as string[]).join(', ')} | Controlled: ${val(fd.comorbidities_controlled)}`);
+          }
+          if (fd.preferred_surgery_date) lines.push(`Surgery Date: ${fd.preferred_surgery_date} | Time: ${val(fd.preferred_surgery_time)}`);
+          if (fd.anaesthesia_type) lines.push(`Anaesthesia: ${fd.anaesthesia_type}`);
+
+          try {
+            await sendSystemMessage('patient-thread', patient.getstream_channel_id, lines.join('\n'));
+          } catch { /* non-fatal */ }
+        }
+
+        // ── 2. CC Department Channel — Financial counseling routing card ──
+        {
+          const ccLines: string[] = [
+            `💰 **Financial Counseling Handoff** — ${pName} (UHID: ${pUhid})`,
+            `Submitted by: ${submitterName}`,
+            '',
+            `Insurance: ${val(fd.insurance_status)}`,
+          ];
+          if (fd.insurance_status === 'insured') {
+            ccLines.push(`Insurer: ${val(fd.insurer_name, 'CC to complete')}`);
+            ccLines.push(`Policy/Member ID: ${val(fd.policy_member_id, 'CC to complete')}`);
+            ccLines.push(`TPA Details: ${val(fd.insurance_tpa_details, 'CC to complete')}`);
+            ccLines.push(`Coverage: ${currency(fd.insurance_coverage_amount)} | Co-pay: ${currency(fd.copay_patient_responsibility)}`);
+          }
+          ccLines.push(`Package: ${val(fd.package_name, 'CC to complete')}`);
+          ccLines.push(`Est. Cost: ${currency(fd.estimated_total_cost)} | Payment: ${val(fd.payment_mode, 'CC to complete')}`);
+          ccLines.push(`Deposit Required: ${currency(fd.deposit_required)}${fd.deposit_collected ? ' ✅ Collected: ' + currency(fd.deposit_collected_amount) : ''}`);
+          if (fd.patient_family_acknowledged) ccLines.push(`✅ Patient/family acknowledged costs`);
+          if (fd.counselor_notes) ccLines.push(`Notes: ${fd.counselor_notes}`);
+          ccLines.push(``, `🔗 View patient thread for full context`);
+
+          try {
+            await sendSystemMessage('department', 'customer-care', ccLines.join('\n'));
+          } catch {
+            // Try alternate slug
+            try { await sendSystemMessage('department', 'cc', ccLines.join('\n')); } catch { /* non-fatal */ }
+          }
+        }
+
+        // ── 3. OT Department Channel — Surgery booking routing card ──
+        {
+          const otLines: string[] = [
+            `🔪 **Surgery Booking Handoff** — ${pName} (UHID: ${pUhid})`,
+            `Submitted by: ${submitterName}`,
+            '',
+            `Surgeon: ${val(fd.surgeon_name)} | Specialty: ${val(fd.surgical_specialty)}`,
+            `Procedure: ${val(fd.proposed_procedure)}`,
+            `Laterality: ${val(fd.laterality)} | Urgency: ${val(fd.surgery_urgency)}`,
+          ];
+          if (fd.clinical_justification) otLines.push(`Justification: ${fd.clinical_justification}`);
+          if (fd.known_comorbidities && Array.isArray(fd.known_comorbidities) && fd.known_comorbidities.length > 0) {
+            otLines.push(`Co-morbidities: ${(fd.known_comorbidities as string[]).join(', ')} | Controlled: ${val(fd.comorbidities_controlled)}`);
+          }
+          if (fd.habits && Array.isArray(fd.habits) && fd.habits.length > 0) {
+            otLines.push(`Habits: ${(fd.habits as string[]).join(', ')}${fd.habits_stopped ? ' | Stopped 3+ days: ' + fd.habits_stopped : ''}`);
+          }
+          if (fd.current_medication) otLines.push(`Medication: ${fd.current_medication}`);
+          otLines.push(`PAC: ${val(fd.pac_status, 'OT to complete')}`);
+          otLines.push(`Surgery Date: ${val(fd.preferred_surgery_date, 'OT to schedule')} | Time: ${val(fd.preferred_surgery_time)}`);
+          otLines.push(`Duration: ${val(fd.estimated_duration)} | Anaesthesia: ${val(fd.anaesthesia_type, 'Anaesthesia to confirm')}`);
+          if (fd.support_requirements) otLines.push(`Support: ${fd.support_requirements}`);
+          if (fd.special_requirements) otLines.push(`Special: ${fd.special_requirements}`);
+          otLines.push(``, `🔗 View patient thread for full context`);
+
+          try {
+            await sendSystemMessage('department', 'ot', otLines.join('\n'));
+          } catch {
+            // Try alternate slug
+            try { await sendSystemMessage('department', 'operation-theatre', otLines.join('\n')); } catch { /* non-fatal */ }
+          }
+        }
+
+        // ── 4. Stage Transition: opd/pre_admission → admitted ──
+        if (patient && (patient.current_stage === 'opd' || patient.current_stage === 'pre_admission')) {
+          try {
+            await sqlQuery(
+              `UPDATE patient_threads
+               SET current_stage = 'admitted',
+                   admission_date = COALESCE(admission_date, NOW()),
+                   updated_at = NOW()
+               WHERE id = $1`,
+              [body.patient_thread_id]
+            );
+            // Log the stage change
+            await sqlQuery(
+              `INSERT INTO escalation_log (patient_thread_id, escalation_type, from_value, to_value, reason, escalated_by)
+               VALUES ($1, 'stage_change', $2, 'admitted', 'Consolidated Marketing Handoff submitted', $3)`,
+              [body.patient_thread_id, patient.current_stage, user.profileId]
+            );
+          } catch (err) {
+            console.error('[ConsolidatedHandoff] Stage transition error:', err);
+          }
+        }
+      } catch (err) {
+        console.error('[ConsolidatedHandoff] Routing hook error:', err);
+        // Non-fatal — form submission still succeeds
+      }
+    }
+
     // Post form card to GetStream channels
     const formLabel = FORM_TYPE_LABELS[form_type as FormType] || form_type;
     const formAttachment = {
