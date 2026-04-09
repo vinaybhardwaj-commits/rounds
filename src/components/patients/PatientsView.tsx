@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Plus,
   Search,
@@ -151,6 +151,46 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
   const [fName, setFName] = useState('');
   const [fUhid, setFUhid] = useState('');
   const [fStage, setFStage] = useState<PatientStage>('opd');
+  // R.3 + R.4 intake fields
+  const [fPhone, setFPhone] = useState('');
+  const [fAge, setFAge] = useState('');
+  const [fGender, setFGender] = useState('');
+  const [fCity, setFCity] = useState('');
+  const [fSource, setFSource] = useState('manual');
+  const [fSourceDetail, setFSourceDetail] = useState('');
+  const [fChiefComplaint, setFChiefComplaint] = useState('');
+  const [fTargetDepartment, setFTargetDepartment] = useState('');
+  const [fInsuranceStatus, setFInsuranceStatus] = useState('');
+  const [fIsExistingMember, setFIsExistingMember] = useState(false);
+  const [fMemberType, setFMemberType] = useState('');
+  // Dedup live-check state
+  type DedupCheckData = {
+    action: 'link' | 'flag' | 'create';
+    layer: number | null;
+    phoneNormalized: string | null;
+    matchedThread?: {
+      id: string;
+      patient_name: string;
+      phone: string | null;
+      city: string | null;
+      current_stage: string;
+      source_type: string | null;
+      created_at: string;
+    };
+    fuzzyMatches?: Array<{
+      id: string;
+      patient_name: string;
+      phone: string | null;
+      city: string | null;
+      current_stage: string;
+      source_type: string | null;
+      created_at: string;
+      similarity: number;
+    }>;
+  };
+  const [dedupCheckLoading, setDedupCheckLoading] = useState(false);
+  const [dedupCheck, setDedupCheck] = useState<DedupCheckData | null>(null);
+  const dedupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // IP Upload state
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -326,19 +366,109 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
     finally { setSaving(false); }
   };
 
+  // --- R.3 + R.4: live blur-check for dedup on phone ---
+  const runDedupCheck = useCallback(async (name: string, phone: string) => {
+    // Need at least name + phone to run a meaningful check
+    if (!phone || phone.replace(/\D/g, '').length < 10) {
+      setDedupCheck(null);
+      return;
+    }
+    setDedupCheckLoading(true);
+    try {
+      const res = await fetch('/api/patients/dedup-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name || '',
+          phone,
+          whatsapp: phone,
+          city: fCity || null,
+        }),
+      });
+      if (!res.ok) { setDedupCheck(null); return; }
+      const data = await res.json();
+      if (data.success) setDedupCheck(data.data as DedupCheckData);
+      else setDedupCheck(null);
+    } catch {
+      setDedupCheck(null);
+    } finally {
+      setDedupCheckLoading(false);
+    }
+  }, [fCity]);
+
+  // Debounced live check — runs when phone field settles for 300ms
+  useEffect(() => {
+    if (dedupTimerRef.current) clearTimeout(dedupTimerRef.current);
+    if (!showCreate || createTab !== 'single') { setDedupCheck(null); return; }
+    if (!fPhone || fPhone.replace(/\D/g, '').length < 10) { setDedupCheck(null); return; }
+    dedupTimerRef.current = setTimeout(() => {
+      runDedupCheck(fName, fPhone);
+    }, 300);
+    return () => { if (dedupTimerRef.current) clearTimeout(dedupTimerRef.current); };
+  }, [fPhone, fName, showCreate, createTab, runDedupCheck]);
+
+  const resetCreateForm = () => {
+    setFName(''); setFUhid(''); setFStage('opd');
+    setFPhone(''); setFAge(''); setFGender(''); setFCity('');
+    setFSource('manual'); setFSourceDetail('');
+    setFChiefComplaint(''); setFTargetDepartment(''); setFInsuranceStatus('');
+    setFIsExistingMember(false); setFMemberType('');
+    setDedupCheck(null);
+  };
+
   const handleCreate = async () => {
     setMsg(null);
     if (!fName) { setMsg({ type: 'error', text: 'Patient name is required.' }); return; }
+    if (!fPhone || fPhone.replace(/\D/g, '').length < 10) {
+      setMsg({ type: 'error', text: 'Phone number is required (at least 10 digits).' });
+      return;
+    }
     setSaving(true);
     try {
+      const payload: Record<string, unknown> = {
+        patient_name: fName,
+        uhid: fUhid || null,
+        current_stage: fStage,
+        phone: fPhone,
+        whatsapp_number: fPhone, // default whatsapp to phone unless user splits them later
+        age: fAge ? Number(fAge) : null,
+        gender: fGender || null,
+        city: fCity || null,
+        source_type: fSource || 'manual',
+        source_detail: fSourceDetail || null,
+        chief_complaint: fChiefComplaint || null,
+        target_department: fTargetDepartment || null,
+        insurance_status: fInsuranceStatus || null,
+        is_existing_member: fIsExistingMember,
+        member_type: fIsExistingMember ? (fMemberType || null) : null,
+      };
       const res = await fetch('/api/patients', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ patient_name: fName, uhid: fUhid || null, current_stage: fStage }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`Request failed: ${res.status}`);
       const data = await res.json();
-      if (data.success) { trackFeature('patient_create', { stage: fStage }); setMsg({ type: 'success', text: 'Patient thread created.' }); setShowCreate(false); setFName(''); setFUhid(''); setFStage('opd'); fetchPatients(); }
-      else { setMsg({ type: 'error', text: data.error || 'Failed to create.' }); }
+      if (data.success) {
+        trackFeature('patient_create', {
+          stage: fStage,
+          action: data.action || 'created',
+          source: fSource,
+        });
+        const action = data.action as 'linked' | 'flagged' | 'created' | undefined;
+        let successText = 'Patient thread created.';
+        if (action === 'linked') {
+          successText = `Linked to existing patient "${data.data?.matched_patient_name || ''}" — returning patient count incremented.`;
+        } else if (action === 'flagged') {
+          const n = data.data?.fuzzy_match_count || 0;
+          successText = `Patient created — flagged as possible duplicate (${n} similar name${n === 1 ? '' : 's'}). Review in /admin/dedup.`;
+        }
+        setMsg({ type: 'success', text: successText });
+        setShowCreate(false);
+        resetCreateForm();
+        fetchPatients();
+      } else {
+        setMsg({ type: 'error', text: data.error || 'Failed to create.' });
+      }
     } catch { setMsg({ type: 'error', text: 'Network error.' }); }
     finally { setSaving(false); }
   };
@@ -681,7 +811,7 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
           <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md mx-0 sm:mx-4 shadow-xl max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
               <h2 className="text-lg font-semibold text-even-navy">Add Patients</h2>
-              <button onClick={() => { setShowCreate(false); setUploadResult(null); setUploadFile(null); }} className="p-1 hover:bg-gray-100 rounded">
+              <button onClick={() => { setShowCreate(false); setUploadResult(null); setUploadFile(null); resetCreateForm(); }} className="p-1 hover:bg-gray-100 rounded">
                 <X size={18} />
               </button>
             </div>
@@ -703,6 +833,194 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
                     <input type="text" value={fName} onChange={e => setFName(e.target.value)}
                       className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm" placeholder="Full name" autoFocus />
                   </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
+                    <input
+                      type="tel"
+                      value={fPhone}
+                      onChange={e => setFPhone(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm"
+                      placeholder="+91 98XXXXXXXX"
+                      inputMode="tel"
+                    />
+                    {dedupCheckLoading && (
+                      <div className="mt-1.5 text-xs text-gray-400 flex items-center gap-1.5">
+                        <Loader2 size={12} className="animate-spin" /> Checking for existing patient…
+                      </div>
+                    )}
+                    {!dedupCheckLoading && dedupCheck?.action === 'link' && dedupCheck.matchedThread && (
+                      <div className="mt-1.5 p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-xs">
+                        <div className="font-semibold text-blue-800 flex items-center gap-1.5">
+                          <AlertCircle size={12} /> Returning patient — phone already on file
+                        </div>
+                        <div className="text-blue-700 mt-1">
+                          Matches <strong>{dedupCheck.matchedThread.patient_name}</strong>
+                          {dedupCheck.matchedThread.city ? ` · ${dedupCheck.matchedThread.city}` : ''}
+                          {' · '}stage: {dedupCheck.matchedThread.current_stage.replace(/_/g, ' ')}
+                        </div>
+                        <div className="text-blue-600 mt-1 text-[10px]">
+                          Submitting will merge into this thread and bump the returning-patient count.
+                        </div>
+                      </div>
+                    )}
+                    {!dedupCheckLoading && dedupCheck?.action === 'flag' && (dedupCheck.fuzzyMatches?.length ?? 0) > 0 && (
+                      <div className="mt-1.5 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs">
+                        <div className="font-semibold text-amber-800 flex items-center gap-1.5">
+                          <AlertCircle size={12} /> Possible duplicate — similar name found
+                        </div>
+                        <ul className="text-amber-700 mt-1 space-y-0.5">
+                          {dedupCheck.fuzzyMatches!.slice(0, 3).map(m => (
+                            <li key={m.id}>
+                              • <strong>{m.patient_name}</strong>
+                              {m.city ? ` · ${m.city}` : ''}
+                              {' · '}{Math.round(m.similarity * 100)}% match
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="text-amber-600 mt-1 text-[10px]">
+                          Submitting will still create this patient but flag it for admin review.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Age</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={120}
+                        value={fAge}
+                        onChange={e => setFAge(e.target.value)}
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm"
+                        placeholder="Years"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+                      <select
+                        value={fGender}
+                        onChange={e => setFGender(e.target.value)}
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white"
+                      >
+                        <option value="">—</option>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                    <input
+                      type="text"
+                      value={fCity}
+                      onChange={e => setFCity(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm"
+                      placeholder="Bengaluru"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Source</label>
+                    <select
+                      value={fSource}
+                      onChange={e => { setFSource(e.target.value); setFSourceDetail(''); }}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white"
+                    >
+                      <option value="manual">Walk-in / Manual</option>
+                      <option value="referral">Referral</option>
+                      <option value="camp">Camp</option>
+                      <option value="doctor">Doctor Referral</option>
+                      <option value="returning">Returning Patient</option>
+                      <option value="other">Other</option>
+                    </select>
+                    {(fSource === 'referral' || fSource === 'doctor' || fSource === 'camp' || fSource === 'other') && (
+                      <input
+                        type="text"
+                        value={fSourceDetail}
+                        onChange={e => setFSourceDetail(e.target.value)}
+                        className="mt-2 w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm"
+                        placeholder={
+                          fSource === 'referral' ? 'Referred by (name / hospital)'
+                          : fSource === 'doctor' ? 'Referring doctor name'
+                          : fSource === 'camp' ? 'Camp name / location'
+                          : 'Describe source'
+                        }
+                      />
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Chief Complaint</label>
+                    <textarea
+                      value={fChiefComplaint}
+                      onChange={e => setFChiefComplaint(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm"
+                      placeholder="Why did the patient present?"
+                      rows={2}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Target Department</label>
+                    <input
+                      type="text"
+                      value={fTargetDepartment}
+                      onChange={e => setFTargetDepartment(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm"
+                      placeholder="Ortho / Neuro / Cardio…"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Insurance Status</label>
+                    <select
+                      value={fInsuranceStatus}
+                      onChange={e => setFInsuranceStatus(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white"
+                    >
+                      <option value="">—</option>
+                      <option value="cash">Cash / Self-Pay</option>
+                      <option value="insurance_known">Has Insurance (known TPA)</option>
+                      <option value="insurance_unknown">Has Insurance (TPA TBD)</option>
+                      <option value="cghs">CGHS / Govt Scheme</option>
+                      <option value="corporate">Corporate</option>
+                      <option value="unknown">Unknown</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-start gap-2 p-2.5 bg-gray-50 rounded-lg">
+                    <input
+                      type="checkbox"
+                      id="existing-member-check"
+                      checked={fIsExistingMember}
+                      onChange={e => setFIsExistingMember(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <div className="flex-1">
+                      <label htmlFor="existing-member-check" className="text-sm font-medium text-gray-700 cursor-pointer">
+                        Existing Even member
+                      </label>
+                      {fIsExistingMember && (
+                        <select
+                          value={fMemberType}
+                          onChange={e => setFMemberType(e.target.value)}
+                          className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+                        >
+                          <option value="">Select member type…</option>
+                          <option value="care_plan">Care Plan</option>
+                          <option value="even_app">Even App Member</option>
+                          <option value="corporate">Corporate Member</option>
+                          <option value="other">Other</option>
+                        </select>
+                      )}
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">UHID</label>
                     <input type="text" value={fUhid} onChange={e => setFUhid(e.target.value)}
@@ -768,7 +1086,7 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
               )}
             </div>
             <div className="flex gap-3 px-5 py-4 border-t border-gray-200 shrink-0">
-              <button onClick={() => { setShowCreate(false); setUploadResult(null); setUploadFile(null); }}
+              <button onClick={() => { setShowCreate(false); setUploadResult(null); setUploadFile(null); resetCreateForm(); }}
                 className="flex-1 px-4 py-2.5 text-sm text-gray-600 bg-gray-100 rounded-lg">Cancel</button>
               {createTab === 'single' ? (
                 <button onClick={handleCreate} disabled={saving}

@@ -34,6 +34,21 @@ export interface CreatePatientThreadInput {
   admission_date?: string;
   planned_surgery_date?: string;
   created_by: string;
+  // R.3 + R.4 intake fields (all optional — safe default: null)
+  phone?: string | null;
+  whatsapp_number?: string | null;
+  email?: string | null;
+  age?: number | null;
+  gender?: string | null;
+  city?: string | null;
+  source_type?: string | null;
+  source_detail?: string | null;
+  chief_complaint?: string | null;
+  insurance_status?: string | null;
+  target_department?: string | null;
+  referral_details?: string | null;
+  is_existing_member?: boolean | null;
+  member_type?: string | null;
 }
 
 export async function createPatientThread(input: CreatePatientThreadInput) {
@@ -41,8 +56,16 @@ export async function createPatientThread(input: CreatePatientThreadInput) {
     `INSERT INTO patient_threads (
       patient_name, uhid, ip_number, even_member_id, getstream_channel_id,
       current_stage, lead_source, primary_consultant_id, primary_diagnosis,
-      planned_procedure, department_id, admission_date, planned_surgery_date, created_by
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      planned_procedure, department_id, admission_date, planned_surgery_date, created_by,
+      phone, whatsapp_number, email, age, gender, city,
+      source_type, source_detail, chief_complaint, insurance_status,
+      target_department, referral_details, is_existing_member, member_type
+    ) VALUES (
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
+      $15,$16,$17,$18,$19,$20,
+      $21,$22,$23,$24,
+      $25,$26,$27,$28
+    )
     RETURNING id`,
     [
       input.patient_name,
@@ -59,6 +82,20 @@ export async function createPatientThread(input: CreatePatientThreadInput) {
       input.admission_date || null,
       input.planned_surgery_date || null,
       input.created_by,
+      input.phone ?? null,
+      input.whatsapp_number ?? null,
+      input.email ?? null,
+      input.age ?? null,
+      input.gender ?? null,
+      input.city ?? null,
+      input.source_type ?? null,
+      input.source_detail ?? null,
+      input.chief_complaint ?? null,
+      input.insurance_status ?? null,
+      input.target_department ?? null,
+      input.referral_details ?? null,
+      input.is_existing_member ?? false,
+      input.member_type ?? null,
     ]
   );
   return rows[0];
