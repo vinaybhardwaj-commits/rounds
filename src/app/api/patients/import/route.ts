@@ -36,6 +36,12 @@ import {
   sendSystemMessage,
   syncUserToGetStream,
 } from '@/lib/getstream';
+import {
+  matchKxRow,
+  buildKxIndexes,
+  normalizeKxPhone,
+  type KxExistingPatient,
+} from '@/lib/kx-import-match';
 
 // Track which profile IDs have been synced to GetStream in this request
 const syncedToGetStream = new Set<string>();
@@ -417,35 +423,15 @@ export async function POST(request: NextRequest) {
     const ADMITTED_ORDER = STAGE_ORDER['admitted']; // 2
 
     // ── Pre-load ALL existing patients for multi-field matching ──
-    // This enables: (1) UHID match, (2) name+phone fallback for LSQ patients
-    interface ExistingPatient {
-      id: string;
-      uhid: string | null;
-      patient_name: string;
-      phone: string | null;
-      current_stage: string;
-      getstream_channel_id: string | null;
-      lsq_lead_id: string | null;
-    }
-    const allExisting = await query<ExistingPatient>(
-      `SELECT id, uhid, patient_name, phone, current_stage,
-              getstream_channel_id, lsq_lead_id
+    // R.3/R.4 Phase 4: matching is now 2-tier — UHID exact, then phone Layer 1.
+    // See src/lib/kx-import-match.ts for the matching rules.
+    const allExisting = await query<KxExistingPatient>(
+      `SELECT id, uhid, patient_name, phone, whatsapp_number, current_stage,
+              getstream_channel_id, lsq_lead_id, source_type
        FROM patient_threads
        WHERE archived_at IS NULL`
     );
-
-    // Build lookup indexes
-    const byUhid = new Map<string, ExistingPatient>();
-    const byNamePhone = new Map<string, ExistingPatient>();
-    for (const p of allExisting) {
-      if (p.uhid) byUhid.set(p.uhid.toLowerCase(), p);
-      // Index by normalized name + phone for LSQ patient matching
-      if (p.phone) {
-        const nameKey = p.patient_name.toLowerCase().replace(/\s+/g, ' ').trim();
-        const phoneKey = p.phone.replace(/\D/g, '').slice(-10); // last 10 digits
-        byNamePhone.set(`${nameKey}|${phoneKey}`, p);
-      }
-    }
+    const { byUhid, byPhone } = buildKxIndexes(allExisting);
 
     // Clear caches for this import batch
     doctorCache.clear();
@@ -478,16 +464,24 @@ export async function POST(request: NextRequest) {
       batchUhids.add(row.uhid.toLowerCase());
 
       try {
-        // ── 3-tier matching ──
-        // Tier 1: UHID match (strongest)
-        let existing = byUhid.get(row.uhid.toLowerCase()) || null;
-
-        // Tier 2: Name + phone match (catches LSQ patients without UHID)
-        if (!existing && row.mobile) {
-          const nameKey = row.patient_name.toLowerCase().replace(/\s+/g, ' ').trim();
-          const phoneKey = row.mobile.replace(/\D/g, '').slice(-10);
-          existing = byNamePhone.get(`${nameKey}|${phoneKey}`) || null;
-        }
+        // ── Phase 4 matching (2-tier + collision guard) ──
+        // Delegated to src/lib/kx-import-match.ts so the smoke test exercises
+        // the same code path as the route.
+        //   Tier 1: UHID exact match.
+        //   Tier 2: Layer 1 phone match, guarded by a UHID collision check.
+        //           Different UHID + same phone = two family members sharing
+        //           a phone — we log an ignore audit and fall through to
+        //           Tier 3 (create new).
+        //   Tier 3: no match → create below.
+        // Link / ignore decisions are written to dedup_log inside matchKxRow.
+        const matchResult = matchKxRow(
+          row,
+          byUhid,
+          byPhone,
+          { profileId: user.profileId, email: user.email || null }
+        );
+        let existing = matchResult.existing;
+        const matchedVia = matchResult.matchedVia;
 
         // Match or create doctor (shared for both new + existing paths)
         const doctorId = await findOrCreateDoctor(row.admitting_doctor, row.admitting_specialty);
@@ -560,9 +554,11 @@ export async function POST(request: NextRequest) {
               } catch { /* non-fatal */ }
             }
 
+            const matchTag = matchedVia === 'phone' ? ' [phone link]' : '';
             results.advanced.push(
               `${row.patient_name} (${row.uhid}) — ${existing.current_stage} → admitted` +
-              (existing.lsq_lead_id ? ' [LSQ patient]' : '')
+              (existing.lsq_lead_id ? ' [LSQ patient]' : '') +
+              matchTag
             );
           } else {
             // Patient already at or past admitted — just enriched fields
@@ -579,14 +575,27 @@ export async function POST(request: NextRequest) {
               } catch { /* non-fatal */ }
             }
 
+            const matchTag = matchedVia === 'phone' ? ' [phone link]' : '';
             results.enriched.push(
-              `${row.patient_name} (${row.uhid}) — stage kept at ${existing.current_stage}, fields updated`
+              `${row.patient_name} (${row.uhid}) — stage kept at ${existing.current_stage}, fields updated` +
+              matchTag
             );
           }
 
-          // Update the UHID index so subsequent rows don't re-match
+          // Update the UHID index + phone map so subsequent rows see the
+          // newly-attached UHID on the linked row.
           if (!existing.uhid) {
-            byUhid.set(row.uhid.toLowerCase(), { ...existing, uhid: row.uhid });
+            const linked = { ...existing, uhid: row.uhid };
+            byUhid.set(row.uhid.toLowerCase(), linked);
+            // The same row may also be in the byPhone array — update in place.
+            const phoneKey = normalizeKxPhone(existing.phone) || normalizeKxPhone(existing.whatsapp_number);
+            if (phoneKey) {
+              const list = byPhone.get(phoneKey);
+              if (list) {
+                const idx = list.findIndex(p => p.id === existing.id);
+                if (idx !== -1) list[idx] = linked;
+              }
+            }
           }
 
           continue;
@@ -609,16 +618,25 @@ export async function POST(request: NextRequest) {
           created_by: user.profileId,
         });
 
-        // Add to UHID index to prevent within-batch re-match
-        byUhid.set(row.uhid.toLowerCase(), {
+        // Add to UHID + phone indexes to prevent within-batch re-match
+        const newlyCreated: KxExistingPatient = {
           id: patientResult.id,
           uhid: row.uhid,
           patient_name: row.patient_name,
           phone: row.mobile || null,
+          whatsapp_number: row.mobile || null,
           current_stage: 'admitted',
           getstream_channel_id: null,
           lsq_lead_id: null,
-        });
+          source_type: 'kx_import',
+        };
+        byUhid.set(row.uhid.toLowerCase(), newlyCreated);
+        const newPhoneKey = normalizeKxPhone(row.mobile);
+        if (newPhoneKey) {
+          const list = byPhone.get(newPhoneKey);
+          if (list) list.push(newlyCreated);
+          else byPhone.set(newPhoneKey, [newlyCreated]);
+        }
 
         // Create GetStream channel with auto-enrolled staff
         const memberIds = new Set<string>();
