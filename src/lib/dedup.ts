@@ -171,8 +171,15 @@ export async function checkForDuplicate(input: DedupInput): Promise<DedupResult>
 // -----------------------------------------------------------------------------
 
 /**
- * Merge incoming data into an existing thread without overwriting good data
- * with nulls. Bumps returning_patient_count and sets is_returning_patient.
+ * Merge incoming data into an existing thread — existing non-null values
+ * always win, and incoming data only fills in fields that are currently
+ * NULL (or empty string). Bumps returning_patient_count and sets
+ * is_returning_patient.
+ *
+ * Semantics: "existing wins, fill in gaps only". This protects already-
+ * validated data from being clobbered if the intake clerk types something
+ * wrong on a re-add. The only fields incoming can actually change are
+ * ones that were previously unknown.
  *
  * Used by Layer 1 phone-match flow: we keep the existing thread and enrich
  * it with any new fields from the incoming payload.
@@ -196,17 +203,17 @@ export async function linkToExistingThread(
   await execute(
     `
     UPDATE patient_threads SET
-      patient_name       = COALESCE(NULLIF($2, ''), patient_name),
-      phone              = COALESCE(NULLIF($3, ''), phone),
-      whatsapp_number    = COALESCE(NULLIF($4, ''), whatsapp_number),
-      email              = COALESCE(NULLIF($5, ''), email),
-      age                = COALESCE($6, age),
-      gender             = COALESCE(NULLIF($7, ''), gender),
-      city               = COALESCE(NULLIF($8, ''), city),
-      chief_complaint    = COALESCE(NULLIF($9, ''), chief_complaint),
-      insurance_status   = COALESCE(NULLIF($10, ''), insurance_status),
-      target_department  = COALESCE(NULLIF($11, ''), target_department),
-      source_detail      = COALESCE(NULLIF($12, ''), source_detail),
+      patient_name       = COALESCE(NULLIF(patient_name, ''), NULLIF($2, '')),
+      phone              = COALESCE(NULLIF(phone, ''), NULLIF($3, '')),
+      whatsapp_number    = COALESCE(NULLIF(whatsapp_number, ''), NULLIF($4, '')),
+      email              = COALESCE(NULLIF(email, ''), NULLIF($5, '')),
+      age                = COALESCE(age, $6),
+      gender             = COALESCE(NULLIF(gender, ''), NULLIF($7, '')),
+      city               = COALESCE(NULLIF(city, ''), NULLIF($8, '')),
+      chief_complaint    = COALESCE(NULLIF(chief_complaint, ''), NULLIF($9, '')),
+      insurance_status   = COALESCE(NULLIF(insurance_status, ''), NULLIF($10, '')),
+      target_department  = COALESCE(NULLIF(target_department, ''), NULLIF($11, '')),
+      source_detail      = COALESCE(NULLIF(source_detail, ''), NULLIF($12, '')),
       is_returning_patient = TRUE,
       returning_patient_count = COALESCE(returning_patient_count, 0) + 1,
       updated_at         = NOW()
