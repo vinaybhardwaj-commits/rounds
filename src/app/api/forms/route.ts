@@ -441,6 +441,81 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ── Surgery Booking (Standalone) → Patient Thread + OT Channel Hook ──
+    // Routes a summary card to the patient thread and OT department channel.
+    if (form_type === 'surgery_booking' && status !== 'draft' && body.patient_thread_id) {
+      try {
+        const fd = form_data as Record<string, unknown>;
+        const profile = await queryOne<{ full_name: string }>(
+          `SELECT full_name FROM profiles WHERE id = $1`,
+          [user.profileId]
+        );
+        const actorName = profile?.full_name || user.email;
+
+        const patient = await queryOne<{
+          patient_name: string;
+          uhid: string | null;
+          getstream_channel_id: string | null;
+        }>(
+          `SELECT patient_name, uhid, getstream_channel_id FROM patient_threads WHERE id = $1`,
+          [body.patient_thread_id]
+        );
+
+        if (patient) {
+          const pName = patient.patient_name || 'Unknown';
+          const pUhid = patient.uhid || '—';
+          const val = (v: unknown, fallback?: string) => {
+            if (v === undefined || v === null || v === '') return fallback || '⏳ Pending';
+            return String(v);
+          };
+
+          // Build OT summary lines
+          const otLines: string[] = [
+            `🔪 **Surgery Booking** — ${pName} (UHID: ${pUhid})`,
+            `Submitted by: ${actorName}`,
+            '',
+            `Surgeon: ${val(fd.surgeon_name)} | Specialty: ${val(fd.surgical_specialty)}`,
+            `Procedure: ${val(fd.proposed_procedure)}`,
+            `Laterality: ${val(fd.laterality)} | Urgency: ${val(fd.surgery_urgency)}`,
+          ];
+          if (fd.clinical_justification) otLines.push(`Justification: ${fd.clinical_justification}`);
+          if (fd.known_comorbidities && Array.isArray(fd.known_comorbidities) && fd.known_comorbidities.length > 0) {
+            otLines.push(`Co-morbidities: ${(fd.known_comorbidities as string[]).join(', ')} | Controlled: ${val(fd.comorbidities_controlled)}`);
+          }
+          if (fd.habits && Array.isArray(fd.habits) && fd.habits.length > 0) {
+            otLines.push(`Habits: ${(fd.habits as string[]).join(', ')}${fd.habits_stopped ? ' | Stopped 3+ days: ' + fd.habits_stopped : ''}`);
+          }
+          if (fd.current_medication) otLines.push(`Medication: ${fd.current_medication}`);
+          otLines.push(`PAC: ${val(fd.pac_status, 'OT to complete')}`);
+          otLines.push(`Surgery Date: ${val(fd.preferred_surgery_date, 'OT to schedule')} | Time: ${val(fd.preferred_surgery_time)}`);
+          otLines.push(`Duration: ${val(fd.estimated_duration)} | Anaesthesia: ${val(fd.anaesthesia_type, 'Anaesthesia to confirm')}`);
+          if (fd.support_requirements) otLines.push(`Support: ${fd.support_requirements}`);
+          if (fd.special_requirements) otLines.push(`Special: ${fd.special_requirements}`);
+          if (fd.booking_notes) otLines.push(`Notes: ${fd.booking_notes}`);
+          otLines.push('', `🔗 View patient thread for full context`);
+
+          // Patient thread message
+          if (patient.getstream_channel_id) {
+            const threadMsg = `🔪 **Surgery booked** by ${actorName}\n` +
+              `Procedure: ${val(fd.proposed_procedure)} | Surgeon: ${val(fd.surgeon_name)}\n` +
+              `Urgency: ${val(fd.surgery_urgency)}` +
+              (fd.preferred_surgery_date ? ` | Date: ${fd.preferred_surgery_date}` : '');
+            try { await sendSystemMessage('patient-thread', patient.getstream_channel_id, threadMsg); } catch { /* non-fatal */ }
+          }
+
+          // OT department channel
+          try {
+            await sendSystemMessage('department', 'ot', otLines.join('\n'));
+          } catch {
+            try { await sendSystemMessage('department', 'operation-theatre', otLines.join('\n')); } catch { /* non-fatal */ }
+          }
+        }
+      } catch (err) {
+        console.error('[SurgeryBooking] Routing hook error:', err);
+        // Non-fatal — form submission still succeeds
+      }
+    }
+
     // ── Post-Discharge Followup → Feedback Attribution Hook ──
     // When post_discharge_followup is submitted, cross-reference ratings
     // with actual discharge_milestones to calculate milestone attribution.

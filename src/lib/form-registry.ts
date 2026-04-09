@@ -1865,6 +1865,134 @@ export const PAC_CLEARANCE: FormSchema = {
 };
 
 // ============================================
+// SURGERY BOOKING (Standalone — R.2c)
+// For admitted/pre_op patients needing a new or additional surgery.
+// Fields mirror Section C of Consolidated Marketing Handoff.
+// Routes summary to: patient thread + OT department channel.
+// ============================================
+
+const SURGERY_BOOKING: FormSchema = {
+  formType: 'surgery_booking',
+  title: 'Surgery Booking',
+  description: 'Book a patient for surgery. Captures the surgical plan, clinical risk profile, and OT scheduling requirements. Routes a summary to the OT department channel.',
+  stages: ['admitted', 'pre_op'],
+  submitterRoles: ['super_admin', 'clinical_care', 'ot_coordinator', 'doctor', 'nursing'],
+  requiresPatient: true,
+  version: 1,
+  sections: [
+    // ── Surgical Plan ──
+    {
+      id: 'surgical_plan',
+      title: 'Surgical Plan',
+      description: 'Core procedure details for OT scheduling.',
+      fields: [
+        { key: 'surgeon_name', label: 'Surgeon Name', type: 'text', validation: { required: true }, placeholder: 'Who will operate', width: 'half' },
+        { key: 'surgical_specialty', label: 'Surgical Specialty', type: 'select', validation: { required: true }, options: [
+          { value: 'general_surgery', label: 'General Surgery' },
+          { value: 'orthopaedics', label: 'Orthopaedics' },
+          { value: 'ent', label: 'ENT' },
+          { value: 'urology', label: 'Urology' },
+          { value: 'gynaecology', label: 'Gynaecology' },
+          { value: 'ophthalmology', label: 'Ophthalmology' },
+          { value: 'neurosurgery', label: 'Neurosurgery' },
+          { value: 'cardiothoracic', label: 'Cardiothoracic' },
+          { value: 'plastic_surgery', label: 'Plastic Surgery' },
+          { value: 'paediatric_surgery', label: 'Paediatric Surgery' },
+          { value: 'vascular_surgery', label: 'Vascular Surgery' },
+          { value: 'gastro_surgery', label: 'GI / Laparoscopic Surgery' },
+          { value: 'other', label: 'Other' },
+        ], width: 'half' },
+        { key: 'proposed_procedure', label: 'Proposed Procedure', type: 'text', validation: { required: true }, placeholder: 'What surgery is planned' },
+        { key: 'laterality', label: 'Laterality', type: 'select', options: [
+          { value: 'left', label: 'Left' },
+          { value: 'right', label: 'Right' },
+          { value: 'bilateral', label: 'Bilateral' },
+          { value: 'na', label: 'N/A' },
+        ], width: 'half' },
+        { key: 'surgery_urgency', label: 'Urgency', type: 'select', validation: { required: true }, options: [
+          { value: 'elective', label: 'Elective' },
+          { value: 'urgent', label: 'Urgent' },
+          { value: 'emergency', label: 'Emergency' },
+        ], width: 'half' },
+        { key: 'clinical_justification', label: 'Clinical Justification', type: 'textarea', placeholder: 'Indication for surgery' },
+      ],
+    },
+    // ── Clinical Risk Profile ──
+    {
+      id: 'clinical_risk',
+      title: 'Clinical Risk Profile',
+      description: 'Co-morbidities, habits, and medication — critical for anaesthesia planning.',
+      fields: [
+        { key: 'known_comorbidities', label: 'Known Co-morbidities', type: 'multiselect', options: [
+          { value: 'diabetes', label: 'Diabetes' },
+          { value: 'cardiac_disease', label: 'Cardiac Disease' },
+          { value: 'renal_disease', label: 'Renal Disease' },
+          { value: 'respiratory_disease', label: 'Respiratory Disease' },
+          { value: 'hypertension', label: 'Hypertension' },
+          { value: 'thyroid', label: 'Thyroid' },
+          { value: 'obesity', label: 'Obesity (BMI > 35)' },
+          { value: 'anaemia', label: 'Anaemia' },
+          { value: 'thrombocytopenia', label: 'Thrombocytopenia' },
+          { value: 'none', label: 'None' },
+        ] },
+        { key: 'comorbidities_controlled', label: 'Are co-morbidities well controlled?', type: 'select', options: [
+          { value: 'yes', label: 'Yes' },
+          { value: 'no', label: 'No' },
+          { value: 'unknown', label: 'Unknown' },
+        ], helpText: 'Diabetes: HbA1c < 8, RBS < 180 · BP: < 150/100 on ≥2 readings · TSH: < 5 · Heart disease/CVD: cardiology clearance obtained · Renal: eGFR > 60 · BMI > 35: documented · Hb > 8 · Platelets > 80,000 · Respiratory: SpO2 > 94% on room air · Fever: resolved > 1 week ago', width: 'half' },
+        { key: 'habits', label: 'Habits', type: 'multiselect', options: [
+          { value: 'smoking', label: 'Smoking' },
+          { value: 'alcohol', label: 'Alcohol' },
+          { value: 'tobacco_chewing', label: 'Tobacco Chewing' },
+          { value: 'none', label: 'None' },
+        ], width: 'half' },
+        { key: 'habits_stopped', label: 'Habits stopped 3+ days ago?', type: 'select', visibleWhen: { field: 'habits', operator: 'truthy' }, options: [
+          { value: 'yes', label: 'Yes' },
+          { value: 'no', label: 'No' },
+        ], width: 'half' },
+        { key: 'current_medication', label: 'Current Medication', type: 'textarea', placeholder: 'Active prescriptions, especially anticoagulants' },
+        { key: 'referred_from_practitioner', label: 'Referred from Private Practitioner?', type: 'select', options: [
+          { value: 'yes', label: 'Yes' },
+          { value: 'no', label: 'No' },
+        ], width: 'half' },
+        { key: 'referring_doctor', label: 'Referring Doctor / Clinic', type: 'text', visibleWhen: { field: 'referred_from_practitioner', operator: 'eq', value: 'yes' }, placeholder: 'Name of referring practitioner', width: 'half' },
+      ],
+    },
+    // ── OT Scheduling ──
+    {
+      id: 'ot_scheduling',
+      title: 'OT Scheduling',
+      description: 'Pre-anaesthetic status, preferred dates, and resource requirements.',
+      fields: [
+        { key: 'pac_status', label: 'PAC Status', type: 'select', options: [
+          { value: 'not_done', label: 'Not Done' },
+          { value: 'done_fit', label: 'Done — Fit' },
+          { value: 'done_unfit', label: 'Done — Unfit' },
+          { value: 'pending_review', label: 'Pending Review' },
+        ], width: 'half' },
+        { key: 'preferred_surgery_date', label: 'Preferred Surgery Date', type: 'date', width: 'half' },
+        { key: 'preferred_surgery_time', label: 'Preferred Surgery Time', type: 'select', options: [
+          { value: 'morning', label: 'Morning' },
+          { value: 'afternoon', label: 'Afternoon' },
+          { value: 'no_preference', label: 'No Preference' },
+        ], width: 'half' },
+        { key: 'estimated_duration', label: 'Estimated Duration', type: 'text', placeholder: 'e.g. 2 hours', width: 'half' },
+        { key: 'anaesthesia_type', label: 'Anaesthesia Type', type: 'select', options: [
+          { value: 'general', label: 'General (GA)' },
+          { value: 'regional', label: 'Regional' },
+          { value: 'local', label: 'Local' },
+          { value: 'sedation', label: 'Sedation' },
+          { value: 'tbd', label: 'TBD' },
+        ], width: 'half' },
+        { key: 'support_requirements', label: 'Support Requirements', type: 'textarea', placeholder: 'ICU bed, ventilator, blood products, etc.' },
+        { key: 'special_requirements', label: 'Special Requirements', type: 'textarea', placeholder: 'Implants, consumables, special equipment' },
+        { key: 'booking_notes', label: 'Additional Notes', type: 'textarea', placeholder: 'Any other information for the OT team' },
+      ],
+    },
+  ],
+};
+
+// ============================================
 // FORM REGISTRY — THE MASTER MAP
 // ============================================
 
@@ -1873,8 +2001,7 @@ export const FORM_REGISTRY: Record<FormType, FormSchema> = {
   marketing_cc_handoff: MARKETING_CC_HANDOFF,  // legacy — kept for existing form submissions
   admission_advice: ADMISSION_ADVICE,
   financial_counseling: FINANCIAL_COUNSELING,
-  // Surgery Booking — placeholder schema until R.2c builds the standalone form
-  surgery_booking: SURGERY_POSTING,
+  surgery_booking: SURGERY_BOOKING,
   ot_billing_clearance: OT_BILLING_CLEARANCE,
   admission_checklist: ADMISSION_CHECKLIST,
   surgery_posting: SURGERY_POSTING,
