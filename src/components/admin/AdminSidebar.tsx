@@ -21,6 +21,7 @@ import {
   Activity,
   ClipboardList,
   Link2,
+  GitMerge,
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -32,6 +33,7 @@ interface AdminSidebarProps {
     approvals?: number;
     admissions?: number;
     escalations?: number;
+    dedup?: number;
   };
 }
 
@@ -81,6 +83,14 @@ const navItems: NavItem[] = [
   { group: 'OPERATIONS', label: 'Admission Tracker', href: '/admin/admissions', icon: <Activity size={iconSize} />, badge: 0 },
   { group: 'OPERATIONS', label: 'Escalation Log', href: '/admin/escalations', icon: <AlertTriangle size={iconSize} />, badge: 0 },
   { group: 'OPERATIONS', label: 'Patient Changelog', href: '/admin/changelog', icon: <ClipboardList size={iconSize} /> },
+  {
+    group: 'OPERATIONS',
+    label: 'Dedup Hub',
+    href: '/admin/dedup',
+    icon: <GitMerge size={iconSize} />,
+    badge: 0,
+    requiresRole: 'super_admin',
+  },
   { group: 'OPERATIONS', label: 'WhatsApp Analysis', href: '/admin/wa-analysis', icon: <MessageSquare size={iconSize} /> },
   { group: 'OPERATIONS', label: 'Chat System Setup', href: '/admin/chat-system', icon: <MessageSquare size={iconSize} /> },
   { group: 'OPERATIONS', label: 'LeadSquared Integration', href: '/admin/leadsquared', icon: <Link2 size={iconSize} /> },
@@ -102,7 +112,7 @@ export function AdminSidebar({
   collapsed: externalCollapsed,
   onToggle,
   userRole = 'admin',
-  badges = { approvals: 0, admissions: 0, escalations: 0 },
+  badges = { approvals: 0, admissions: 0, escalations: 0, dedup: 0 },
 }: AdminSidebarProps) {
   const [internalCollapsed, setInternalCollapsed] = useState(false);
   const isCollapsed = externalCollapsed !== undefined ? externalCollapsed : internalCollapsed;
@@ -131,6 +141,7 @@ export function AdminSidebar({
     if (label === 'Approvals') return badges.approvals;
     if (label === 'Admission Tracker') return badges.admissions;
     if (label === 'Escalation Log') return badges.escalations;
+    if (label === 'Dedup Hub') return badges.dedup;
     return undefined;
   };
 

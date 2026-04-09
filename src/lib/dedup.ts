@@ -294,6 +294,370 @@ export interface DedupLogEntry {
   endpoint: string;
 }
 
+// -----------------------------------------------------------------------------
+// Merge helper (Phase 5.1) — fold loser thread into winner, re-parent FK rows
+// -----------------------------------------------------------------------------
+
+/**
+ * Canonical patient-journey stage ordering used for forward-only merge logic.
+ * When merging, if the loser is "ahead" of the winner on this scale, we
+ * advance the winner's stage to the loser's (never regress).
+ *
+ * Stages not listed get a rank of -1 (treated as "unknown, don't advance").
+ */
+const STAGE_ORDER: Record<string, number> = {
+  opd: 0,
+  pre_admission: 1,
+  admitted: 2,
+  pre_op: 3,
+  surgery: 4,
+  post_op: 5,
+  post_op_care: 6,
+  medical_management: 6,
+  discharge: 7,
+  post_discharge: 8,
+  long_term_followup: 9,
+};
+
+function stageRank(stage: string | null | undefined): number {
+  if (!stage) return -1;
+  return STAGE_ORDER[stage] ?? -1;
+}
+
+export interface MergeActor {
+  profileId: string | null;
+  email: string | null;
+}
+
+export interface MergeOptions {
+  /** Free-text reason shown in the audit log + candidate resolution */
+  reason?: string | null;
+  /** Endpoint tag for logDedupAction audit entry */
+  endpoint?: string;
+}
+
+export interface MergeResult {
+  winnerId: string;
+  loserId: string;
+  /** Field-by-field count of values the loser contributed (winner was NULL) */
+  mergedFields: string[];
+  /** Table-by-table FK row counts that were re-parented */
+  fkCounts: Record<string, number>;
+  /** Whether the winner's stage was advanced to match the loser's */
+  stageAdvanced: boolean;
+  /** Did we encounter any file collisions that were dedup-deleted? */
+  fileCollisionsDropped: number;
+  /** Loser snapshot (full row) captured before the merge for audit */
+  loserSnapshot: Record<string, unknown>;
+}
+
+/**
+ * Fields that participate in the "winner wins, fill gaps" COALESCE merge.
+ * Excludes identity/audit columns (id, created_at, updated_at, archived_at,
+ * merged_into_id, merged_at, current_stage — stage has custom forward-only
+ * logic). Callers cannot override this list.
+ */
+const MERGEABLE_FIELDS = [
+  'patient_name',
+  'uhid',
+  'ip_number',
+  'even_member_id',
+  'lead_source',
+  'primary_consultant_id',
+  'primary_diagnosis',
+  'planned_procedure',
+  'department_id',
+  'admission_date',
+  'planned_surgery_date',
+  'discharge_date',
+  'pac_status',
+  'lsq_lead_id',
+  'lsq_prospect_auto_id',
+  'phone',
+  'whatsapp_number',
+  'email',
+  'gender',
+  'age',
+  'date_of_birth',
+  'city',
+  'state',
+  'address',
+  'zip',
+  'ailment',
+  'doctor_name',
+  'appointment_date',
+  'hospital_location',
+  'surgery_order_value',
+  'financial_category',
+  'utm_source',
+  'utm_campaign',
+  'utm_medium',
+  'signup_url',
+  'lsq_owner_name',
+  'lsq_owner_email',
+  'lsq_lead_stage',
+  'lsq_created_on',
+  'lsq_last_synced_at',
+  'source_type',
+  'source_detail',
+  'chief_complaint',
+  'insurance_status',
+  'target_department',
+  'referral_details',
+  'getstream_channel_id',
+] as const;
+
+/**
+ * FK tables that point at patient_threads.id and should be unconditionally
+ * re-parented from loser → winner during a merge. `patient_files` is handled
+ * separately because it has a UNIQUE(patient_thread_id, file_id) constraint
+ * which can conflict when both rows link the same file.
+ */
+const FK_TABLES_SIMPLE = [
+  'admission_tracker',
+  'claim_events',
+  'discharge_milestones',
+  'escalation_log',
+  'form_submissions',
+  'insurance_claims',
+  'lsq_activity_cache',
+  'patient_changelog',
+  'readiness_items',
+  'surgery_postings',
+] as const;
+
+/**
+ * Merge the `loser` patient_threads row into the `winner` row.
+ *
+ * IMPORTANT: The Neon HTTP driver has no transaction support, so this function
+ * performs its work in an **idempotent order** so that a partial failure
+ * mid-merge is safely recoverable by re-running it with the same ids:
+ *
+ *   1. Pre-flight: load both rows, reject self-merge / already-merged /
+ *      conflicting LSQ lead ids (unless reason includes "override").
+ *   2. Re-parent FK tables (simple) — unconditional UPDATE ... WHERE loser.
+ *      Idempotent: second run matches 0 rows.
+ *   3. Re-parent patient_files — delete any loser rows whose file_id already
+ *      exists on the winner (UNIQUE collisions), then re-parent the rest.
+ *   4. Resolve any matching dedup_candidates rows to status='merged'.
+ *   5. COALESCE-merge mergeable fields onto the winner (winner wins, loser
+ *      fills gaps) + forward-only stage advance.
+ *   6. Soft-delete the loser: archived_at, archive_type='merged',
+ *      merged_into_id, merged_at, is_possible_duplicate=FALSE.
+ *   7. Write dedup_log audit entry with the loser snapshot in metadata.
+ *
+ * Returns a summary of what was merged so the API/UI can show a receipt.
+ * Does NOT touch GetStream — channel rename lives at the route layer so a
+ * Stream outage can't break a merge.
+ */
+export async function mergePatientThreads(
+  winnerId: string,
+  loserId: string,
+  actor: MergeActor,
+  options: MergeOptions = {}
+): Promise<MergeResult> {
+  if (winnerId === loserId) {
+    throw new Error('Cannot merge a thread into itself');
+  }
+
+  // --- 1. Pre-flight: load both rows ---------------------------------------
+  const winner = await queryOne<Record<string, unknown>>(
+    `SELECT * FROM patient_threads WHERE id = $1`,
+    [winnerId]
+  );
+  if (!winner) {
+    throw new Error(`Winner thread ${winnerId} not found`);
+  }
+
+  const loser = await queryOne<Record<string, unknown>>(
+    `SELECT * FROM patient_threads WHERE id = $1`,
+    [loserId]
+  );
+  if (!loser) {
+    throw new Error(`Loser thread ${loserId} not found`);
+  }
+
+  if (loser.merged_into_id != null) {
+    throw new Error(
+      `Loser thread ${loserId} was already merged into ${loser.merged_into_id}`
+    );
+  }
+  if (winner.merged_into_id != null) {
+    throw new Error(
+      `Winner thread ${winnerId} was already merged into ${winner.merged_into_id} and cannot accept a new merge`
+    );
+  }
+
+  // Block conflicting LSQ lead ids — two distinct LSQ leads should never
+  // silently fold into one row. Operator must resolve manually.
+  const winnerLsq = (winner.lsq_lead_id ?? null) as string | null;
+  const loserLsq = (loser.lsq_lead_id ?? null) as string | null;
+  const overrideConflict = (options.reason ?? '').toLowerCase().includes('override');
+  if (winnerLsq && loserLsq && winnerLsq !== loserLsq && !overrideConflict) {
+    throw new Error(
+      `Both threads have distinct LSQ lead ids (${winnerLsq} vs ${loserLsq}). ` +
+        `Resolve manually or include "override" in the reason.`
+    );
+  }
+
+  // --- 2. Re-parent FK tables (simple) -------------------------------------
+  const fkCounts: Record<string, number> = {};
+  for (const tbl of FK_TABLES_SIMPLE) {
+    // eslint-disable-next-line no-await-in-loop
+    const rows = await query<Record<string, unknown>>(
+      `UPDATE ${tbl} SET patient_thread_id = $1 WHERE patient_thread_id = $2 RETURNING 1 AS r`,
+      [winnerId, loserId]
+    );
+    fkCounts[tbl] = rows.length;
+  }
+
+  // --- 3. Re-parent patient_files (UNIQUE(patient_thread_id, file_id)) -----
+  // Step 3a: drop any loser rows whose file_id already exists on the winner.
+  // These are genuine duplicates — same file linked to both threads.
+  const droppedFiles = await query<Record<string, unknown>>(
+    `
+    DELETE FROM patient_files
+    WHERE patient_thread_id = $2
+      AND file_id IN (
+        SELECT file_id FROM patient_files
+        WHERE patient_thread_id = $1 AND file_id IS NOT NULL
+      )
+    RETURNING 1 AS r
+    `,
+    [winnerId, loserId]
+  );
+  const fileCollisionsDropped = droppedFiles.length;
+
+  // Step 3b: re-parent remaining loser file rows to the winner.
+  const movedFiles = await query<Record<string, unknown>>(
+    `UPDATE patient_files SET patient_thread_id = $1 WHERE patient_thread_id = $2 RETURNING 1 AS r`,
+    [winnerId, loserId]
+  );
+  fkCounts['patient_files'] = movedFiles.length;
+
+  // --- 4. Resolve matching dedup_candidates rows ---------------------------
+  // Any pending candidate pairing (winner, loser) or (loser, winner) is now
+  // definitively resolved as "merged". Idempotent via partial update.
+  await execute(
+    `
+    UPDATE dedup_candidates
+    SET status = 'merged',
+        resolved_at = NOW(),
+        resolved_by = $3,
+        resolution_note = COALESCE(resolution_note, $4)
+    WHERE status = 'pending'
+      AND (
+        (new_thread_id = $1 AND existing_thread_id = $2)
+        OR (new_thread_id = $2 AND existing_thread_id = $1)
+      )
+    `,
+    [winnerId, loserId, actor.profileId ?? null, options.reason ?? null]
+  );
+
+  // --- 5. COALESCE-merge mergeable fields + forward-only stage -------------
+  const mergedFields: string[] = [];
+  const setClauses: string[] = [];
+  const params: unknown[] = [winnerId];
+  let paramIdx = 2;
+
+  for (const field of MERGEABLE_FIELDS) {
+    const winnerVal = winner[field];
+    const loserVal = loser[field];
+    const winnerIsNull =
+      winnerVal == null || (typeof winnerVal === 'string' && winnerVal === '');
+    const loserHasValue =
+      loserVal != null && !(typeof loserVal === 'string' && loserVal === '');
+    if (winnerIsNull && loserHasValue) {
+      setClauses.push(`${field} = $${paramIdx}`);
+      params.push(loserVal);
+      paramIdx += 1;
+      mergedFields.push(field);
+    }
+  }
+
+  // Forward-only stage: if loser is further along, advance winner.
+  const winnerStageRank = stageRank(winner.current_stage as string | null);
+  const loserStageRank = stageRank(loser.current_stage as string | null);
+  let stageAdvanced = false;
+  if (loserStageRank > winnerStageRank && loser.current_stage) {
+    setClauses.push(`current_stage = $${paramIdx}`);
+    params.push(loser.current_stage);
+    paramIdx += 1;
+    stageAdvanced = true;
+  }
+
+  // Bump returning-patient counters so the winner reflects the re-entry.
+  setClauses.push(`is_returning_patient = TRUE`);
+  setClauses.push(
+    `returning_patient_count = COALESCE(returning_patient_count, 0) + 1`
+  );
+  setClauses.push(`updated_at = NOW()`);
+
+  if (setClauses.length > 0) {
+    await execute(
+      `UPDATE patient_threads SET ${setClauses.join(', ')} WHERE id = $1`,
+      params
+    );
+  }
+
+  // --- 6. Soft-delete the loser --------------------------------------------
+  // Set archived_at + merged_into_id atomically so queries filtering on
+  // archived_at won't see the loser on the main board, and audit views can
+  // trace the merge without joining dedup_log.
+  await execute(
+    `
+    UPDATE patient_threads
+    SET archived_at = COALESCE(archived_at, NOW()),
+        archive_type = 'merged',
+        archive_reason = 'merged_into_existing',
+        archive_reason_detail = $3,
+        archived_by = $4,
+        merged_into_id = $2,
+        merged_at = COALESCE(merged_at, NOW()),
+        is_possible_duplicate = FALSE,
+        updated_at = NOW()
+    WHERE id = $1
+    `,
+    [
+      loserId,
+      winnerId,
+      options.reason ?? null,
+      actor.profileId ?? null,
+    ]
+  );
+
+  // --- 7. Audit log --------------------------------------------------------
+  const loserSnapshot = loser as Record<string, unknown>;
+  await logDedupAction({
+    action: 'merge',
+    source_thread_id: loserId,
+    target_thread_id: winnerId,
+    match_layer: null,
+    similarity: null,
+    reason: options.reason ?? null,
+    metadata: {
+      merged_fields: mergedFields,
+      fk_counts: fkCounts,
+      stage_advanced: stageAdvanced,
+      file_collisions_dropped: fileCollisionsDropped,
+      loser_snapshot: loserSnapshot,
+    },
+    actor_id: actor.profileId ?? null,
+    actor_name: actor.email ?? null,
+    endpoint: options.endpoint ?? 'mergePatientThreads',
+  });
+
+  return {
+    winnerId,
+    loserId,
+    mergedFields,
+    fkCounts,
+    stageAdvanced,
+    fileCollisionsDropped,
+    loserSnapshot,
+  };
+}
+
 /**
  * Append an audit entry to dedup_log. Fire-and-forget safe — callers should
  * not block on this or assume it succeeded.
