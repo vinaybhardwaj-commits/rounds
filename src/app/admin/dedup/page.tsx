@@ -3,15 +3,19 @@
 /**
  * /admin/dedup — Dedup Hub
  *
- * R.3 + R.4 Phase 5.1. Three-tab admin surface for reviewing, merging, and
- * auditing patient-thread duplicates.
+ * R.3 + R.4 Phase 5.1/5.2/5.3. Three-tab admin surface for reviewing,
+ * merging, and auditing patient-thread duplicates.
  *
- *   Review Queue — pending dedup_candidates, side-by-side with Merge / Not a dup actions
- *   Activity Log — (stub for 5.2) recent dedup_log entries
- *   Exceptions   — (stub for 5.3) blocked merges, LSQ lead conflicts, etc.
+ *   Review Queue — pending dedup_candidates, side-by-side with Merge / Not a dup actions.
+ *                  Supports ?override=<candidate_id> deep link from Exceptions.
+ *   Activity Log — paginated dedup_log with CSV export.
+ *   Exceptions   — candidates blocked by LSQ conflict / UHID collision /
+ *                  stage regression / idempotency conflict. Override flow
+ *                  redirects back into Review Queue with override pre-checked.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   GitMerge,
   RefreshCw,
@@ -26,10 +30,19 @@ import {
   ChevronDown,
   ExternalLink,
   Filter,
+  ArrowRight,
+  Shield,
 } from 'lucide-react';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 
 type TabKey = 'queue' | 'log' | 'exceptions';
+
+interface ExceptionFlagsClient {
+  lsq_conflict: boolean;
+  uhid_collision: boolean;
+  stage_regression: boolean;
+  idempotency_conflict: boolean;
+}
 
 interface ThreadSide {
   id: string;
@@ -42,6 +55,7 @@ interface ThreadSide {
   lsq_lead_id: string | null;
   current_stage: string | null;
   archived_at: string | null;
+  merged_into_id?: string | null;
   created_at: string | null;
 }
 
@@ -80,7 +94,36 @@ function fmtDate(v: string | null | undefined) {
 }
 
 export default function DedupHubPage() {
-  const [tab, setTab] = useState<TabKey>('queue');
+  // useSearchParams requires a Suspense boundary in Next.js App Router
+  return (
+    <Suspense
+      fallback={
+        <AdminLayout
+          breadcrumbs={[
+            { label: 'Admin', href: '/admin' },
+            { label: 'Dedup Hub' },
+          ]}
+        >
+          <div className="px-4 sm:px-6 py-6 text-gray-500">Loading…</div>
+        </AdminLayout>
+      }
+    >
+      <DedupHubPageInner />
+    </Suspense>
+  );
+}
+
+function DedupHubPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Initial tab from URL (?tab=queue|log|exceptions), default to 'queue'
+  const urlTab = searchParams.get('tab') as TabKey | null;
+  const urlOverride = searchParams.get('override'); // candidate_id to highlight + pre-check override
+  const initialTab: TabKey =
+    urlTab === 'queue' || urlTab === 'log' || urlTab === 'exceptions' ? urlTab : 'queue';
+
+  const [tab, setTab] = useState<TabKey>(initialTab);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +131,26 @@ export default function DedupHubPage() {
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [selectedWinner, setSelectedWinner] = useState<Record<string, string>>({});
   const [reasons, setReasons] = useState<Record<string, string>>({});
+
+  // Phase 5.3 — override state keyed by candidate_id. Entries are only
+  // populated for candidates the user has opted into overriding (either via
+  // the Exceptions deep link or by manually checking the box in the Review Queue).
+  const [overrideChecked, setOverrideChecked] = useState<Record<string, boolean>>({});
+  // Block reason flags fetched from /api/admin/dedup/exceptions?candidate_id=...
+  const [blockReasons, setBlockReasons] = useState<Record<string, ExceptionFlagsClient | null>>({});
+
+  const navigateToOverride = useCallback(
+    (candidateId: string) => {
+      setTab('queue');
+      setOverrideChecked((prev) => ({ ...prev, [candidateId]: true }));
+      // Update URL without full reload so refresh preserves the state
+      const sp = new URLSearchParams(searchParams.toString());
+      sp.set('tab', 'queue');
+      sp.set('override', candidateId);
+      router.replace(`/admin/dedup?${sp.toString()}`);
+    },
+    [router, searchParams]
+  );
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -115,6 +178,31 @@ export default function DedupHubPage() {
     if (tab === 'queue') loadQueue();
   }, [tab, loadQueue]);
 
+  // Phase 5.3 — If the page was opened via the Exceptions deep link
+  // (?override=<candidate_id>), pre-check the override box and fetch the
+  // block reasons so the Review Queue row can show the red banner.
+  useEffect(() => {
+    if (!urlOverride) return;
+    setOverrideChecked((prev) => ({ ...prev, [urlOverride]: true }));
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/dedup/exceptions?candidate_id=${encodeURIComponent(urlOverride)}`
+        );
+        const data = await res.json();
+        if (!cancelled && data.success && data.data?.exception?.flags) {
+          setBlockReasons((prev) => ({ ...prev, [urlOverride]: data.data.exception.flags }));
+        }
+      } catch {
+        // Non-fatal — banner just won't show. Override checkbox still works.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [urlOverride]);
+
   // Auto-dismiss toast
   useEffect(() => {
     if (!toast) return;
@@ -127,9 +215,36 @@ export default function DedupHubPage() {
     const loserId = winnerId === c.newer.id ? c.existing.id : c.newer.id;
     if (!winnerId || !loserId || winnerId === loserId) return;
 
-    const confirmed = window.confirm(
-      `Merge thread ${loserId.slice(0, 8)} into ${winnerId.slice(0, 8)}?\n\nThis will archive the loser, re-parent all its data to the winner, and post a final system message in the loser's chat channel.`
-    );
+    const isOverride = !!overrideChecked[c.id];
+    const flags = blockReasons[c.id] || null;
+    const userReason = reasons[c.id] || '';
+
+    // If override is checked, prepend "override: " to the reason so the
+    // merge helper's conflict guard recognises it (see src/lib/dedup.ts,
+    // line ~496: "overrideConflict = ... .includes('override')").
+    const finalReason = isOverride
+      ? userReason
+        ? `override: ${userReason}`
+        : 'override: admin-forced via Exceptions tab'
+      : userReason || undefined;
+
+    // If override is checked, require an extra confirmation that lists the
+    // block reasons the admin is about to bypass.
+    let confirmMessage = `Merge thread ${loserId.slice(0, 8)} into ${winnerId.slice(0, 8)}?\n\nThis will archive the loser, re-parent all its data to the winner, and post a final system message in the loser's chat channel.`;
+    if (isOverride) {
+      const reasonList: string[] = [];
+      if (flags?.lsq_conflict) reasonList.push('LSQ lead conflict');
+      if (flags?.uhid_collision) reasonList.push('UHID collision');
+      if (flags?.stage_regression) reasonList.push('Stage regression');
+      if (flags?.idempotency_conflict) reasonList.push('Idempotency conflict');
+      confirmMessage =
+        `OVERRIDE MERGE — you are about to bypass the following guardrails:\n\n` +
+        (reasonList.length ? reasonList.map((r) => `  • ${r}`).join('\n') : '  • (no active flags — override is safe)') +
+        `\n\n` +
+        confirmMessage;
+    }
+
+    const confirmed = window.confirm(confirmMessage);
     if (!confirmed) return;
 
     setBusyId(c.id);
@@ -140,7 +255,7 @@ export default function DedupHubPage() {
         body: JSON.stringify({
           winnerId,
           loserId,
-          reason: reasons[c.id] || undefined,
+          reason: finalReason,
           candidateId: c.id,
         }),
       });
@@ -150,7 +265,19 @@ export default function DedupHubPage() {
         type: 'success',
         message: `Merged ${data.data.mergedFields?.length || 0} fields, moved ${Object.values(
           data.data.fkCounts || {}
-        ).reduce((a: number, b: unknown) => a + Number(b), 0)} FK rows. Channel: ${data.data.channelAction || 'n/a'}`,
+        ).reduce((a: number, b: unknown) => a + Number(b), 0)} FK rows. Channel: ${data.data.channelAction || 'n/a'}${isOverride ? ' (override)' : ''}`,
+      });
+      // Clear override + banner state for this candidate — the exception
+      // has been resolved and should disappear on next Exceptions tab view.
+      setOverrideChecked((prev) => {
+        const next = { ...prev };
+        delete next[c.id];
+        return next;
+      });
+      setBlockReasons((prev) => {
+        const next = { ...prev };
+        delete next[c.id];
+        return next;
       });
       await loadQueue();
     } catch (err) {
@@ -285,12 +412,21 @@ export default function DedupHubPage() {
             setSelectedWinner={setSelectedWinner}
             reasons={reasons}
             setReasons={setReasons}
+            overrideChecked={overrideChecked}
+            setOverrideChecked={setOverrideChecked}
+            blockReasons={blockReasons}
+            highlightCandidateId={urlOverride}
             onMerge={doMerge}
             onDismiss={doDismiss}
           />
         )}
         {tab === 'log' && <ActivityLogTab active={tab === 'log'} />}
-        {tab === 'exceptions' && <ExceptionsTabStub />}
+        {tab === 'exceptions' && (
+          <ExceptionsTab
+            active={tab === 'exceptions'}
+            onReviewAndOverride={navigateToOverride}
+          />
+        )}
       </div>
     </AdminLayout>
   );
@@ -309,6 +445,10 @@ interface ReviewQueueTabProps {
   setSelectedWinner: (v: Record<string, string>) => void;
   reasons: Record<string, string>;
   setReasons: (v: Record<string, string>) => void;
+  overrideChecked: Record<string, boolean>;
+  setOverrideChecked: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  blockReasons: Record<string, ExceptionFlagsClient | null>;
+  highlightCandidateId: string | null;
   onMerge: (c: Candidate) => void;
   onDismiss: (c: Candidate) => void;
 }
@@ -322,9 +462,22 @@ function ReviewQueueTab({
   setSelectedWinner,
   reasons,
   setReasons,
+  overrideChecked,
+  setOverrideChecked,
+  blockReasons,
+  highlightCandidateId,
   onMerge,
   onDismiss,
 }: ReviewQueueTabProps) {
+  // Scroll the highlighted candidate (from Exceptions deep link) into view
+  // once candidates are loaded.
+  useEffect(() => {
+    if (!highlightCandidateId) return;
+    const el = document.getElementById(`candidate-${highlightCandidateId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlightCandidateId, candidates]);
   if (loading) {
     return (
       <div className="text-center py-12 text-gray-500">
@@ -363,11 +516,42 @@ function ReviewQueueTab({
         const loserSide = currentWinner === c.newer.id ? c.existing : c.newer;
         const winnerSide = currentWinner === c.newer.id ? c.newer : c.existing;
         const busy = busyId === c.id;
+        const isOverride = !!overrideChecked[c.id];
+        const flags = blockReasons[c.id] || null;
+        const isHighlighted = highlightCandidateId === c.id;
+        const blockReasonList: Array<{ key: string; label: string; detail: string }> = [];
+        if (flags?.lsq_conflict)
+          blockReasonList.push({
+            key: 'lsq_conflict',
+            label: 'LSQ lead conflict',
+            detail: 'Both threads have distinct LeadSquared lead ids — merging silently folds two leads into one row.',
+          });
+        if (flags?.uhid_collision)
+          blockReasonList.push({
+            key: 'uhid_collision',
+            label: 'UHID collision',
+            detail: 'Both threads carry different UHIDs — confirm they are the same patient recorded twice.',
+          });
+        if (flags?.stage_regression)
+          blockReasonList.push({
+            key: 'stage_regression',
+            label: 'Stage regression',
+            detail: 'Thread stages differ by ≥2 ranks — verify these are really the same patient, not two different journeys.',
+          });
+        if (flags?.idempotency_conflict)
+          blockReasonList.push({
+            key: 'idempotency_conflict',
+            label: 'Idempotency conflict',
+            detail: 'One of the threads is already merged or archived — this candidate is stale and likely needs dismiss, not merge.',
+          });
 
         return (
           <div
             key={c.id}
-            className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden"
+            id={`candidate-${c.id}`}
+            className={`bg-white border rounded-lg shadow-sm overflow-hidden transition-all ${
+              isHighlighted ? 'border-red-400 ring-2 ring-red-300' : 'border-gray-200'
+            }`}
           >
             {/* Header row */}
             <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -383,6 +567,30 @@ function ReviewQueueTab({
                 Candidate ID: <span className="font-mono">{c.id.slice(0, 8)}</span>
               </div>
             </div>
+
+            {/* Phase 5.3 — Block-reason banner (only when override state + flags present) */}
+            {isOverride && blockReasonList.length > 0 && (
+              <div className="px-4 py-3 bg-red-50 border-b border-red-200">
+                <div className="flex items-start gap-2">
+                  <Shield size={16} className="mt-0.5 shrink-0 text-red-600" />
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold text-red-800">
+                      This merge is blocked by {blockReasonList.length} guardrail{blockReasonList.length > 1 ? 's' : ''}
+                    </div>
+                    <ul className="mt-1 space-y-1">
+                      {blockReasonList.map((b) => (
+                        <li key={b.key} className="text-xs text-red-700">
+                          <span className="font-semibold">{b.label}:</span> {b.detail}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-2 text-xs text-red-600">
+                      Check the override box below to bypass these guardrails. This action is audit-logged.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Side-by-side comparison */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
@@ -453,35 +661,55 @@ function ReviewQueueTab({
             </div>
 
             {/* Action row */}
-            <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center gap-3">
-              <input
-                type="text"
-                placeholder="Reason (optional)"
-                value={reasons[c.id] || ''}
-                onChange={(e) => setReasons({ ...reasons, [c.id]: e.target.value })}
-                className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-even-blue/30 focus:border-even-blue"
-              />
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => onDismiss(c)}
-                  disabled={busy}
-                  className="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                >
-                  <XCircle size={14} />
-                  Not a dup
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onMerge(c)}
-                  disabled={busy}
-                  className="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium text-white bg-even-blue rounded-lg hover:bg-even-blue/90 disabled:opacity-50"
-                  title={`Merge loser ${loserSide.id.slice(0, 8)} into winner ${winnerSide.id.slice(0, 8)}`}
-                >
-                  <GitMerge size={14} />
-                  {busy ? 'Merging…' : 'Merge'}
-                </button>
+            <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <input
+                  type="text"
+                  placeholder="Reason (optional)"
+                  value={reasons[c.id] || ''}
+                  onChange={(e) => setReasons({ ...reasons, [c.id]: e.target.value })}
+                  className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-even-blue/30 focus:border-even-blue"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onDismiss(c)}
+                    disabled={busy}
+                    className="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    <XCircle size={14} />
+                    Not a dup
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onMerge(c)}
+                    disabled={busy}
+                    className={`inline-flex items-center gap-1 px-3 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 ${
+                      isOverride
+                        ? 'bg-red-600 hover:bg-red-700'
+                        : 'bg-even-blue hover:bg-even-blue/90'
+                    }`}
+                    title={`Merge loser ${loserSide.id.slice(0, 8)} into winner ${winnerSide.id.slice(0, 8)}`}
+                  >
+                    <GitMerge size={14} />
+                    {busy ? 'Merging…' : isOverride ? 'Override & Merge' : 'Merge'}
+                  </button>
+                </div>
               </div>
+              <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isOverride}
+                  onChange={(e) =>
+                    setOverrideChecked((prev) => ({ ...prev, [c.id]: e.target.checked }))
+                  }
+                  className="h-3.5 w-3.5"
+                />
+                <Shield size={12} className={isOverride ? 'text-red-600' : 'text-gray-400'} />
+                <span className={isOverride ? 'text-red-700 font-semibold' : ''}>
+                  Override guardrails for this merge (LSQ conflict / UHID collision / stage regression / idempotency)
+                </span>
+              </label>
             </div>
           </div>
         );
@@ -1084,18 +1312,372 @@ function ActivityDetail({ entry }: { entry: ActivityEntry }) {
 }
 
 // -----------------------------------------------------------------------------
-// Stub tab (5.3)
+// Exceptions Tab (Phase 5.3)
 // -----------------------------------------------------------------------------
 
-function ExceptionsTabStub() {
+interface ExceptionEntry {
+  id: string;
+  similarity: number;
+  match_type: string;
+  status: string;
+  created_at: string;
+  recommended_winner_id: string;
+  newer: ThreadSide;
+  existing: ThreadSide;
+  flags: ExceptionFlagsClient;
+}
+
+const EXCEPTION_TYPE_META: Record<
+  keyof ExceptionFlagsClient,
+  { label: string; short: string; bg: string; text: string; description: string }
+> = {
+  lsq_conflict: {
+    label: 'LSQ lead conflict',
+    short: 'LSQ',
+    bg: 'bg-orange-100',
+    text: 'text-orange-800',
+    description: 'Both threads have distinct LeadSquared lead ids',
+  },
+  uhid_collision: {
+    label: 'UHID collision',
+    short: 'UHID',
+    bg: 'bg-purple-100',
+    text: 'text-purple-800',
+    description: 'Both threads carry different UHIDs',
+  },
+  stage_regression: {
+    label: 'Stage regression',
+    short: 'STAGE',
+    bg: 'bg-yellow-100',
+    text: 'text-yellow-800',
+    description: 'Thread stages differ by ≥2 ranks',
+  },
+  idempotency_conflict: {
+    label: 'Idempotency conflict',
+    short: 'IDEMPOTENT',
+    bg: 'bg-gray-100',
+    text: 'text-gray-700',
+    description: 'One thread is already merged or archived',
+  },
+};
+
+const ALL_EXCEPTION_TYPES: Array<keyof ExceptionFlagsClient> = [
+  'lsq_conflict',
+  'uhid_collision',
+  'stage_regression',
+  'idempotency_conflict',
+];
+
+function ExceptionBadge({ type }: { type: keyof ExceptionFlagsClient }) {
+  const m = EXCEPTION_TYPE_META[type];
   return (
-    <div className="text-center py-12 border border-dashed border-gray-200 rounded-lg">
-      <ShieldAlert size={32} className="mx-auto text-gray-400 mb-3" />
-      <h3 className="text-lg font-semibold text-gray-800">Exceptions</h3>
-      <p className="text-sm text-gray-500 mt-1">
-        Coming in Phase 5.3 — merges blocked by LSQ lead conflicts, stage
-        regressions, or other guardrails. Action required items surface here.
-      </p>
+    <span
+      className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold rounded ${m.bg} ${m.text}`}
+      title={m.description}
+    >
+      {m.short}
+    </span>
+  );
+}
+
+interface ExceptionsTabProps {
+  active: boolean;
+  onReviewAndOverride: (candidateId: string) => void;
+}
+
+function ExceptionsTab({ active, onReviewAndOverride }: ExceptionsTabProps) {
+  const [exceptions, setExceptions] = useState<ExceptionEntry[]>([]);
+  const [total, setTotal] = useState(0);
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [typeFilter, setTypeFilter] = useState<Set<keyof ExceptionFlagsClient>>(new Set());
+  const [patientFilter, setPatientFilter] = useState('');
+  const [draftPatient, setDraftPatient] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const sp = new URLSearchParams();
+      if (typeFilter.size > 0) sp.set('types', Array.from(typeFilter).join(','));
+      if (patientFilter.trim()) sp.set('patient', patientFilter.trim());
+      sp.set('limit', '200');
+      const res = await fetch(`/api/admin/dedup/exceptions?${sp.toString()}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to load exceptions');
+      setExceptions(data.data?.exceptions || []);
+      setTotal(data.data?.total || 0);
+      setCounts(data.data?.counts || {});
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  }, [typeFilter, patientFilter]);
+
+  useEffect(() => {
+    if (active) load();
+  }, [active, load]);
+
+  const toggleType = (t: keyof ExceptionFlagsClient) => {
+    setTypeFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(t)) next.delete(t);
+      else next.add(t);
+      return next;
+    });
+  };
+
+  const toggleExpand = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const applyPatientFilter = () => {
+    setPatientFilter(draftPatient);
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Filter bar */}
+      <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+          <Filter size={14} />
+          Filter exceptions
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {ALL_EXCEPTION_TYPES.map((t) => {
+            const active = typeFilter.has(t);
+            const count = counts[t] || 0;
+            const meta = EXCEPTION_TYPE_META[t];
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => toggleType(t)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+                  active
+                    ? `${meta.bg} ${meta.text} border-current`
+                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                }`}
+                title={meta.description}
+              >
+                {meta.label}
+                <span
+                  className={`inline-flex items-center justify-center min-w-[1.25rem] px-1 text-[10px] font-bold rounded ${
+                    active ? 'bg-white/60' : 'bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <input
+            type="text"
+            placeholder="Filter by patient name…"
+            value={draftPatient}
+            onChange={(e) => setDraftPatient(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') applyPatientFilter();
+            }}
+            className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-even-blue/30 focus:border-even-blue"
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={applyPatientFilter}
+              className="px-3 py-2 text-sm font-medium text-white bg-even-blue rounded-lg hover:bg-even-blue/90"
+            >
+              Apply
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDraftPatient('');
+                setPatientFilter('');
+                setTypeFilter(new Set());
+              }}
+              className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => load()}
+              disabled={loading}
+              className="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              Refresh
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Results */}
+      {loading && (
+        <div className="text-center py-12 text-gray-500">
+          <RefreshCw size={24} className="animate-spin mx-auto mb-2" />
+          Loading exceptions…
+        </div>
+      )}
+
+      {error && !loading && (
+        <div className="px-4 py-3 rounded-lg bg-red-50 text-red-800 border border-red-200 flex items-start gap-2">
+          <AlertCircle size={16} className="mt-0.5 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {!loading && !error && exceptions.length === 0 && (
+        <div className="text-center py-12 border border-dashed border-gray-200 rounded-lg">
+          <CheckCircle2 size={40} className="mx-auto text-green-500 mb-3" />
+          <h3 className="text-lg font-semibold text-gray-800">No exceptions</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            All pending dedup candidates are clean. Guardrail-blocked merges will appear here
+            with an override path into the Review Queue.
+          </p>
+        </div>
+      )}
+
+      {!loading && !error && exceptions.length > 0 && (
+        <>
+          <div className="text-xs text-gray-500">
+            Showing {exceptions.length} of {total} exception{total === 1 ? '' : 's'}
+            {(typeFilter.size > 0 || patientFilter) && ' (filtered)'}
+          </div>
+
+          <div className="space-y-3">
+            {exceptions.map((e) => {
+              const activeFlags = ALL_EXCEPTION_TYPES.filter((t) => e.flags[t]);
+              const isExpanded = expanded.has(e.id);
+              const winnerSide =
+                e.recommended_winner_id === e.newer.id ? e.newer : e.existing;
+              const loserSide =
+                e.recommended_winner_id === e.newer.id ? e.existing : e.newer;
+              return (
+                <div
+                  key={e.id}
+                  className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden"
+                >
+                  {/* Header */}
+                  <div className="px-4 py-3 bg-red-50/40 border-b border-gray-200">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <div className="flex items-center flex-wrap gap-2">
+                        <ShieldAlert size={16} className="text-red-600 shrink-0" />
+                        <span className="font-semibold text-gray-900 text-sm">
+                          {winnerSide.patient_name || '—'}
+                          <span className="text-gray-400 font-normal"> vs </span>
+                          {loserSide.patient_name || '—'}
+                        </span>
+                        {activeFlags.map((t) => (
+                          <ExceptionBadge key={t} type={t} />
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                        <span>
+                          {(e.similarity * 100).toFixed(0)}% · {e.match_type.replace(/_/g, ' ')}
+                        </span>
+                        <span className="font-mono">{e.id.slice(0, 8)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Summary row + expand */}
+                  <button
+                    type="button"
+                    onClick={() => toggleExpand(e.id)}
+                    className="w-full px-4 py-2 text-left text-xs text-gray-600 hover:bg-gray-50 flex items-center gap-2 border-b border-gray-100"
+                  >
+                    {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    <span>
+                      Flagged {fmtDate(e.created_at)} · {activeFlags.length} guardrail
+                      {activeFlags.length > 1 ? 's' : ''} · click to see details
+                    </span>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="p-4 bg-gray-50 border-b border-gray-100">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                        <div className="bg-white border border-gray-200 rounded p-3">
+                          <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                            Newer ({e.newer.id.slice(0, 8)})
+                          </div>
+                          <ExceptionSideDetails side={e.newer} />
+                        </div>
+                        <div className="bg-white border border-gray-200 rounded p-3">
+                          <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                            Existing ({e.existing.id.slice(0, 8)})
+                          </div>
+                          <ExceptionSideDetails side={e.existing} />
+                        </div>
+                      </div>
+                      <div className="mt-3 space-y-1">
+                        {activeFlags.map((t) => (
+                          <div key={t} className="text-xs text-gray-700">
+                            <span className="font-semibold">{EXCEPTION_TYPE_META[t].label}:</span>{' '}
+                            {EXCEPTION_TYPE_META[t].description}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-white">
+                    <div className="text-xs text-gray-500">
+                      Recommended winner: {winnerSide.patient_name || '—'}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onReviewAndOverride(e.id)}
+                      className="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700"
+                    >
+                      Review &amp; Override
+                      <ArrowRight size={14} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
+  );
+}
+
+function ExceptionSideDetails({ side }: { side: ThreadSide }) {
+  return (
+    <dl className="space-y-1 text-gray-700">
+      <Row label="Name" value={fmt(side.patient_name)} />
+      <Row label="Phone" value={fmt(side.phone)} />
+      <Row label="UHID" value={fmt(side.uhid)} />
+      <Row label="LSQ" value={fmt(side.lsq_lead_id)} />
+      <Row label="Stage" value={fmt(side.current_stage)} />
+      <Row
+        label="Source"
+        value={
+          <span>
+            {fmt(side.source_type)}
+            {side.archived_at && (
+              <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-gray-200 text-gray-700">
+                ARCHIVED
+              </span>
+            )}
+          </span>
+        }
+      />
+      <Row label="Created" value={fmtDate(side.created_at)} />
+    </dl>
   );
 }
