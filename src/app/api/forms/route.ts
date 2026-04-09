@@ -516,6 +516,85 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ── Admission Advice → Patient Thread + Marketing + Billing Hook ──
+    // Routes admission advice summary to patient thread, marketing channel, and billing channel.
+    if (form_type === 'admission_advice' && status !== 'draft' && body.patient_thread_id) {
+      try {
+        const fd = form_data as Record<string, unknown>;
+        const profile = await queryOne<{ full_name: string }>(
+          `SELECT full_name FROM profiles WHERE id = $1`,
+          [user.profileId]
+        );
+        const actorName = profile?.full_name || user.email;
+
+        const patient = await queryOne<{
+          patient_name: string;
+          uhid: string | null;
+          getstream_channel_id: string | null;
+        }>(
+          `SELECT patient_name, uhid, getstream_channel_id FROM patient_threads WHERE id = $1`,
+          [body.patient_thread_id]
+        );
+
+        if (patient) {
+          const pName = patient.patient_name || 'Unknown';
+          const pUhid = patient.uhid || '—';
+          const val = (v: unknown, fallback?: string) => {
+            if (v === undefined || v === null || v === '') return fallback || '⏳ Pending';
+            return String(v);
+          };
+
+          // Build marketing/billing summary card
+          const summaryLines: string[] = [
+            `🏥 **Admission Advice** — ${pName} (UHID: ${pUhid})`,
+            `Submitted by: ${actorName}`,
+            '',
+            `Diagnosis: ${val(fd.diagnosis)}`,
+            `Reason: ${val(fd.reason_for_admission)}`,
+            `Type: ${val(fd.admission_type)} | Preferred Date: ${val(fd.preferred_date)}`,
+            `Expected LOS: ${val(fd.expected_los)} days | Room: ${val(fd.room_preference)}`,
+          ];
+          if (fd.comorbidities) summaryLines.push(`Comorbidities: ${fd.comorbidities}`);
+          if (fd.allergies) summaryLines.push(`Allergies: ${fd.allergies}`);
+          if (fd.current_medications) summaryLines.push(`Medications: ${fd.current_medications}`);
+          if (fd.special_needs) summaryLines.push(`Special Needs: ${fd.special_needs}`);
+          if (fd.diet_order) summaryLines.push(`Diet: ${val(fd.diet_order)}${fd.diet_other ? ' — ' + fd.diet_other : ''}`);
+          if (fd.activity_level) summaryLines.push(`Activity: ${val(fd.activity_level)}`);
+          if (fd.monitoring_level) summaryLines.push(`Monitoring: ${val(fd.monitoring_level)}`);
+          if (fd.investigations_ordered) summaryLines.push(`Investigations: ${fd.investigations_ordered}`);
+          summaryLines.push('', `🔗 View patient thread for full context`);
+
+          // Patient thread message (concise)
+          if (patient.getstream_channel_id) {
+            const threadMsg = `🏥 **Admission advised** by ${actorName}\n` +
+              `Diagnosis: ${val(fd.diagnosis)} | Type: ${val(fd.admission_type)}\n` +
+              `Preferred Date: ${val(fd.preferred_date)}` +
+              (fd.expected_los ? ` | LOS: ${fd.expected_los} days` : '');
+            try { await sendSystemMessage('patient-thread', patient.getstream_channel_id, threadMsg); } catch { /* non-fatal */ }
+          }
+
+          // Marketing department channel
+          try {
+            await sendSystemMessage('department', 'marketing', summaryLines.join('\n'));
+          } catch {
+            try { await sendSystemMessage('department', 'marketing-revenue', summaryLines.join('\n')); } catch { /* non-fatal */ }
+          }
+
+          // Billing department channel
+          const billingMsg = `📋 ${pName}: Admission advised (${val(fd.admission_type)}) — by ${actorName}\n` +
+            `Diagnosis: ${val(fd.diagnosis)} | Date: ${val(fd.preferred_date)} | LOS: ${val(fd.expected_los)} days | Room: ${val(fd.room_preference)}`;
+          try {
+            await sendSystemMessage('department', 'billing', billingMsg);
+          } catch {
+            try { await sendSystemMessage('department', 'billing-insurance', billingMsg); } catch { /* non-fatal */ }
+          }
+        }
+      } catch (err) {
+        console.error('[AdmissionAdvice] Routing hook error:', err);
+        // Non-fatal — form submission still succeeds
+      }
+    }
+
     // ── Post-Discharge Followup → Feedback Attribution Hook ──
     // When post_discharge_followup is submitted, cross-reference ratings
     // with actual discharge_milestones to calculate milestone attribution.
