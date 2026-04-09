@@ -17,6 +17,7 @@ import {
 } from './leadsquared';
 import { createPatientChannel, sendSystemMessage } from './getstream';
 import { postPatientActivity } from './patient-activity';
+import { checkForDuplicate, logDedupAction } from './dedup';
 
 // ============================================
 // TYPES
@@ -38,9 +39,119 @@ export interface SyncResult {
 // ============================================
 
 /**
+ * Merge an incoming LSQ lead's data onto an existing patient_thread that
+ * was previously created by a manual clerk add (i.e. has no lsq_lead_id yet).
+ *
+ * This is the R.3/R.4 Phase 3 "link" path — when the LSQ sync discovers
+ * that a lead's phone already matches a manual thread, we attach the LSQ
+ * metadata to that existing row instead of creating a duplicate.
+ *
+ * Semantics: "existing non-null wins" for every demographic/clinical field
+ * (to protect already-validated manual intake data), BUT LSQ fields
+ * (lsq_lead_id, lsq_owner_*, lsq_lead_stage, etc.) are always set from the
+ * incoming payload because the existing row has none. Stage gets promoted
+ * opd → pre_admission if LSQ says IPD WIN, matching the existing UPDATE path.
+ */
+async function linkLsqDataToExistingThread(
+  existingId: string,
+  normalized: NormalizedLead,
+  doctorName: string | null,
+  appointmentDate: string | null,
+  hospitalLocation: string | null
+): Promise<void> {
+  await query(
+    `UPDATE patient_threads SET
+      patient_name       = COALESCE(NULLIF(patient_name, ''), NULLIF($2, '')),
+      phone              = COALESCE(NULLIF(phone, ''), NULLIF($3, '')),
+      whatsapp_number    = COALESCE(NULLIF(whatsapp_number, ''), NULLIF($4, '')),
+      email              = COALESCE(NULLIF(email, ''), NULLIF($5, '')),
+      gender             = COALESCE(NULLIF(gender, ''), NULLIF($6, '')),
+      age                = COALESCE(age, $7),
+      date_of_birth      = COALESCE(date_of_birth, $8::date),
+      city               = COALESCE(NULLIF(city, ''), NULLIF($9, '')),
+      state              = COALESCE(NULLIF(state, ''), NULLIF($10, '')),
+      address            = COALESCE(NULLIF(address, ''), NULLIF($11, '')),
+      zip                = COALESCE(NULLIF(zip, ''), NULLIF($12, '')),
+      ailment            = COALESCE(NULLIF(ailment, ''), NULLIF($13, '')),
+      uhid               = COALESCE(NULLIF(uhid, ''), NULLIF($14, '')),
+      ip_number          = COALESCE(NULLIF(ip_number, ''), NULLIF($15, '')),
+      doctor_name        = COALESCE(NULLIF(doctor_name, ''), NULLIF($16, '')),
+      appointment_date   = COALESCE(appointment_date, $17::timestamptz),
+      hospital_location  = COALESCE(NULLIF(hospital_location, ''), NULLIF($18, '')),
+      surgery_order_value = COALESCE(surgery_order_value, $19),
+      primary_diagnosis  = COALESCE(NULLIF(primary_diagnosis, ''), NULLIF($20, '')),
+      planned_procedure  = COALESCE(NULLIF(planned_procedure, ''), NULLIF($21, '')),
+      utm_source         = COALESCE(NULLIF(utm_source, ''), NULLIF($22, '')),
+      utm_campaign       = COALESCE(NULLIF(utm_campaign, ''), NULLIF($23, '')),
+      utm_medium         = COALESCE(NULLIF(utm_medium, ''), NULLIF($24, '')),
+      signup_url         = COALESCE(NULLIF(signup_url, ''), NULLIF($25, '')),
+      financial_category = COALESCE(NULLIF(financial_category, ''), NULLIF($26, '')),
+      lead_source        = COALESCE(NULLIF(lead_source, ''), NULLIF($27, '')),
+      -- LSQ metadata: existing row has none, so always overwrite
+      lsq_lead_id           = $28::text,
+      lsq_prospect_auto_id  = $29::text,
+      lsq_lead_stage        = $30::text,
+      lsq_owner_name        = $31::text,
+      lsq_owner_email       = $32::text,
+      lsq_created_on        = COALESCE(lsq_created_on, $33::timestamptz),
+      lsq_last_synced_at    = NOW(),
+      -- Stage promotion: opd → pre_admission if LSQ says IPD WIN
+      current_stage = CASE
+        WHEN current_stage = 'opd' AND $30::text = 'IPD WIN' THEN 'pre_admission'
+        ELSE current_stage
+      END,
+      updated_at = NOW()
+    WHERE id = $1`,
+    [
+      existingId,                                          // $1
+      normalized.patientName,                              // $2
+      normalized.phone,                                    // $3
+      normalized.whatsappNumber,                           // $4
+      normalized.email,                                    // $5
+      normalized.gender,                                   // $6
+      normalized.age,                                      // $7
+      normalized.dateOfBirth,                              // $8
+      normalized.city,                                     // $9
+      normalized.state,                                    // $10
+      normalized.address,                                  // $11
+      normalized.zip,                                      // $12
+      normalized.ailment,                                  // $13
+      normalized.uhid,                                     // $14
+      normalized.ipNumber,                                 // $15
+      doctorName,                                          // $16
+      appointmentDate,                                     // $17
+      hospitalLocation,                                    // $18
+      normalized.surgeryOrderValue,                        // $19
+      normalized.primaryDiagnosis,                         // $20
+      normalized.plannedProcedure,                         // $21
+      normalized.utmSource,                                // $22
+      normalized.utmCampaign,                              // $23
+      normalized.utmMedium,                                // $24
+      normalized.signupUrl,                                // $25
+      normalized.surgeryOrderValue ? 'cash' : null,        // $26
+      normalized.leadSource,                               // $27
+      normalized.lsqLeadId,                                // $28
+      normalized.lsqProspectAutoId,                        // $29
+      normalized.lsqLeadStage,                             // $30
+      normalized.ownerName,                                // $31
+      normalized.ownerEmail,                               // $32
+      normalized.lsqCreatedOn,                             // $33
+    ]
+  );
+}
+
+/**
  * Upsert a single lead into patient_threads.
- * If the lead already exists (by lsq_lead_id), update it.
- * If it's new, create a new patient_thread.
+ *
+ * R.3/R.4 Phase 3 flow:
+ *   1. Exact lsq_lead_id match → UPDATE existing LSQ-sourced row.
+ *   2. Phone dedup (Layer 1) match against a NON-LSQ thread → LINK: attach
+ *      LSQ metadata to the existing manual thread, keep its channel, post a
+ *      system message. Prevents duplicate rows for walk-in patients whose
+ *      clerk pre-created the thread before LSQ picked up the lead.
+ *   3. Phone dedup match against a DIFFERENT LSQ-sourced thread → SKIP with
+ *      a warning (two LSQ leads share a phone; keep the earlier one).
+ *   4. No match → INSERT a brand-new row (original path).
  *
  * Returns: 'created' | 'updated' | 'skipped'
  */
@@ -133,6 +244,111 @@ export async function upsertLeadAsPatient(
       ]
     );
     return { action: 'updated', id: existing.id };
+  }
+
+  // -------------------------------------------------------------------------
+  // R.3/R.4 Phase 3: Layer 1 phone dedup check
+  //
+  // Before creating a new row, see if this LSQ lead's phone number matches
+  // an existing non-LSQ thread (typically a manual clerk add). If so, we link
+  // LSQ metadata onto that existing row instead of creating a duplicate.
+  //
+  // Edge case: if the phone matches a DIFFERENT LSQ-sourced thread, that means
+  // two LSQ leads share a number. Keep the earlier one and skip the new one,
+  // logging an ignore action for the audit trail.
+  // -------------------------------------------------------------------------
+  if (normalized.phone || normalized.whatsappNumber) {
+    const dedupResult = await checkForDuplicate({
+      name: normalized.patientName,
+      phone: normalized.phone,
+      whatsapp: normalized.whatsappNumber,
+      city: normalized.city,
+    });
+
+    if (dedupResult.action === 'link' && dedupResult.matchedThread) {
+      const match = dedupResult.matchedThread;
+
+      // Case A: matched row is already tied to a DIFFERENT LSQ lead —
+      // phone collision across LSQ leads. Skip the incoming one.
+      if (match.lsq_lead_id && match.lsq_lead_id !== normalized.lsqLeadId) {
+        await logDedupAction({
+          action: 'ignore',
+          source_thread_id: match.id,
+          match_layer: 1,
+          reason: 'duplicate_phone_across_lsq_leads',
+          metadata: {
+            incoming_lsq_lead_id: normalized.lsqLeadId,
+            incoming_patient_name: normalized.patientName,
+            existing_lsq_lead_id: match.lsq_lead_id,
+            existing_patient_name: match.patient_name,
+          },
+          endpoint: 'lsq_sync',
+        });
+        console.warn(
+          `[LSQ Sync] Phone collision: incoming lead ${normalized.lsqLeadId} (${normalized.patientName}) ` +
+          `shares phone with existing LSQ lead ${match.lsq_lead_id} (${match.patient_name}). Skipping.`
+        );
+        return { action: 'skipped', id: match.id };
+      }
+
+      // Case B: matched row has no lsq_lead_id — this is a manual thread
+      // waiting to be linked. Attach the LSQ data and keep the channel.
+      if (!match.lsq_lead_id) {
+        await linkLsqDataToExistingThread(
+          match.id,
+          normalized,
+          doctorName,
+          appointmentDate,
+          hospitalLocation
+        );
+
+        // Post a system message into the existing channel so the thread
+        // members see the LSQ lead was linked.
+        try {
+          const chRow = await queryOne<{ getstream_channel_id: string | null }>(
+            `SELECT getstream_channel_id FROM patient_threads WHERE id = $1`,
+            [match.id]
+          );
+          if (chRow?.getstream_channel_id) {
+            await sendSystemMessage(
+              'patient-thread',
+              chRow.getstream_channel_id,
+              `🔗 LeadSquared lead linked: ${normalized.patientName} — LSQ stage: ${normalized.lsqLeadStage}` +
+                (normalized.uhid ? ` (UHID: ${normalized.uhid})` : '')
+            );
+          }
+        } catch (chErr) {
+          console.error(`[LSQ Sync] Failed to post link message for ${match.id}:`, chErr);
+        }
+
+        await logDedupAction({
+          action: 'link',
+          target_thread_id: match.id,
+          match_layer: 1,
+          reason: 'manual_thread_linked_to_lsq_sync',
+          metadata: {
+            lsq_lead_id: normalized.lsqLeadId,
+            lsq_lead_stage: normalized.lsqLeadStage,
+            matched_phone: dedupResult.phoneNormalized,
+            existing_source_type: match.source_type,
+          },
+          endpoint: 'lsq_sync',
+        });
+
+        console.log(
+          `[LSQ Sync] Linked LSQ lead ${normalized.lsqLeadId} to existing manual thread ${match.id} ` +
+          `(${match.patient_name}) by phone.`
+        );
+        return { action: 'updated', id: match.id };
+      }
+
+      // Case C: match.lsq_lead_id === normalized.lsqLeadId — shouldn't happen
+      // (we already checked by lsq_lead_id above and would've taken the UPDATE
+      // branch), but if it somehow does, just fall through to create which
+      // will fail the unique constraint and surface the error cleanly.
+    }
+    // Layer 2 (fuzzy name) is intentionally skipped for LSQ: the unique
+    // lsq_lead_id is already our source of truth, so we only need Layer 1.
   }
 
   // Create new patient_thread
