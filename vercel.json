@@ -4,5 +4,8 @@
       "path": "/api/integrations/leadsquared/sync",
       "schedule": "*/15 * * * *"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": false
+  }
 }
