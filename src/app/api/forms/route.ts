@@ -205,17 +205,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ── Financial Counselling Version Chain Logic ──
-    // If this is a financial_counseling form with a patient_thread_id, link to previous versions
-    if (form_type === 'financial_counseling' && body.patient_thread_id) {
+    // ── Version Chain Logic (Sprint 1 Day 5 — extended to all handoff-family forms) ──
+    // Any form in VERSIONED_FORM_TYPES gets auto-linked to its previous submission for the
+    // same patient_thread. Sets parent_submission_id, increments version_number, records
+    // change_reason. Non-fatal — a failure here does not fail the submission.
+    const VERSIONED_FORM_TYPES = new Set<FormType>([
+      'consolidated_marketing_handoff',
+      'financial_counseling',
+      'surgery_booking',
+      'admission_advice',
+    ] as FormType[]);
+
+    if (VERSIONED_FORM_TYPES.has(form_type as FormType) && body.patient_thread_id) {
       try {
         const prevSubmission = await queryOne<{ id: string; version_number: number }>(
           `SELECT id, version_number FROM form_submissions
-           WHERE form_type = 'financial_counseling'
-             AND patient_thread_id = $1
-             AND id != $2
-           ORDER BY version_number DESC LIMIT 1`,
-          [body.patient_thread_id, formId]
+           WHERE form_type = $1
+             AND patient_thread_id = $2
+             AND id != $3
+           ORDER BY version_number DESC NULLS LAST, created_at DESC
+           LIMIT 1`,
+          [form_type, body.patient_thread_id, formId]
         );
 
         if (prevSubmission) {
@@ -228,9 +238,17 @@ export async function POST(request: NextRequest) {
              WHERE id = $4`,
             [prevSubmission.id, newVersionNumber, changeReason, formId]
           );
+        } else {
+          // First submission in the chain — record as version 1 so diffs against future versions work.
+          await sqlQuery(
+            `UPDATE form_submissions
+             SET version_number = 1
+             WHERE id = $1 AND version_number IS NULL`,
+            [formId]
+          );
         }
       } catch (err) {
-        console.error('[VersionChain] Failed to link financial_counseling versions:', err);
+        console.error(`[VersionChain] Failed to link ${form_type} versions:`, err);
         // Non-fatal — form submission still succeeds
       }
     }
