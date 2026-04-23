@@ -7,7 +7,7 @@
 // visibility. Mobile-first layout.
 // ============================================
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { trackFeature } from '@/lib/session-tracker';
 import {
   type FormSchema,
@@ -30,6 +30,39 @@ interface FormRendererProps {
   onSaveDraft?: (data: Record<string, unknown>) => void;
   isSubmitting?: boolean;
   submitLabel?: string;
+  /**
+   * Sprint 1 Day 3 — when set, enables LSQ prefill block at the top of the form
+   * and routes file-upload requests to include this patient_thread_id.
+   */
+  patientId?: string;
+}
+
+// Sprint 1 Day 3 — shape returned by /api/patients/[id]/lsq-prefill
+interface LsqPrefillData {
+  lsq_lead_id: string | null;
+  name: string | null;
+  age: number | null;
+  gender: string | null;
+  mobile: string | null;
+  email: string | null;
+  uhid: string | null;
+  utm_source: string | null;
+  utm_campaign: string | null;
+  ailment: string | null;
+  doctor_name: string | null;
+  financial_category: string | null;
+  is_existing_member: boolean | null;
+  lsq_owner_name: string | null;
+  lsq_last_synced_at: string | null;
+  [key: string]: unknown;
+}
+
+// Sprint 1 Day 3 — shape stored in form_data for each uploaded file
+interface UploadedFile {
+  url: string;
+  filename: string;
+  size: number;
+  contentType: string;
 }
 
 // ============================================
@@ -43,7 +76,40 @@ export default function FormRenderer({
   onSaveDraft,
   isSubmitting = false,
   submitLabel = 'Submit Form',
+  patientId,
 }: FormRendererProps) {
+  // Sprint 1 Day 3 — LSQ prefill state (only loaded for consolidated_marketing_handoff)
+  const showLsqPrefill = !!patientId && schema.formType === 'consolidated_marketing_handoff';
+  const [lsqData, setLsqData] = useState<LsqPrefillData | null>(null);
+  const [lsqLoading, setLsqLoading] = useState(false);
+  const [lsqError, setLsqError] = useState<string | null>(null);
+
+  const fetchLsqPrefill = useCallback(async () => {
+    if (!showLsqPrefill) return;
+    setLsqLoading(true);
+    setLsqError(null);
+    try {
+      const res = await fetch(`/api/patients/${patientId}/lsq-prefill`);
+      const body = await res.json();
+      if (!res.ok || !body.success) {
+        setLsqError(body.error || `HTTP ${res.status}`);
+        setLsqData(null);
+      } else if (!body.has_lsq_data) {
+        setLsqData(null); // patient exists but no LSQ origin — hide the block
+      } else {
+        setLsqData(body.data as LsqPrefillData);
+      }
+    } catch (err) {
+      setLsqError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLsqLoading(false);
+    }
+  }, [showLsqPrefill, patientId]);
+
+  useEffect(() => {
+    fetchLsqPrefill();
+  }, [fetchLsqPrefill]);
+
   const [formData, setFormData] = useState<Record<string, unknown>>(() => {
     const defaults: Record<string, unknown> = {};
     for (const field of getAllFields(schema)) {
@@ -148,6 +214,16 @@ export default function FormRenderer({
         </div>
       </div>
 
+      {/* Sprint 1 Day 3 — LSQ prefill block (handoff form only, patient-driven) */}
+      {showLsqPrefill && (lsqLoading || lsqData || lsqError) && (
+        <LsqPrefillBlock
+          data={lsqData}
+          loading={lsqLoading}
+          error={lsqError}
+          onRefresh={fetchLsqPrefill}
+        />
+      )}
+
       {/* Sections */}
       {schema.sections.map((section) => (
         <SectionRenderer
@@ -159,6 +235,7 @@ export default function FormRenderer({
           touchedFields={touchedFields}
           errorMap={errorMap}
           isFieldVisible={isFieldVisible}
+          patientId={patientId}
         />
       ))}
 
@@ -212,6 +289,7 @@ function SectionRenderer({
   touchedFields,
   errorMap,
   isFieldVisible,
+  patientId,
 }: {
   section: FormSection;
   formData: Record<string, unknown>;
@@ -220,6 +298,8 @@ function SectionRenderer({
   touchedFields: Set<string>;
   errorMap: Record<string, string>;
   isFieldVisible: (field: FormField) => boolean;
+  /** Sprint 1 Day 3 — forwarded to file-type fields for patient-linked uploads */
+  patientId?: string;
 }) {
   const visibleFields = section.fields.filter(isFieldVisible);
   if (visibleFields.length === 0) return null;
@@ -246,6 +326,7 @@ function SectionRenderer({
                 onChange={(val) => setField(field.key, val)}
                 onBlur={() => touchField(field.key)}
                 error={touchedFields.has(field.key) ? errorMap[field.key] : undefined}
+                patientId={patientId}
               />
             </div>
           );
@@ -265,12 +346,15 @@ function FieldRenderer({
   onChange,
   onBlur,
   error,
+  patientId,
 }: {
   field: FormField;
   value: unknown;
   onChange: (value: unknown) => void;
   onBlur: () => void;
   error?: string;
+  /** Sprint 1 Day 3 — passed to file-type uploads so they tag with patient_thread_id */
+  patientId?: string;
 }) {
   const isRequired = field.validation?.required;
   const hasReadiness = !!field.readinessItem;
@@ -460,6 +544,23 @@ function FieldRenderer({
     );
   }
 
+  // FILE (Sprint 1 Day 3 — multi-file upload via Vercel Blob)
+  if (field.type === 'file') {
+    const files = (Array.isArray(value) ? value : []) as UploadedFile[];
+    return (
+      <FileUploadField
+        field={field}
+        files={files}
+        onChange={onChange}
+        error={error}
+        labelEl={labelEl}
+        helpEl={helpEl}
+        errorEl={errorEl}
+        patientId={patientId}
+      />
+    );
+  }
+
   // DATE / DATETIME / TIME
   if (field.type === 'date' || field.type === 'datetime' || field.type === 'time') {
     const inputType = field.type === 'datetime' ? 'datetime-local' : field.type;
@@ -494,6 +595,184 @@ function FieldRenderer({
         maxLength={field.validation?.maxLength}
         className={inputClasses}
       />
+      {helpEl}
+      {errorEl}
+    </div>
+  );
+}
+
+// ============================================
+// LSQ PREFILL BLOCK (Sprint 1 Day 3)
+// ============================================
+// Read-only summary of LSQ-originated patient data. Renders at the top of
+// the consolidated_marketing_handoff form to give Marketing instant visibility
+// into everything LSQ already knows about this lead — they just confirm + add
+// the new fields, instead of re-typing name/mobile/UTM.
+
+function LsqPrefillBlock({
+  data,
+  loading,
+  error,
+  onRefresh,
+}: {
+  data: LsqPrefillData | null;
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-blue-900">From LeadSquared</h3>
+          <p className="mt-0.5 text-xs text-blue-700">
+            LSQ-captured data for this lead. Read-only — LSQ is the source of truth.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={loading}
+          className="px-2 py-1 text-xs font-medium text-blue-700 hover:text-blue-900 disabled:opacity-50"
+        >
+          {loading ? 'Refreshing…' : 'Refresh'}
+        </button>
+      </div>
+
+      {error && (
+        <p className="mt-3 text-xs text-red-700">Failed to load LSQ data: {error}</p>
+      )}
+
+      {loading && !data && (
+        <p className="mt-3 text-xs text-blue-700">Loading…</p>
+      )}
+
+      {data && (
+        <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4">
+          <LsqField label="Name" value={data.name} />
+          <LsqField label="Age" value={data.age != null ? String(data.age) : null} />
+          <LsqField label="Gender" value={data.gender} />
+          <LsqField label="Mobile" value={data.mobile} />
+          <LsqField label="Email" value={data.email} />
+          <LsqField label="UHID" value={data.uhid} />
+          <LsqField label="Ailment" value={data.ailment} />
+          <LsqField label="Doctor" value={data.doctor_name} />
+          <LsqField label="Financial Cat." value={data.financial_category} />
+          <LsqField label="Existing Member" value={data.is_existing_member === true ? 'Yes' : data.is_existing_member === false ? 'No' : null} />
+          <LsqField label="UTM Source" value={data.utm_source} />
+          <LsqField label="UTM Campaign" value={data.utm_campaign} />
+          <LsqField label="LSQ Owner" value={data.lsq_owner_name} />
+          <LsqField label="Last Sync" value={data.lsq_last_synced_at ? new Date(data.lsq_last_synced_at).toLocaleString() : null} />
+        </dl>
+      )}
+    </div>
+  );
+}
+
+function LsqField({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div>
+      <dt className="text-blue-700 font-medium">{label}</dt>
+      <dd className="text-gray-900">{value ?? <span className="text-gray-400">—</span>}</dd>
+    </div>
+  );
+}
+
+// ============================================
+// FILE UPLOAD FIELD (Sprint 1 Day 3)
+// ============================================
+// Handles multi-file upload to /api/files/upload (Vercel Blob). Stores
+// { url, filename, size, contentType }[] in formData[field.key]. Existing
+// uploads are shown with a remove button. Uploads happen on <input change>.
+
+function FileUploadField({
+  field,
+  files,
+  onChange,
+  labelEl,
+  helpEl,
+  errorEl,
+  patientId,
+}: {
+  field: FormField;
+  files: UploadedFile[];
+  onChange: (value: unknown) => void;
+  error?: string;
+  labelEl: React.ReactNode;
+  helpEl: React.ReactNode;
+  errorEl: React.ReactNode;
+  patientId?: string;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const handleFiles = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    setUploading(true);
+    setUploadError(null);
+    const newFiles: UploadedFile[] = [];
+    try {
+      for (const file of Array.from(fileList)) {
+        const fd = new FormData();
+        fd.append('file', file);
+        if (patientId) fd.append('patient_thread_id', patientId);
+        fd.append('category', 'handoff_attachment');
+        fd.append('link_context', `form:${field.key}`);
+        const res = await fetch('/api/files/upload', { method: 'POST', body: fd });
+        const body = await res.json();
+        if (!res.ok || !body.success) {
+          throw new Error(body.error || `Upload failed for ${file.name} (HTTP ${res.status})`);
+        }
+        newFiles.push({
+          url: body.data?.url ?? body.url,
+          filename: body.data?.filename ?? file.name,
+          size: file.size,
+          contentType: file.type,
+        });
+      }
+      onChange([...files, ...newFiles]);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div>
+      {labelEl}
+      <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-3">
+        <input
+          id={`input-${field.key}`}
+          type="file"
+          multiple
+          onChange={(e) => handleFiles(e.target.files)}
+          disabled={uploading}
+          className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-blue-600 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white file:hover:bg-blue-700 file:disabled:opacity-50"
+        />
+        {uploading && <p className="mt-2 text-xs text-blue-700">Uploading…</p>}
+        {uploadError && <p className="mt-2 text-xs text-red-700">{uploadError}</p>}
+
+        {files.length > 0 && (
+          <ul className="mt-3 space-y-1 text-xs">
+            {files.map((f, i) => (
+              <li key={`${f.url}-${i}`} className="flex items-center justify-between gap-2 rounded bg-white px-2 py-1">
+                <a href={f.url} target="_blank" rel="noreferrer" className="truncate text-blue-700 hover:underline">
+                  {f.filename}
+                </a>
+                <span className="flex-shrink-0 text-gray-400">{(f.size / 1024).toFixed(0)} KB</span>
+                <button
+                  type="button"
+                  onClick={() => onChange(files.filter((_, j) => j !== i))}
+                  className="flex-shrink-0 text-red-600 hover:text-red-800"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
       {helpEl}
       {errorEl}
     </div>
