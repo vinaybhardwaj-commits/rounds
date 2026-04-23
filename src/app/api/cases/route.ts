@@ -77,6 +77,7 @@ export async function GET(request: NextRequest) {
     const stateFilter = searchParams.get('state');
     const urgencyFilter = searchParams.get('urgency');
     const hospitalSlugFilter = searchParams.get('hospital_slug');
+    const patientThreadIdFilter = searchParams.get('patient_thread_id');
     const includeArchived = searchParams.get('include_archived') === '1';
     const rawLimit = parseInt(searchParams.get('limit') || '50', 10);
     const limit = Math.max(1, Math.min(500, isNaN(rawLimit) ? 50 : rawLimit));
@@ -110,6 +111,11 @@ export async function GET(request: NextRequest) {
     if (hospitalSlugFilter) {
       params.push(hospitalSlugFilter);
       whereClauses.push(`h.slug = $${params.length}`);
+    }
+    if (patientThreadIdFilter) {
+      // Added Sprint 2 Day 6.B — CasePanel uses this to find a patient's active case.
+      params.push(patientThreadIdFilter);
+      whereClauses.push(`sc.patient_thread_id = $${params.length}::UUID`);
     }
 
     params.push(limit);
@@ -168,6 +174,7 @@ export async function GET(request: NextRequest) {
         state: stateFilter,
         urgency: urgencyFilter,
         hospital_slug: hospitalSlugFilter,
+        patient_thread_id: patientThreadIdFilter,
         include_archived: includeArchived,
         limit,
       },

@@ -39,6 +39,8 @@ import {
 import { FORM_TYPE_LABELS, FORMS_BY_STAGE, ALL_FORM_TYPES } from '@/lib/form-registry';
 import { PredictionCard } from '@/components/ai/PredictionCard';
 import { SurgeryPanel } from '@/components/ot/SurgeryPanel';
+// Sprint 2 Day 6.B — new case-model panel (different domain from OT Readiness).
+import CasePanel from '@/components/drawer/CasePanel';
 import { PatientFilesTab } from './PatientFilesTab';
 import FCVersionHistory from '@/components/forms/FCVersionHistory';
 
@@ -981,7 +983,13 @@ export function PatientDetailView({
           </div>
         )}
 
-        {/* ── Surgery Panel (OT Readiness) ── */}
+        {/* ── Case Panel (new surgical_cases lifecycle, Sprint 2 Day 6.B) ── */}
+        {/* Renders nothing when FEATURE_CASE_MODEL_ENABLED is off or no case exists. */}
+        {patient && (
+          <CasePanel patientThreadId={patient.id} />
+        )}
+
+        {/* ── Surgery Panel (legacy OT Readiness, surgery_postings table) ── */}
         {patient && userRole && userId && (
           <SurgeryPanel
             patientThreadId={patient.id}
