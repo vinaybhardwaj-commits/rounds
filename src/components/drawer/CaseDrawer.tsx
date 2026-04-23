@@ -196,6 +196,28 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
     setExpandedTrack(defaultExpandedTrack(role));
   }, [role]);
 
+  const reload = () => {
+    setLoading(true);
+    setError(null);
+    setFeatureDisabled(false);
+    fetch(`/api/cases/${caseId}`)
+      .then(async (r) => {
+        const body = await r.json();
+        if (r.status === 503 && body?.feature_enabled === false) {
+          setFeatureDisabled(true);
+          return;
+        }
+        if (!r.ok || !body?.success) {
+          throw new Error(body?.error || `HTTP ${r.status}`);
+        }
+        setData(body.data);
+      })
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => setLoading(false));
+  };
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -409,20 +431,12 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
                 </h4>
                 <ul className="space-y-1">
                   {condition_cards.map((cc) => (
-                    <li key={cc.id} className="flex items-start gap-2 text-xs">
-                      <span className={`mt-0.5 inline-flex rounded px-1.5 py-0.5 font-medium ${
-                        cc.status === 'done' ? 'bg-emerald-100 text-emerald-800' :
-                        cc.status === 'waived' ? 'bg-gray-100 text-gray-700' :
-                        cc.status === 'in_progress' ? 'bg-sky-100 text-sky-800' :
-                        'bg-amber-100 text-amber-800'
-                      }`}>
-                        {cc.status}
-                      </span>
-                      <span>{cc.library_code || cc.custom_label || '(no label)'}</span>
-                      {cc.note && (
-                        <span className="text-gray-500">— {cc.note}</span>
-                      )}
-                    </li>
+                    <ConditionCardRow
+                      key={cc.id}
+                      caseId={c.id}
+                      card={cc}
+                      onChanged={reload}
+                    />
                   ))}
                 </ul>
               </div>
@@ -557,6 +571,120 @@ interface TrackCardProps {
   expanded: boolean;
   onToggle: () => void;
   children: React.ReactNode;
+}
+
+// ---- ConditionCardRow (inline Mark done / Waive controls) ----
+
+interface ConditionCardRowProps {
+  caseId: string;
+  card: ConditionCard;
+  onChanged: () => void;
+}
+
+function ConditionCardRow({ caseId, card, onChanged }: ConditionCardRowProps) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [waiveMode, setWaiveMode] = useState(false);
+  const [waiveNote, setWaiveNote] = useState('');
+
+  const terminal = card.status === 'done' || card.status === 'waived';
+
+  const post = async (status: 'done' | 'waived', note?: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/cases/${caseId}/conditions/${card.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, note }),
+      });
+      const body = await res.json();
+      if (!res.ok || !body.success) throw new Error(body?.error || `HTTP ${res.status}`);
+      setWaiveMode(false);
+      setWaiveNote('');
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <li className="rounded border border-gray-100 bg-white px-2 py-1.5 text-xs">
+      <div className="flex items-start gap-2">
+        <span className={`mt-0.5 inline-flex rounded px-1.5 py-0.5 font-medium ${
+          card.status === 'done' ? 'bg-emerald-100 text-emerald-800' :
+          card.status === 'waived' ? 'bg-gray-100 text-gray-700' :
+          card.status === 'in_progress' ? 'bg-sky-100 text-sky-800' :
+          'bg-amber-100 text-amber-800'
+        }`}>
+          {card.status}
+        </span>
+        <span className="flex-1">
+          <span className="font-medium text-gray-900">
+            {card.library_code || card.custom_label || '(no label)'}
+          </span>
+          {card.note && (
+            <span className="block text-gray-500">{card.note}</span>
+          )}
+        </span>
+        {!terminal && !waiveMode && (
+          <span className="flex flex-shrink-0 gap-1">
+            <button
+              type="button"
+              onClick={() => post('done')}
+              disabled={busy}
+              className="rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+            >
+              Mark done
+            </button>
+            <button
+              type="button"
+              onClick={() => setWaiveMode(true)}
+              disabled={busy}
+              className="rounded border border-gray-200 bg-white px-2 py-0.5 text-[11px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Waive…
+            </button>
+          </span>
+        )}
+      </div>
+      {waiveMode && (
+        <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2">
+          <label className="block text-[11px] font-medium text-amber-900">
+            Why are you waiving this? (required)
+          </label>
+          <input
+            type="text"
+            value={waiveNote}
+            onChange={(e) => setWaiveNote(e.target.value)}
+            placeholder="e.g. patient on warfarin, clinical judgement"
+            className="mt-1 w-full rounded-md border border-amber-300 px-2 py-1 text-xs focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+          />
+          <div className="mt-2 flex justify-end gap-1">
+            <button
+              type="button"
+              onClick={() => { setWaiveMode(false); setWaiveNote(''); }}
+              disabled={busy}
+              className="rounded border border-gray-200 bg-white px-2 py-0.5 text-[11px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => post('waived', waiveNote.trim())}
+              disabled={busy || !waiveNote.trim()}
+              className="rounded border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-200 disabled:opacity-50"
+            >
+              {busy ? 'Waiving…' : 'Confirm waive'}
+            </button>
+          </div>
+        </div>
+      )}
+      {error && <p className="mt-1 text-[11px] text-red-700">{error}</p>}
+    </li>
+  );
 }
 
 function TrackCard({ title, subtitle, summary, expanded, onToggle, children }: TrackCardProps) {
