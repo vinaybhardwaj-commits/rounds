@@ -117,6 +117,94 @@ export async function POST(request: NextRequest) {
 
     const formId = result.id;
 
+    // ── Sprint 1 Day 4 — Consolidated Marketing Handoff → Draft surgical_case Hook ──
+    // When a handoff submits with surgery_planned=true AND FEATURE_CASE_MODEL_ENABLED,
+    // create a surgical_cases row in state='draft' + case_state_events row for audit.
+    // Decision: Framing B (PRD v3.0) — case entity is born at handoff submit time.
+    // Also syncs patient_threads.hospital_id from target_hospital (keeps patient + case
+    // in the same hospital if marketing re-routes). All behind the feature flag so
+    // Sprint 1 can test end-to-end without user-facing side effects.
+    if (
+      form_type === 'consolidated_marketing_handoff' &&
+      status !== 'draft' &&
+      process.env.FEATURE_CASE_MODEL_ENABLED === 'true' &&
+      form_data.surgery_planned === true &&
+      body.patient_thread_id
+    ) {
+      try {
+        // Resolve target_hospital slug → hospital_id.
+        const hospitalSlug = (form_data.target_hospital as string | undefined)?.toLowerCase();
+        const hospital = hospitalSlug
+          ? await queryOne<{ id: string }>(
+              `SELECT id FROM hospitals WHERE slug = $1 AND is_active = TRUE LIMIT 1`,
+              [hospitalSlug]
+            )
+          : null;
+
+        if (!hospital) {
+          console.warn(
+            `[Sprint1.CaseModel] Skipping draft creation — target_hospital "${hospitalSlug}" not active or missing.`
+          );
+        } else {
+          // Sync patient_threads.hospital_id to match the handoff's target.
+          // This handles re-routing: patient originally EHRC → marketing re-routes to EHBR.
+          await sqlQuery(
+            `UPDATE patient_threads SET hospital_id = $1, updated_at = NOW() WHERE id = $2 AND hospital_id IS DISTINCT FROM $1`,
+            [hospital.id, body.patient_thread_id]
+          );
+
+          // Extract additional case metadata from the handoff.
+          const urgency = (() => {
+            const u = form_data.surgery_urgency as string | undefined;
+            if (u && ['elective', 'urgent', 'emergency'].includes(u)) return u;
+            return 'elective';
+          })();
+          const plannedProcedure = (form_data.proposed_procedure as string | undefined) || null;
+          const plannedSurgeryDate = (form_data.preferred_surgery_date as string | undefined) || null;
+
+          // Create surgical_cases row (state='draft').
+          const caseInsert = await queryOne<{ id: string }>(
+            `INSERT INTO surgical_cases
+               (hospital_id, patient_thread_id, handoff_submission_id,
+                planned_procedure, planned_surgery_date, urgency,
+                state, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, 'draft', $7)
+             RETURNING id`,
+            [
+              hospital.id,
+              body.patient_thread_id,
+              formId,
+              plannedProcedure,
+              plannedSurgeryDate,
+              urgency,
+              user.profileId,
+            ]
+          );
+
+          if (caseInsert) {
+            // Append the initial state event (Invariant: every state mutation logs).
+            await sqlQuery(
+              `INSERT INTO case_state_events
+                 (case_id, from_state, to_state, transition_reason, actor_profile_id, metadata)
+               VALUES ($1, NULL, 'draft', $2, $3, $4::jsonb)`,
+              [
+                caseInsert.id,
+                'handoff_submit',
+                user.profileId,
+                JSON.stringify({ handoff_submission_id: formId }),
+              ]
+            );
+            console.log(
+              `[Sprint1.CaseModel] Created draft surgical_case ${caseInsert.id} from handoff ${formId}`
+            );
+          }
+        }
+      } catch (err) {
+        console.error('[Sprint1.CaseModel] Failed to create draft case — non-fatal:', err);
+        // Don't fail the handoff submission; the case can be created manually later.
+      }
+    }
+
     // ── Financial Counselling Version Chain Logic ──
     // If this is a financial_counseling form with a patient_thread_id, link to previous versions
     if (form_type === 'financial_counseling' && body.patient_thread_id) {
