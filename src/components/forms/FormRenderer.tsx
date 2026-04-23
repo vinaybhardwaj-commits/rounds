@@ -8,6 +8,7 @@
 // ============================================
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
+import VersionHistoryDrawer from './VersionHistoryDrawer';
 import { trackFeature } from '@/lib/session-tracker';
 import {
   type FormSchema,
@@ -35,7 +36,22 @@ interface FormRendererProps {
    * and routes file-upload requests to include this patient_thread_id.
    */
   patientId?: string;
+  /**
+   * Sprint 1 Day 5 — when set, enables the "Version history" button on the form
+   * header. currentFormId is optional; if provided, the drawer highlights the
+   * currently-open submission in the timeline.
+   */
+  currentFormId?: string;
 }
+
+// Sprint 1 Day 5 — form types that participate in the version chain. Kept in
+// sync with VERSIONED_FORM_TYPES in /api/forms/route.ts (server-side enforces).
+const VERSIONED_FORM_TYPES = new Set([
+  'consolidated_marketing_handoff',
+  'financial_counseling',
+  'surgery_booking',
+  'admission_advice',
+]);
 
 // Sprint 1 Day 4 — doctor profile shape (from /api/doctors)
 interface DoctorOption {
@@ -87,7 +103,11 @@ export default function FormRenderer({
   isSubmitting = false,
   submitLabel = 'Submit Form',
   patientId,
+  currentFormId,
 }: FormRendererProps) {
+  // Sprint 1 Day 5 — version history drawer state
+  const showVersionButton = !!patientId && VERSIONED_FORM_TYPES.has(schema.formType);
+  const [versionDrawerOpen, setVersionDrawerOpen] = useState(false);
   // Sprint 1 Day 3 — LSQ prefill state (only loaded for consolidated_marketing_handoff)
   const showLsqPrefill = !!patientId && schema.formType === 'consolidated_marketing_handoff';
   const [lsqData, setLsqData] = useState<LsqPrefillData | null>(null);
@@ -269,8 +289,22 @@ export default function FormRenderer({
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Form header */}
       <div className="border-b border-gray-200 pb-4">
-        <h2 className="text-xl font-semibold text-gray-900">{schema.title}</h2>
-        <p className="mt-1 text-sm text-gray-600">{schema.description}</p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-xl font-semibold text-gray-900">{schema.title}</h2>
+            <p className="mt-1 text-sm text-gray-600">{schema.description}</p>
+          </div>
+          {/* Sprint 1 Day 5 — Version history button for any VERSIONED form */}
+          {showVersionButton && (
+            <button
+              type="button"
+              onClick={() => setVersionDrawerOpen(true)}
+              className="flex-shrink-0 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Version history
+            </button>
+          )}
+        </div>
 
         {/* Completion bar */}
         <div className="mt-3">
@@ -376,6 +410,17 @@ export default function FormRenderer({
           </button>
         )}
       </div>
+
+      {/* Sprint 1 Day 5 — version history drawer (mounted once; open state toggles) */}
+      {showVersionButton && patientId && (
+        <VersionHistoryDrawer
+          patientThreadId={patientId}
+          formType={schema.formType}
+          currentFormId={currentFormId}
+          open={versionDrawerOpen}
+          onClose={() => setVersionDrawerOpen(false)}
+        />
+      )}
     </form>
   );
 }
