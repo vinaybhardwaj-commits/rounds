@@ -95,7 +95,7 @@ export default function LeadSquaredAdmin() {
     setSyncing(true);
     setSyncResult(null);
     try {
-      const res = await fetch('/api/integrations/leadsquared/sync', {
+      const res = await fetch('/api/admin/leadsquared/trigger-sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enrichFromActivities: true }),
