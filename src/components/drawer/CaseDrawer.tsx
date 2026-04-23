@@ -101,10 +101,13 @@ interface ConditionCard {
 
 interface EquipmentRequest {
   id: string;
-  item_name: string;
-  status: string;
-  vendor: string | null;
+  item_type: string;      // 'kit' | 'standard' | 'non_standard'
+  item_label: string;     // human-readable name
+  quantity: number;
+  status: string;         // 5-step chain
+  vendor_name: string | null;
   kit_id: string | null;
+  auto_verified: boolean;
 }
 
 interface CaseDetail {
@@ -492,9 +495,13 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
             <ul className="space-y-1 text-xs">
               {equipment_requests.map((er) => (
                 <li key={er.id} className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-gray-900">{er.item_name}</span>
+                  <span className="font-medium text-gray-900">
+                    {er.item_label}
+                    {er.quantity > 1 && <span className="ml-1 text-gray-500">×{er.quantity}</span>}
+                  </span>
                   <span className="text-gray-500">
-                    {er.status} {er.vendor ? `· ${er.vendor}` : ''}
+                    {er.status} {er.vendor_name ? `· ${er.vendor_name}` : ''}
+                    {er.auto_verified && <span className="ml-1 text-emerald-700">· auto-verified</span>}
                   </span>
                 </li>
               ))}

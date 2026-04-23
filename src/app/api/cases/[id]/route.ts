@@ -101,12 +101,17 @@ interface EquipmentRequestRow {
   id: string;
   case_id: string;
   kit_id: string | null;
-  item_name: string;
+  item_type: string;
+  item_label: string;
+  quantity: number;
   status: string;
-  vendor: string | null;
+  vendor_name: string | null;
+  vendor_phone: string | null;
+  eta: string | null;
   notes: string | null;
-  updated_at: string;
+  auto_verified: boolean;
   created_at: string;
+  updated_at: string;
 }
 
 interface HandoffRow {
@@ -232,8 +237,9 @@ export async function GET(
         query<EquipmentRequestRow>(
           `
           SELECT
-            id, case_id, kit_id, item_name, status, vendor, notes,
-            updated_at, created_at
+            id, case_id, kit_id, item_type, item_label, quantity, status,
+            vendor_name, vendor_phone, eta, notes, auto_verified,
+            created_at, updated_at
           FROM equipment_requests
           WHERE case_id = $1
           ORDER BY created_at ASC
