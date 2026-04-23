@@ -37,6 +37,16 @@ interface FormRendererProps {
   patientId?: string;
 }
 
+// Sprint 1 Day 4 — doctor profile shape (from /api/doctors)
+interface DoctorOption {
+  id: string;
+  name: string;
+  email: string | null;
+  role: string;
+  primary_hospital_id: string | null;
+  primary_hospital_slug: string | null;
+}
+
 // Sprint 1 Day 3 — shape returned by /api/patients/[id]/lsq-prefill
 interface LsqPrefillData {
   lsq_lead_id: string | null;
@@ -110,6 +120,35 @@ export default function FormRenderer({
     fetchLsqPrefill();
   }, [fetchLsqPrefill]);
 
+  // Sprint 1 Day 4 — Doctor list for Picker B (admitting_doctor_id dropdown).
+  // Loaded only for the handoff form. On no-doctors, the picker shows a
+  // "no doctors on file" helper but remains usable (user types into the text
+  // field instead).
+  const usesPickerB = schema.formType === 'consolidated_marketing_handoff';
+  const [doctorOptions, setDoctorOptions] = useState<DoctorOption[]>([]);
+  const [doctorsLoading, setDoctorsLoading] = useState(false);
+  const [doctorsError, setDoctorsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!usesPickerB) return;
+    let cancelled = false;
+    setDoctorsLoading(true);
+    setDoctorsError(null);
+    fetch('/api/doctors')
+      .then((r) => r.json())
+      .then((body) => {
+        if (cancelled) return;
+        if (body?.success && Array.isArray(body.data)) {
+          setDoctorOptions(body.data as DoctorOption[]);
+        } else {
+          setDoctorsError(body?.error || 'Failed to load doctors');
+        }
+      })
+      .catch((e) => { if (!cancelled) setDoctorsError(String(e)); })
+      .finally(() => { if (!cancelled) setDoctorsLoading(false); });
+    return () => { cancelled = true; };
+  }, [usesPickerB]);
+
   const [formData, setFormData] = useState<Record<string, unknown>>(() => {
     const defaults: Record<string, unknown> = {};
     for (const field of getAllFields(schema)) {
@@ -136,6 +175,43 @@ export default function FormRenderer({
     // Clear error for this field on change
     setErrors((prev) => prev.filter((e) => e.field !== key));
   }, []);
+
+  // Sprint 1 Day 4 — Picker B side effect.
+  // When admitting_doctor_id changes (and is non-empty), auto-fill target_opd_doctor
+  // with the doctor's display name, then fetch their hospital affiliations and
+  // auto-fill target_hospital with the primary. Marketing can override both.
+  useEffect(() => {
+    if (!usesPickerB) return;
+    const docId = formData.admitting_doctor_id as string | undefined;
+    if (!docId) return;
+    const doc = doctorOptions.find((d) => d.id === docId);
+    if (!doc) return;
+
+    // Only fill target_opd_doctor if it's empty — don't overwrite user's manual typing.
+    if (!formData.target_opd_doctor) {
+      setFormData((prev) => ({ ...prev, target_opd_doctor: doc.name }));
+    }
+
+    let cancelled = false;
+    fetch(`/api/doctors/${docId}/affiliations`)
+      .then((r) => r.json())
+      .then((body) => {
+        if (cancelled) return;
+        if (body?.success && body.primary_hospital_slug) {
+          // Only set target_hospital if currently empty OR matches the picker-suggested
+          // doctor's old primary (to avoid stomping a marketing override).
+          setFormData((prev) => {
+            if (!prev.target_hospital) {
+              return { ...prev, target_hospital: body.primary_hospital_slug };
+            }
+            return prev;
+          });
+        }
+      })
+      .catch((e) => console.warn('[PickerB] affiliations lookup failed:', e));
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.admitting_doctor_id, doctorOptions, usesPickerB]);
 
   // Mark field as touched on blur
   const touchField = useCallback((key: string) => {
@@ -225,19 +301,46 @@ export default function FormRenderer({
       )}
 
       {/* Sections */}
-      {schema.sections.map((section) => (
-        <SectionRenderer
-          key={section.id}
-          section={section}
-          formData={formData}
-          setField={setField}
-          touchField={touchField}
-          touchedFields={touchedFields}
-          errorMap={errorMap}
-          isFieldVisible={isFieldVisible}
-          patientId={patientId}
-        />
-      ))}
+      {schema.sections.map((section) => {
+        // Sprint 1 Day 4 — inject dynamic options into the admitting_doctor_id
+        // select so Picker B shows the actual doctor list from /api/doctors.
+        const sectionForRender = usesPickerB && section.fields.some((f) => f.key === 'admitting_doctor_id')
+          ? {
+              ...section,
+              fields: section.fields.map((f) =>
+                f.key === 'admitting_doctor_id'
+                  ? {
+                      ...f,
+                      options: doctorOptions.map((d) => ({
+                        value: d.id,
+                        label: `${d.name}${d.primary_hospital_slug ? ` · ${d.primary_hospital_slug.toUpperCase()}` : ''}`,
+                      })),
+                      helpText: doctorsLoading
+                        ? 'Loading doctor list…'
+                        : doctorsError
+                        ? `Couldn't load doctors: ${doctorsError}. Type the name manually below.`
+                        : doctorOptions.length === 0
+                        ? 'No doctor profiles on file yet. Type the name manually below.'
+                        : f.helpText,
+                    }
+                  : f
+              ),
+            }
+          : section;
+        return (
+          <SectionRenderer
+            key={section.id}
+            section={sectionForRender}
+            formData={formData}
+            setField={setField}
+            touchField={touchField}
+            touchedFields={touchedFields}
+            errorMap={errorMap}
+            isFieldVisible={isFieldVisible}
+            patientId={patientId}
+          />
+        );
+      })}
 
       {/* Validation error summary */}
       {errors.length > 0 && (
