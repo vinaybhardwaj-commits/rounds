@@ -83,20 +83,20 @@ interface StateEvent {
 
 interface PacEvent {
   id: string;
-  scheduled_at: string | null;
-  published_at: string | null;
-  outcome: string | null;
+  published_at: string;
+  outcome: string;
   anaesthetist_name: string | null;
   notes: string | null;
+  kx_pac_record_id: string | null;
 }
 
 interface ConditionCard {
   id: string;
   library_code: string | null;
   custom_label: string | null;
-  status: string;
-  waiver_reason: string | null;
-  done_at: string | null;
+  status: string; // 'pending' | 'in_progress' | 'done' | 'waived'
+  note: string | null;
+  completed_at: string | null;
 }
 
 interface EquipmentRequest {
@@ -302,7 +302,7 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
             {condition_cards.length > 0 && (
               <span className="text-gray-500">
                 {' · '}
-                {condition_cards.filter((cc) => cc.status === 'open').length} open
+                {condition_cards.filter((cc) => cc.status === 'pending' || cc.status === 'in_progress').length} open
               </span>
             )}
           </div>
@@ -372,7 +372,7 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
           onToggle={() => setExpandedTrack(expandedTrack === 0 ? null : 0)}
           summary={
             pac_events.length > 0
-              ? `${pac_events[0].outcome ?? 'pending'} · ${condition_cards.filter((cc) => cc.status === 'open').length} open conditions`
+              ? `${pac_events[0].outcome ?? 'pending'} · ${condition_cards.filter((cc) => cc.status === 'pending' || cc.status === 'in_progress').length} open conditions`
               : 'no PAC yet'
           }
         >
@@ -385,14 +385,10 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
                   <li key={pe.id} className="rounded border border-gray-100 bg-gray-50 px-3 py-2">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium">
-                        {pe.outcome ? `Outcome: ${pe.outcome}` : 'Pending publish'}
+                        Outcome: {pe.outcome}
                       </span>
                       <span className="text-xs text-gray-500">
-                        {pe.published_at
-                          ? new Date(pe.published_at).toLocaleString()
-                          : pe.scheduled_at
-                          ? `scheduled ${new Date(pe.scheduled_at).toLocaleString()}`
-                          : ''}
+                        {new Date(pe.published_at).toLocaleString()}
                       </span>
                     </div>
                     {pe.anaesthetist_name && (
@@ -414,13 +410,14 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
                       <span className={`mt-0.5 inline-flex rounded px-1.5 py-0.5 font-medium ${
                         cc.status === 'done' ? 'bg-emerald-100 text-emerald-800' :
                         cc.status === 'waived' ? 'bg-gray-100 text-gray-700' :
+                        cc.status === 'in_progress' ? 'bg-sky-100 text-sky-800' :
                         'bg-amber-100 text-amber-800'
                       }`}>
                         {cc.status}
                       </span>
                       <span>{cc.library_code || cc.custom_label || '(no label)'}</span>
-                      {cc.waiver_reason && (
-                        <span className="text-gray-500">— {cc.waiver_reason}</span>
+                      {cc.note && (
+                        <span className="text-gray-500">— {cc.note}</span>
                       )}
                     </li>
                   ))}

@@ -76,13 +76,12 @@ interface StateEvent {
 interface PacEventRow {
   id: string;
   case_id: string;
-  scheduled_at: string | null;
-  published_at: string | null;
-  outcome: string | null;
-  anaesthetist_id: string | null;
+  published_at: string;
+  outcome: string;
+  anaesthetist_id: string;
   anaesthetist_name: string | null;
   notes: string | null;
-  created_at: string;
+  kx_pac_record_id: string | null;
 }
 
 interface ConditionCardRow {
@@ -91,9 +90,10 @@ interface ConditionCardRow {
   library_code: string | null;
   custom_label: string | null;
   status: string;
-  waiver_reason: string | null;
-  done_at: string | null;
-  done_by: string | null;
+  note: string | null;
+  owner_profile_id: string | null;
+  completed_at: string | null;
+  completed_by: string | null;
   created_at: string;
 }
 
@@ -208,13 +208,13 @@ export async function GET(
         query<PacEventRow>(
           `
           SELECT
-            pe.id, pe.case_id, pe.scheduled_at, pe.published_at, pe.outcome,
+            pe.id, pe.case_id, pe.published_at, pe.outcome,
             pe.anaesthetist_id, p.full_name AS anaesthetist_name,
-            pe.notes, pe.created_at
+            pe.notes, pe.kx_pac_record_id
           FROM pac_events pe
           LEFT JOIN profiles p ON p.id = pe.anaesthetist_id
           WHERE pe.case_id = $1
-          ORDER BY pe.created_at DESC
+          ORDER BY pe.published_at DESC
           `,
           [id]
         ),
@@ -222,7 +222,7 @@ export async function GET(
           `
           SELECT
             id, case_id, library_code, custom_label, status,
-            waiver_reason, done_at, done_by, created_at
+            note, owner_profile_id, completed_at, completed_by, created_at
           FROM condition_cards
           WHERE case_id = $1
           ORDER BY created_at ASC
