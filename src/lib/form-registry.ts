@@ -301,8 +301,16 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
           { value: 'urgent', label: 'Urgent' },
           { value: 'emergency', label: 'Emergency' },
         ], width: 'half' },
+        // Sprint 1 Day 4 — admitting_doctor_id is the Picker B driver. Options are
+        // populated dynamically by FormRenderer from /api/doctors. When a doctor is
+        // picked, FormRenderer auto-fills target_opd_doctor (display name) and
+        // target_hospital (primary affiliation) from /api/doctors/[id]/affiliations.
+        // Optional — marketing can still type a name into target_opd_doctor directly
+        // and pick target_hospital manually.
+        { key: 'admitting_doctor_id', label: 'Admitting Doctor (picker)', type: 'select', options: [], helpText: 'Pick a known doctor to auto-fill the name and hospital. Or leave blank and type manually below.', width: 'half' },
         // Sprint 1 Day 3: label changed from "Target OPD Doctor" to "Admitting Doctor (OPD or IPD)".
         // Field key unchanged for backward compatibility with historic submissions.
+        // Sprint 1 Day 4: still required, but auto-filled by the picker above when used.
         { key: 'target_opd_doctor', label: 'Admitting Doctor (OPD or IPD)', type: 'text', validation: { required: true }, placeholder: 'Consulting doctor name', width: 'half' },
         { key: 'target_department', label: 'Target Department', type: 'text', validation: { required: true }, placeholder: 'e.g. Orthopaedics, General Surgery', width: 'half' },
         { key: 'insurance_status', label: 'Insurance Status', type: 'select', validation: { required: true }, options: [
