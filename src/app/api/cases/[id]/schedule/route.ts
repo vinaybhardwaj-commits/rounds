@@ -201,19 +201,23 @@ export async function POST(
       ]
     );
 
-    // 3. equipment_requests — one placeholder per attached kit. Arul's kanban
-    //    (Day 9) will itemize into concrete rows if needed. Auto-verified
-    //    because kit attachment is a trusted fast-path.
+    // 3. equipment_requests — one placeholder per attached kit. The
+    //    equipment_requests.item_type CHECK constraint only allows
+    //    (specialty, rental, implant, blood, imaging). Kits are typically
+    //    specialty packs, so we record kit attachment with item_type='specialty'
+    //    and kit_id set. auto_verified=true because kit attachment is a
+    //    trusted fast-path at scheduling time; Arul's Day 9 kanban can
+    //    itemize the kit into finer requests if needed.
     const insertedKitRequests: string[] = [];
     for (const kit of validKits) {
       const row = await queryOne<{ id: string }>(
         `
         INSERT INTO equipment_requests
           (case_id, item_type, item_label, quantity, status, kit_id, auto_verified)
-        VALUES ($1, 'kit', $2, 1, 'requested', $3, true)
+        VALUES ($1, 'specialty', $2, 1, 'verified_ready', $3, true)
         RETURNING id
         `,
-        [caseId, kit.label, kit.id]
+        [caseId, `Kit: ${kit.label}`, kit.id]
       );
       if (row) insertedKitRequests.push(row.id);
     }
