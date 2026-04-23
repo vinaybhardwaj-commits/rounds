@@ -52,6 +52,29 @@ export default function LeadSquaredAdmin() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
+
+  // ---- Safe Parsers ----
+  // Historic sync_runs rows had errors stored as a comma-joined plain string
+  // instead of a JSON-stringified array. JSON.parse() would crash on those.
+  // These helpers make the UI resilient to either shape.
+  const safeParseErrors = (v: unknown): string[] => {
+    if (!v) return [];
+    if (Array.isArray(v)) return v.map(String);
+    if (typeof v !== 'string') return [];
+    try {
+      const parsed = JSON.parse(v);
+      return Array.isArray(parsed) ? parsed.map(String) : [String(parsed)];
+    } catch {
+      // Plain text fallback: split on ",Failed " or ", Failed " to restore individual messages.
+      return v.split(/,(?=Failed to )/g).map(s => s.trim()).filter(Boolean);
+    }
+  };
+  const safeParseJson = (v: unknown): unknown => {
+    if (v === null || v === undefined) return null;
+    if (typeof v !== 'string') return v;
+    try { return JSON.parse(v); } catch { return v; }
+  };
+
   const [expandedSync, setExpandedSync] = useState<string | null>(null);
   const [expandedApi, setExpandedApi] = useState<string | null>(null);
   const [filterSyncRunId, setFilterSyncRunId] = useState<string | null>(null);
@@ -302,8 +325,8 @@ export default function LeadSquaredAdmin() {
                     <ArrowRight size={14} className="text-gray-300" />
                     <span className="text-green-600 font-medium">{run.leads_created} new</span>
                     <span className="text-blue-600">{run.leads_updated} updated</span>
-                    {run.errors && JSON.parse(run.errors).length > 0 && (
-                      <span className="text-red-600">{JSON.parse(run.errors).length} errors</span>
+                    {run.errors && safeParseErrors(run.errors).length > 0 && (
+                      <span className="text-red-600">{safeParseErrors(run.errors).length} errors</span>
                     )}
                     <span className="ml-auto text-xs text-gray-400">{fmtDate(run.started_at)}</span>
                     {run.duration_ms && <span className="text-xs text-gray-400">{run.duration_ms}ms</span>}
@@ -321,7 +344,7 @@ export default function LeadSquaredAdmin() {
               {syncRuns.length === 0 ? (
                 <div className="p-8 text-center text-gray-400 text-sm">No sync runs recorded yet.</div>
               ) : syncRuns.map(run => {
-                const hasErrors = run.errors && JSON.parse(run.errors).length > 0;
+                const hasErrors = run.errors && safeParseErrors(run.errors).length > 0;
                 const isExpanded = expandedSync === run.id;
                 return (
                   <div key={run.id}>
@@ -342,7 +365,7 @@ export default function LeadSquaredAdmin() {
                         <span className="text-green-600">{run.leads_created} new</span>
                         <span className="text-blue-600">{run.leads_updated} upd</span>
                         <span className="text-gray-400">{run.leads_skipped} skip</span>
-                        {hasErrors && <span className="text-red-600">{JSON.parse(run.errors!).length} err</span>}
+                        {hasErrors && <span className="text-red-600">{safeParseErrors(run.errors).length} err</span>}
                       </div>
                       <span className="ml-auto text-xs text-gray-400">{fmtDate(run.started_at)}</span>
                       {run.duration_ms !== null && <span className="text-xs text-gray-400">{run.duration_ms}ms</span>}
@@ -358,7 +381,7 @@ export default function LeadSquaredAdmin() {
                           <div className="mb-3">
                             <p className="text-xs font-medium text-red-600 mb-1">Errors:</p>
                             <div className="bg-red-50 rounded p-2 text-xs text-red-700 max-h-40 overflow-y-auto">
-                              {JSON.parse(run.errors!).map((e: string, i: number) => (
+                              {safeParseErrors(run.errors).map((e: string, i: number) => (
                                 <div key={i} className="mb-1">{e}</div>
                               ))}
                             </div>
@@ -450,7 +473,7 @@ export default function LeadSquaredAdmin() {
                             <div>
                               <p className="text-xs font-medium text-gray-600 mb-1">Request Body:</p>
                               <pre className="bg-gray-100 rounded p-2 text-xs overflow-x-auto max-h-32">
-                                {JSON.stringify(JSON.parse(call.request_body), null, 2)}
+                                {JSON.stringify(safeParseJson(call.request_body), null, 2)}
                               </pre>
                             </div>
                           )}
@@ -458,7 +481,7 @@ export default function LeadSquaredAdmin() {
                             <div>
                               <p className="text-xs font-medium text-gray-600 mb-1">Response Body:</p>
                               <pre className="bg-gray-100 rounded p-2 text-xs overflow-x-auto max-h-32">
-                                {JSON.stringify(JSON.parse(call.response_body), null, 2)}
+                                {JSON.stringify(safeParseJson(call.response_body), null, 2)}
                               </pre>
                             </div>
                           )}
