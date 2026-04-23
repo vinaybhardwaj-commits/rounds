@@ -23,7 +23,8 @@ export type FieldType =
   | 'checkbox'    // single boolean
   | 'radio'
   | 'phone'
-  | 'email';
+  | 'email'
+  | 'file';       // multi-file upload via Vercel Blob (Sprint 1 Day 3)
 
 export interface SelectOption {
   value: string;
@@ -276,7 +277,7 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
   formType: 'consolidated_marketing_handoff',
   title: 'Marketing Handoff',
   description: 'Hand off a patient lead from Marketing to Customer Care for admission coordination.',
-  version: 1,
+  version: 2,
   stages: ['opd', 'pre_admission'],
   submitterRoles: ['marketing_executive', 'marketing', 'super_admin'],
   requiresPatient: true,
@@ -287,13 +288,22 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
       title: 'Section A — Clinical Handoff',
       description: 'Clinical summary, triage level, and patient context for the care team.',
       fields: [
+        // Sprint 1 Day 3 — target_hospital drives multi-hospital routing (Decision M7, Picker B).
+        // Options are placeholder; FormRenderer populates dynamically from active hospitals.
+        { key: 'target_hospital', label: 'Target Hospital', type: 'select', validation: { required: true }, options: [
+          { value: 'ehrc', label: 'EHRC — Race Course Road' },
+          { value: 'ehbr', label: 'EHBR — Brookefield' },
+          { value: 'ehin', label: 'EHIN — Indiranagar' },
+        ], helpText: 'Which hospital should this patient be routed to? (Auto-fills based on admitting doctor.)', width: 'half' },
         { key: 'clinical_summary', label: 'Clinical Summary', type: 'textarea', validation: { required: true, maxLength: 2000 }, helpText: '2–3 sentence clinical context for downstream teams', placeholder: 'Brief clinical context: what the patient needs, history, current status' },
         { key: 'priority', label: 'Priority', type: 'select', validation: { required: true }, options: [
           { value: 'routine', label: 'Routine' },
           { value: 'urgent', label: 'Urgent' },
           { value: 'emergency', label: 'Emergency' },
         ], width: 'half' },
-        { key: 'target_opd_doctor', label: 'Target OPD Doctor', type: 'text', validation: { required: true }, placeholder: 'Consulting doctor name', width: 'half' },
+        // Sprint 1 Day 3: label changed from "Target OPD Doctor" to "Admitting Doctor (OPD or IPD)".
+        // Field key unchanged for backward compatibility with historic submissions.
+        { key: 'target_opd_doctor', label: 'Admitting Doctor (OPD or IPD)', type: 'text', validation: { required: true }, placeholder: 'Consulting doctor name', width: 'half' },
         { key: 'target_department', label: 'Target Department', type: 'text', validation: { required: true }, placeholder: 'e.g. Orthopaedics, General Surgery', width: 'half' },
         { key: 'insurance_status', label: 'Insurance Status', type: 'select', validation: { required: true }, options: [
           { value: 'insured', label: 'Insured' },
@@ -318,6 +328,9 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
           { value: '5', label: '5 — Confirmed' },
         ], width: 'half' },
         { key: 'special_notes', label: 'Special Notes', type: 'textarea', placeholder: 'Anything else for the care team: VIP, language preference, accessibility needs' },
+        // Sprint 1 Day 3 — multi-file upload. Stored in form_data as an array of {url, filename, size, contentType}.
+        // FormRenderer posts each file to /api/files/upload (Vercel Blob) before form submit.
+        { key: 'attachments', label: 'Attachments', type: 'file', helpText: 'Insurance card, prior reports, referral letters. PDFs, images, Office docs up to 50MB each.' },
       ],
     },
 
@@ -327,6 +340,32 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
       title: 'Section B — Financial Counseling (First Pass)',
       description: 'Marketing\'s initial financial assessment. Fields left blank will be flagged as "Pending — CC to complete."',
       fields: [
+        // Sprint 1 Day 3 — room category fields (billed vs allocated, PRD §3.7).
+        { key: 'billing_room_category', label: 'Billing Room Category', type: 'select', options: [
+          { value: 'general', label: 'General Ward' },
+          { value: 'semi_private', label: 'Semi-Private' },
+          { value: 'private', label: 'Private' },
+          { value: 'suite', label: 'Suite' },
+        ], helpText: 'Which room tier is being billed (insurance / package)', width: 'half' },
+        { key: 'allocated_room_category', label: 'Allocated Room Category', type: 'select', options: [
+          { value: 'general', label: 'General Ward' },
+          { value: 'semi_private', label: 'Semi-Private' },
+          { value: 'private', label: 'Private' },
+          { value: 'suite', label: 'Suite' },
+        ], helpText: 'Actual room category allocated to the patient (may differ from billing)', width: 'half' },
+        // Sprint 1 Day 3 — lead_source replaces implicit tracking in notes.
+        // Practo has special handling: may imply flat-fee pricing (PRD §3.7).
+        { key: 'lead_source', label: 'Lead Source', type: 'select', options: [
+          { value: 'practo', label: 'Practo' },
+          { value: 'lsq', label: 'LSQ / LeadSquared' },
+          { value: 'walk_in', label: 'Walk-in' },
+          { value: 'direct', label: 'Direct' },
+          { value: 'referral', label: 'Referral' },
+          { value: 'other', label: 'Other' },
+        ], helpText: 'Practo leads may require flat-fee pricing — CC to confirm before estimating.', width: 'half' },
+        // Sprint 1 Day 3 — coupon / discount. discount_pct bounded 0–100; FormRenderer can auto-apply 100 for Practo.
+        { key: 'coupon_code', label: 'Coupon Code', type: 'text', placeholder: 'e.g. PRACTO25, SUMMER10', width: 'half' },
+        { key: 'discount_pct', label: 'Discount %', type: 'number', validation: { min: 0, max: 100 }, placeholder: '0–100', width: 'half' },
         { key: 'insurer_name', label: 'Insurer Name', type: 'text', visibleWhen: { field: 'insurance_status', operator: 'eq', value: 'insured' }, placeholder: 'Insurance company name', width: 'half' },
         { key: 'policy_member_id', label: 'Policy / Member ID', type: 'text', visibleWhen: { field: 'insurance_status', operator: 'eq', value: 'insured' }, placeholder: 'Policy number for TPA lookup', width: 'half' },
         { key: 'insurance_tpa_details', label: 'Insurance & TPA Details', type: 'textarea', visibleWhen: { field: 'insurance_status', operator: 'eq', value: 'insured' }, placeholder: 'TPA name, network status, sub-limits, any known exclusions' },
@@ -355,7 +394,10 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
       title: 'Section C — Surgery Booking',
       description: 'Surgical plan, clinical risk profile, and OT scheduling. Fields left blank are flagged "Pending — OT/Anaesthesia to complete."',
       fields: [
-        { key: 'surgeon_name', label: 'Surgeon Name', type: 'text', validation: { required: true }, placeholder: 'Who will operate (may differ from OPD doctor)', width: 'half' },
+        // Sprint 1 Day 3 — surgery_planned drives draft auto-creation (Decision: Framing B).
+        // If false, Section C is hidden and no surgical_cases row is created on submit.
+        { key: 'surgery_planned', label: 'Surgery planned for this patient?', type: 'checkbox', defaultValue: true, helpText: 'Uncheck if this is an intake-only handoff (no surgery yet). Hides the surgical plan below.' },
+        { key: 'surgeon_name', label: 'Surgeon Name', type: 'text', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true }, placeholder: 'Who will operate (may differ from OPD doctor)', width: 'half' },
         { key: 'surgical_specialty', label: 'Surgical Specialty', type: 'select', validation: { required: true }, options: [
           { value: 'general_surgery', label: 'General Surgery' },
           { value: 'orthopaedics', label: 'Orthopaedics' },
@@ -2043,16 +2085,20 @@ export const FORM_TYPE_LABELS: Record<FormType, string> = {
  * - admitted/pre_op: Standalone Financial Counseling + Surgery Booking for post-admission use
  */
 export const FORMS_BY_STAGE: Record<string, FormType[]> = {
+  // Sprint 1 Day 3 (23 Apr 2026): pruned `pre_op_nursing_checklist`, `who_safety_checklist`,
+  // and `nursing_shift_handoff` from all stage menus. Their schemas remain in FORM_REGISTRY
+  // so historical submissions still render correctly; they're just hidden from the stage picker.
+  // Surgery-day safety will move to the state machine's day-of verification flow in Sprint 3.
   opd: ['consolidated_marketing_handoff', 'admission_advice'],
   pre_admission: ['consolidated_marketing_handoff', 'admission_advice'],
-  admitted: ['financial_counseling', 'surgery_booking', 'admission_checklist', 'nursing_shift_handoff'],
-  pre_op: ['financial_counseling', 'surgery_booking', 'ot_billing_clearance', 'pre_op_nursing_checklist', 'pac_clearance'],
-  surgery: ['who_safety_checklist'],
-  post_op: ['nursing_shift_handoff'],
+  admitted: ['financial_counseling', 'surgery_booking', 'admission_checklist'],
+  pre_op: ['financial_counseling', 'surgery_booking', 'ot_billing_clearance', 'pac_clearance'],
+  surgery: [],
+  post_op: [],
   discharge: ['discharge_readiness'],
   post_discharge: ['post_discharge_followup'],
-  medical_management: ['nursing_shift_handoff'],
-  post_op_care: ['nursing_shift_handoff', 'discharge_readiness'],
+  medical_management: [],
+  post_op_care: ['discharge_readiness'],
   long_term_followup: ['post_discharge_followup'],
   any: ['daily_department_update'], // stage-agnostic
 };
