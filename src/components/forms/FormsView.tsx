@@ -44,6 +44,9 @@ interface RecentSubmission {
 type ViewState = 'list' | 'pick-patient' | 'fill' | 'success';
 
 // ─── All form types in display order ─────────────────
+// Sprint 1 Day 3 pruned pre_op_nursing_checklist, who_safety_checklist,
+// nursing_shift_handoff from FORMS_BY_STAGE in form-registry.ts but missed this
+// component-local array. Sprint 2 follow-up #28 (24 Apr) removes them here too.
 
 const ALL_FORMS: { type: FormType; stages: string[] }[] = [
   { type: 'consolidated_marketing_handoff', stages: ['opd', 'pre_admission'] },
@@ -51,12 +54,9 @@ const ALL_FORMS: { type: FormType; stages: string[] }[] = [
   { type: 'financial_counseling', stages: ['admitted', 'pre_op'] },
   { type: 'surgery_booking', stages: ['admitted', 'pre_op'] },
   { type: 'admission_checklist', stages: ['admitted'] },
-  { type: 'nursing_shift_handoff', stages: ['admitted', 'post_op'] },
   { type: 'surgery_posting', stages: ['pre_op'] },
-  { type: 'pre_op_nursing_checklist', stages: ['pre_op'] },
   { type: 'ot_billing_clearance', stages: ['pre_op'] },
   { type: 'pac_clearance', stages: ['pre_op'] },
-  { type: 'who_safety_checklist', stages: ['surgery'] },
   { type: 'discharge_readiness', stages: ['discharge'] },
   { type: 'post_discharge_followup', stages: ['post_discharge'] },
   { type: 'daily_department_update', stages: ['any'] },

@@ -8,6 +8,9 @@
 // Auth: any authenticated user.
 //
 // Sprint 1 Day 4 (23 April 2026).
+// Sprint 2 follow-up #27 (24 Apr 2026): fixed 500 caused by selecting
+//   p.name — the profiles column is p.full_name (see /api/auth/me). Picker B
+//   fell back to free-text field gracefully, but dropdown was always empty.
 // ============================================
 
 import { NextResponse } from 'next/server';
@@ -29,7 +32,7 @@ const DOCTOR_ROLE_PATTERNS = [
 
 interface DoctorRow {
   id: string;
-  name: string | null;
+  full_name: string | null;
   email: string | null;
   role: string;
   primary_hospital_id: string | null;
@@ -47,7 +50,7 @@ export async function GET() {
       `
       SELECT
         p.id,
-        p.name,
+        p.full_name,
         p.email,
         p.role,
         p.primary_hospital_id,
@@ -55,7 +58,7 @@ export async function GET() {
       FROM profiles p
       LEFT JOIN hospitals h ON h.id = p.primary_hospital_id
       WHERE p.role = ANY($1::text[])
-      ORDER BY p.name NULLS LAST, p.email
+      ORDER BY p.full_name NULLS LAST, p.email
       `,
       [DOCTOR_ROLE_PATTERNS]
     );
@@ -64,7 +67,7 @@ export async function GET() {
       success: true,
       data: rows.map((r) => ({
         id: r.id,
-        name: r.name || r.email || 'Unknown',
+        name: r.full_name || r.email || 'Unknown',
         email: r.email,
         role: r.role,
         primary_hospital_id: r.primary_hospital_id,
