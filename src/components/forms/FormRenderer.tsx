@@ -264,6 +264,22 @@ export default function FormRenderer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.admitting_doctor_id, doctorOptions, usesPickerB]);
 
+  // 24 Apr 2026 — Practo coupon auto-fill. When marketing picks Practo as
+  // lead_source, stamp coupon_code = 'PRACTO300'. Per V's 22 Apr demo: a
+  // Practo coupon symbolises a Rs 300 flat discount on the bill. If lead_source
+  // changes away from 'practo' and coupon_code is still 'PRACTO300', clear it
+  // so the field doesn't carry stale info to a non-Practo submission.
+  useEffect(() => {
+    if (schema.formType !== 'consolidated_marketing_handoff') return;
+    const lead = formData.lead_source as string | undefined;
+    const code = formData.coupon_code as string | undefined;
+    if (lead === 'practo' && code !== 'PRACTO300') {
+      setFormData((prev) => ({ ...prev, coupon_code: 'PRACTO300' }));
+    } else if (lead && lead !== 'practo' && code === 'PRACTO300') {
+      setFormData((prev) => ({ ...prev, coupon_code: '' }));
+    }
+  }, [formData.lead_source, schema.formType]);
+
   // 24 Apr 2026 — Derived _is_surgical_case for Section C visibility. Runs
   // whenever target_department changes (from picker auto-fill, manual edit, or
   // specialty dropdown for 'Other'). Stored in form_data so the schema's
