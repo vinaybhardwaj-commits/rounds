@@ -21,7 +21,7 @@
 //   }
 //
 // Access control (Decision D7):
-//   - caller's role must be 'anaesthesiologist' OR 'super_admin' (403 else)
+//   - caller's role must be 'anesthesiologist' OR 'super_admin' (403 else)
 //   - case's hospital_id must be in user_accessible_hospital_ids(caller)
 //   - 404 if case not accessible (don't leak existence)
 //
@@ -34,7 +34,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { query, queryOne } from '@/lib/db';
 
-const PUBLISH_ALLOWED_ROLES = new Set(['anaesthesiologist', 'super_admin']);
+const PUBLISH_ALLOWED_ROLES = new Set(['anesthesiologist', 'super_admin']);
 const VALID_OUTCOMES = new Set(['fit', 'fit_conds', 'defer', 'unfit']);
 const PUBLISHABLE_FROM_STATES = new Set(['intake', 'pac_scheduled', 'pac_done']);
 

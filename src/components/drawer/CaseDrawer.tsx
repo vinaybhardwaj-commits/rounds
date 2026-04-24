@@ -20,7 +20,7 @@
 //
 // Role-aware auto-expansion:
 //   ip_coordinator        → Track 1 expanded
-//   anaesthesiologist     → Track 1 expanded
+//   anesthesiologist      → Track 1 expanded
 //   ot_coordinator        → Track 2 expanded
 //   biomedical_engineer   → Track 3 expanded
 //   super_admin + others  → all collapsed (click to expand)
@@ -156,7 +156,7 @@ function StatePill({ state }: { state: string }) {
 function defaultExpandedTrack(role: string | undefined | null): 0 | 1 | 2 | null {
   switch (role) {
     case 'ip_coordinator':
-    case 'anaesthesiologist':
+    case 'anesthesiologist':
       return 0;
     case 'ot_coordinator':
       return 1;
