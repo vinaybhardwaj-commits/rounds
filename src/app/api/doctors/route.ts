@@ -46,6 +46,10 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
+    // 24 Apr 2026: picker now unions profiles (app users with
+    // doctor-shaped roles) + reference_doctors (external HR roster).
+    // Response shape is unchanged; reference_doctors entries have
+    // email=NULL and role derived from association (or 'consultant').
     const rows = await query<DoctorRow>(
       `
       SELECT
@@ -58,7 +62,21 @@ export async function GET() {
       FROM profiles p
       LEFT JOIN hospitals h ON h.id = p.primary_hospital_id
       WHERE p.role = ANY($1::text[])
-      ORDER BY p.full_name NULLS LAST, p.email
+
+      UNION ALL
+
+      SELECT
+        rd.id,
+        rd.full_name,
+        NULL::text AS email,
+        COALESCE(rd.association, 'consultant') AS role,
+        rd.primary_hospital_id,
+        h2.slug AS primary_hospital_slug
+      FROM reference_doctors rd
+      LEFT JOIN hospitals h2 ON h2.id = rd.primary_hospital_id
+      WHERE rd.is_active = true
+
+      ORDER BY full_name NULLS LAST
       `,
       [DOCTOR_ROLE_PATTERNS]
     );
