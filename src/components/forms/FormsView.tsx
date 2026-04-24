@@ -523,6 +523,7 @@ export function FormsView() {
             onSubmit={handleSubmit}
             onSaveDraft={handleSaveDraft}
             isSubmitting={isSubmitting}
+            patientId={selectedPatient?.id}
           />
         </div>
       </div>

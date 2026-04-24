@@ -242,6 +242,7 @@ function NewFormPage() {
             onSubmit={handleSubmit}
             onSaveDraft={handleSaveDraft}
             isSubmitting={submitState === 'submitting'}
+            patientId={patientId || undefined}
           />
         )}
       </main>
