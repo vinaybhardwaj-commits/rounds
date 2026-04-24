@@ -18,6 +18,19 @@ function sql(strings: TemplateStringsArray, ...values: unknown[]) {
 
 // Cross-functional channels to create alongside department channels
 const CROSS_FUNCTIONAL_CHANNELS = [
+  // Sprint 2 Day 9: two new central channels per PRD v3 §7 M6 — these stay
+  // unsuffixed because they are cross-hospital by design (marketing team spans
+  // EHRC+EHBR+EHIN).
+  {
+    id: 'marketing',
+    name: 'Marketing',
+    description: 'Lead intake + handoff coordination across all hospitals',
+  },
+  {
+    id: 'central-broadcast',
+    name: 'Central Broadcast',
+    description: 'Hospital-wide announcements from central leadership (read-only)',
+  },
   {
     id: 'ops-daily-huddle',
     name: 'Ops Daily Huddle',
@@ -125,8 +138,15 @@ export async function POST() {
     const callerUserId = user.profileId;
 
     // 1. Fetch all active departments from our DB
+    // Sprint 2 Day 9: departments now have hospital_id (Sprint 2 migration).
+    // Join hospitals so we can compute the {slug}-{hospital_slug} channel id
+    // and stamp hospital_id/hospital_slug into channel.data for sidebar grouping.
     const departments = await sql`
-      SELECT id, name, slug FROM departments WHERE is_active = true ORDER BY name
+      SELECT d.id, d.name, d.slug, d.hospital_id, h.slug AS hospital_slug
+      FROM departments d
+      JOIN hospitals h ON h.id = d.hospital_id
+      WHERE d.is_active = true
+      ORDER BY h.slug, d.name
     ` as Record<string, unknown>[];
 
     // Fetch all active staff grouped by department (include role for super_admin detection)
@@ -153,14 +173,19 @@ export async function POST() {
 
     // 2. Create/ensure department channels + add ALL department staff
     for (const dept of departments) {
+      // Sprint 2 Day 9 PRD M6: channel id = {dept.slug}-{hospital.slug} so the
+      // sidebar can group cleanly and EHBR/EHIN activations don't collide.
+      const channelId = `${dept.slug as string}-${dept.hospital_slug as string}`;
       const result = await ensureChannelWithMember(
         client,
         'department',
-        dept.slug as string,
+        channelId,
         {
           name: dept.name as string,
-          description: `${dept.name} department channel`,
+          description: `${dept.name} · ${(dept.hospital_slug as string).toUpperCase()}`,
           department_id: dept.id as string,
+          hospital_id: dept.hospital_id as string,
+          hospital_slug: dept.hospital_slug as string,
         },
         callerUserId
       );
@@ -171,7 +196,7 @@ export async function POST() {
       const memberIds = Array.from(memberSet);
       if (memberIds.length > 0) {
         try {
-          const channel = client.channel('department', dept.slug as string);
+          const channel = client.channel('department', channelId);
           // Batch add in groups of 100
           for (let i = 0; i < memberIds.length; i += 100) {
             const batch = memberIds.slice(i, i + 100);
@@ -182,7 +207,7 @@ export async function POST() {
         }
       }
 
-      results.push(`[dept] ${result} (${deptStaff.length} dept staff + ${superAdminIds.length} admins)`);
+      results.push(`[dept] ${result} [${channelId}] (${deptStaff.length} dept staff + ${superAdminIds.length} admins)`);
     }
 
     // 3. Create/ensure cross-functional channels + add ALL active staff

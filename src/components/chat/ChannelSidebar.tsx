@@ -163,8 +163,19 @@ export function ChannelSidebar({
       const archivedPostDC: Channel[] = [];
       const archivedRemoved: Channel[] = [];
 
-      // Assign non-patient channels directly
-      if (deptChannels.length > 0) groups['department'] = deptChannels;
+      // Assign non-patient channels directly.
+      // Sprint 2 Day 9: split department channels into per-hospital sub-groups
+      // by channel.data.hospital_slug (stamped at seed time). Channels without
+      // the field (pre-Sprint-2 or un-reseeded) fall into a generic bucket.
+      if (deptChannels.length > 0) {
+        for (const ch of deptChannels) {
+          const chData = ch.data as Record<string, unknown> | undefined;
+          const slug = (chData?.hospital_slug as string) || '_unassigned';
+          const key = slug === '_unassigned' ? 'department' : `department:${slug}`;
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(ch);
+        }
+      }
       if (cfChannels.length > 0) groups['cross-functional'] = cfChannels;
       if (directChannels.length > 0) groups['direct'] = directChannels;
       if (broadcastChannels.length > 0) groups['ops-broadcast'] = broadcastChannels;
@@ -189,9 +200,25 @@ export function ChannelSidebar({
         groups['patient-thread'].push(ch);
       }
 
+      // Build per-hospital department rows sorted by hospital slug (stable).
+      const hospitalDeptTypes = Object.keys(groups)
+        .filter((k) => k.startsWith('department:'))
+        .sort()
+        .map((k) => {
+          const slug = k.slice('department:'.length);
+          return {
+            type: k,
+            label: `${slug.toUpperCase()} · Departments`,
+            icon: Hash,
+            defaultOpen: true,
+          };
+        });
       const orderedTypes = [
         { type: 'whatsapp-analysis', label: 'WhatsApp Insights', icon: MessageSquare, defaultOpen: true },
-        { type: 'department', label: 'Departments', icon: Hash, defaultOpen: true },
+        ...hospitalDeptTypes,
+        // Fallback bucket for any un-suffixed department channels (shouldn't
+        // happen after Sprint 2 Day 9 re-seed but keeps old channels visible).
+        { type: 'department', label: 'Departments (unassigned)', icon: Hash, defaultOpen: false },
         { type: 'direct', label: 'Direct Messages', icon: MessageCircle, defaultOpen: true },
         { type: 'cross-functional', label: 'Cross-Functional', icon: Users, defaultOpen: true },
         { type: 'patient-thread', label: 'Patient Threads', icon: Activity, defaultOpen: true },
