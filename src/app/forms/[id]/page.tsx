@@ -6,7 +6,7 @@
 // readiness item status, and completion score.
 // ============================================
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -17,6 +17,7 @@ import {
   FileText,
   User,
   Calendar,
+  Printer,
 } from 'lucide-react';
 import {
   FORM_REGISTRY,
@@ -62,6 +63,9 @@ export default function FormViewPage({ params }: { params: { id: string } }) {
   const [data, setData] = useState<FormViewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // 24 Apr 2026 (Commit D) — previous version of this form for this patient,
+  // used to highlight changed fields. Null = no prior version or still loading.
+  const [prevFormData, setPrevFormData] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     fetch(`/api/forms/${id}`)
@@ -73,6 +77,28 @@ export default function FormViewPage({ params }: { params: { id: string } }) {
       .catch(() => setError('Failed to load form'))
       .finally(() => setLoading(false));
   }, [id]);
+
+  // 24 Apr 2026 (Commit D) — fetch the immediately-prior submission for
+  // the same patient + form_type, to compute the diff set. First submission
+  // (no prior) renders with no highlighting.
+  useEffect(() => {
+    if (!data || !data.patient_thread_id) return;
+    fetch(
+      `/api/forms?form_type=${encodeURIComponent(data.form_type)}&patient_thread_id=${encodeURIComponent(data.patient_thread_id)}&limit=20`
+    )
+      .then((r) => r.json())
+      .then((body) => {
+        if (!body?.success || !Array.isArray(body.data)) return;
+        type Row = { id: string; form_data: Record<string, unknown>; created_at: string };
+        const list = body.data as Row[];
+        const sorted = [...list].sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+        const idx = sorted.findIndex((s) => s.id === data.id);
+        if (idx > 0) setPrevFormData(sorted[idx - 1].form_data);
+      })
+      .catch(() => {});
+  }, [data]);
 
   if (loading) {
     return (
@@ -100,12 +126,32 @@ export default function FormViewPage({ params }: { params: { id: string } }) {
   const formLabel = FORM_TYPE_LABELS[data.form_type] || data.form_type;
   const completionPct = data.completion_score != null ? Math.round(data.completion_score * 100) : null;
 
+  // 24 Apr 2026 (Commit D) — compute the set of fields that differ from
+  // the prior version. Empty set if no prior (first submission). Changed
+  // fields get the .field-changed class which is a subtle yellow highlight
+  // on-screen and NO highlight when printing.
+  const changedFields = useMemo<Set<string>>(() => {
+    if (!prevFormData) return new Set<string>();
+    const s = new Set<string>();
+    const keys = new Set([
+      ...Object.keys(data.form_data || {}),
+      ...Object.keys(prevFormData || {}),
+    ]);
+    for (const k of keys) {
+      if (k.startsWith('_')) continue; // skip computed metadata
+      if (JSON.stringify(data.form_data?.[k]) !== JSON.stringify(prevFormData?.[k])) {
+        s.add(k);
+      }
+    }
+    return s;
+  }, [data, prevFormData]);
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
-          <button onClick={() => router.back()} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-600">
+          <button onClick={() => router.back()} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-600 no-print">
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="flex-1 min-w-0">
@@ -121,6 +167,17 @@ export default function FormViewPage({ params }: { params: { id: string } }) {
               </span>
             </div>
           </div>
+          {/* Print button (Commit D) — strips highlights + hides UI chrome via @media print */}
+          {data.status === 'submitted' && (
+            <button
+              onClick={() => window.print()}
+              className="no-print flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              title="Print this form"
+            >
+              <Printer className="h-3.5 w-3.5" />
+              Print
+            </button>
+          )}
         </div>
       </header>
 
@@ -267,10 +324,19 @@ export default function FormViewPage({ params }: { params: { id: string } }) {
 
                     // Checkbox fields — show as checkmark
                     if (field.type === 'checkbox' && value === true) {
+                      const cbChanged = changedFields.has(field.key);
                       return (
-                        <div key={field.key} className="sm:col-span-2 flex items-center gap-2 text-sm">
+                        <div
+                          key={field.key}
+                          className={`sm:col-span-2 flex items-center gap-2 text-sm ${cbChanged ? 'field-changed' : ''}`}
+                        >
                           <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
                           <span className="text-gray-700">{field.label}</span>
+                          {cbChanged && (
+                            <span className="no-print ml-1.5 inline-block rounded bg-yellow-200 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-yellow-800">
+                              edited
+                            </span>
+                          )}
                         </div>
                       );
                     }
@@ -291,10 +357,21 @@ export default function FormViewPage({ params }: { params: { id: string } }) {
                     }
 
                     const colSpan = field.type === 'textarea' ? 'sm:col-span-2' : '';
+                    const isChanged = changedFields.has(field.key);
 
                     return (
-                      <div key={field.key} className={colSpan}>
-                        <p className="text-xs text-gray-500 mb-0.5">{field.label}</p>
+                      <div
+                        key={field.key}
+                        className={`${colSpan} ${isChanged ? 'field-changed' : ''}`}
+                      >
+                        <p className="text-xs text-gray-500 mb-0.5">
+                          {field.label}
+                          {isChanged && (
+                            <span className="no-print ml-1.5 inline-block rounded bg-yellow-200 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-yellow-800">
+                              edited
+                            </span>
+                          )}
+                        </p>
                         <p className="text-sm text-gray-900 whitespace-pre-wrap">{displayValue}</p>
                       </div>
                     );
@@ -315,7 +392,7 @@ export default function FormViewPage({ params }: { params: { id: string } }) {
 
         {/* Link to patient thread */}
         {data.patient_thread_id && (
-          <div className="text-center">
+          <div className="text-center no-print">
             <button
               onClick={() => router.push(`/`)}
               className="text-sm text-blue-600 hover:underline"
@@ -325,6 +402,36 @@ export default function FormViewPage({ params }: { params: { id: string } }) {
           </div>
         )}
       </main>
+
+      {/* 24 Apr 2026 (Commit D) — on-screen diff highlight + print-safe styles */}
+      <style>{`
+        @media screen {
+          .field-changed {
+            background-color: rgb(254 252 232);
+            border-left: 3px solid rgb(234 179 8);
+            padding-left: 8px;
+            margin-left: -11px;
+            border-radius: 3px;
+          }
+        }
+        @media print {
+          .no-print { display: none !important; }
+          header { position: static !important; box-shadow: none !important; }
+          body, main { background: white !important; }
+          .bg-gray-50 { background: white !important; }
+          .bg-white { box-shadow: none !important; }
+          .rounded-lg { border-radius: 0 !important; }
+          .sticky { position: static !important; }
+          .field-changed {
+            background: none !important;
+            border: none !important;
+            padding-left: 0 !important;
+            margin-left: 0 !important;
+          }
+          /* Force a reasonable print page width */
+          .max-w-3xl { max-width: none !important; }
+        }
+      `}</style>
     </div>
   );
 }

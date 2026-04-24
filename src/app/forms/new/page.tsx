@@ -41,6 +41,14 @@ function NewFormPage() {
   const [patient, setPatient] = useState<{ id: string; patient_name: string; uhid: string | null } | null>(null);
   // 24 Apr 2026 — current user name for counsellor_name auto-fill on Marketing Handoff.
   const [currentUserName, setCurrentUserName] = useState<string>('');
+  // 24 Apr 2026 (Commit D) — prefill from most recent submitted version of
+  // this form for this patient. Lets marketing edit just the fields that
+  // changed without re-entering every mandatory field. Form becomes 'new
+  // version' in practice. Required-field validation trivially passes for
+  // prefilled fields. FormRenderer re-mounts when prefill arrives so the
+  // initialData is applied exactly once.
+  const [prefilledData, setPrefilledData] = useState<Record<string, unknown> | null>(null);
+  const [prefillLoaded, setPrefillLoaded] = useState<boolean>(false);
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
   const [submitError, setSubmitError] = useState<string>('');
   const [createdFormId, setCreatedFormId] = useState<string>('');
@@ -76,6 +84,28 @@ function NewFormPage() {
       })
       .catch(() => {});
   }, []);
+
+  // 24 Apr 2026 (Commit D) — prefill initialData from the most recent
+  // submitted version of this form for this patient.
+  useEffect(() => {
+    if (!formType || !patientId) {
+      setPrefillLoaded(true);
+      return;
+    }
+    fetch(
+      `/api/forms?form_type=${encodeURIComponent(formType)}&patient_thread_id=${encodeURIComponent(patientId)}&status=submitted&limit=1`
+    )
+      .then((r) => r.json())
+      .then((body) => {
+        if (body?.success && Array.isArray(body.data) && body.data[0]?.form_data) {
+          const prev = { ...body.data[0].form_data } as Record<string, unknown>;
+          delete prev._is_surgical_case; // recomputed by FormRenderer
+          setPrefilledData(prev);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setPrefillLoaded(true));
+  }, [formType, patientId]);
 
   // Submit handler
   const handleSubmit = useCallback(
@@ -251,14 +281,25 @@ function NewFormPage() {
         )}
 
         {schema && (
-          <FormRenderer
-            schema={schema}
-            initialData={currentUserName ? { counsellor_name: currentUserName } : undefined}
-            onSubmit={handleSubmit}
-            onSaveDraft={handleSaveDraft}
-            isSubmitting={submitState === 'submitting'}
-            patientId={patientId || undefined}
-          />
+          {prefillLoaded && (
+            <FormRenderer
+              schema={schema}
+              initialData={{
+                ...(prefilledData || {}),
+                ...(currentUserName ? { counsellor_name: currentUserName } : {}),
+              }}
+              onSubmit={handleSubmit}
+              onSaveDraft={handleSaveDraft}
+              isSubmitting={submitState === 'submitting'}
+              patientId={patientId || undefined}
+            />
+          )}
+          {!prefillLoaded && (
+            <div className="flex items-center gap-2 py-8 text-sm text-gray-500">
+              <div className="h-4 w-4 rounded-full border-2 border-gray-300 border-t-gray-600 animate-spin" />
+              Checking for prior submissions…
+            </div>
+          )}
         )}
       </main>
     </div>
