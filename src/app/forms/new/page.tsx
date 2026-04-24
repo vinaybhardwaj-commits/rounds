@@ -281,25 +281,27 @@ function NewFormPage() {
         )}
 
         {schema && (
-          {prefillLoaded && (
-            <FormRenderer
-              schema={schema}
-              initialData={{
-                ...(prefilledData || {}),
-                ...(currentUserName ? { counsellor_name: currentUserName } : {}),
-              }}
-              onSubmit={handleSubmit}
-              onSaveDraft={handleSaveDraft}
-              isSubmitting={submitState === 'submitting'}
-              patientId={patientId || undefined}
-            />
-          )}
-          {!prefillLoaded && (
-            <div className="flex items-center gap-2 py-8 text-sm text-gray-500">
-              <div className="h-4 w-4 rounded-full border-2 border-gray-300 border-t-gray-600 animate-spin" />
-              Checking for prior submissions…
-            </div>
-          )}
+          <>
+            {prefillLoaded && (
+              <FormRenderer
+                schema={schema}
+                initialData={{
+                  ...(prefilledData || {}),
+                  ...(currentUserName ? { counsellor_name: currentUserName } : {}),
+                }}
+                onSubmit={handleSubmit}
+                onSaveDraft={handleSaveDraft}
+                isSubmitting={submitState === 'submitting'}
+                patientId={patientId || undefined}
+              />
+            )}
+            {!prefillLoaded && (
+              <div className="flex items-center gap-2 py-8 text-sm text-gray-500">
+                <div className="h-4 w-4 rounded-full border-2 border-gray-300 border-t-gray-600 animate-spin" />
+                Checking for prior submissions…
+              </div>
+            )}
+          </>
         )}
       </main>
     </div>
