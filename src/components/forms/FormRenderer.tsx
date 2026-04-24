@@ -894,7 +894,7 @@ function LsqPrefillBlock({
       )}
 
       {data && (
-        <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4">
+        <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4 min-w-0">
           <LsqField label="Name" value={data.name} />
           <LsqField label="Age" value={data.age != null ? String(data.age) : null} />
           <LsqField label="Gender" value={data.gender} />
@@ -916,10 +916,16 @@ function LsqPrefillBlock({
 }
 
 function LsqField({ label, value }: { label: string; value: string | null | undefined }) {
+  // 24 Apr 2026 — min-w-0 lets grid cells shrink below their content width
+  // (CSS grid default is min-width: auto). break-words + [overflow-wrap:anywhere]
+  // handle long unbroken tokens like UTM campaign slugs with underscores
+  // (e.g. 'Even_hospitals_lipoma_high_intent_exact') which otherwise overflow.
   return (
-    <div>
+    <div className="min-w-0">
       <dt className="text-blue-700 font-medium">{label}</dt>
-      <dd className="text-gray-900">{value ?? <span className="text-gray-400">—</span>}</dd>
+      <dd className="text-gray-900 break-words [overflow-wrap:anywhere]">
+        {value ?? <span className="text-gray-400">—</span>}
+      </dd>
     </div>
   );
 }
