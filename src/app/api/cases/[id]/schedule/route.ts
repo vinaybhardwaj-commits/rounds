@@ -236,7 +236,7 @@ export async function POST(
       );
       const patientName = patientRow?.patient_name ?? 'patient';
       const title = `Pre-op verification for ${patientName}`;
-      const description = `RMO to complete day-of verification checklist before ${body.planned_surgery_date} (OT-${body.ot_room}). Opens the Day-of Verification modal on the case drawer.`;
+      const description = `OT coordinator to complete day-of verification checklist before ${body.planned_surgery_date} (OT-${body.ot_room}). Opens the Day-of Verification modal on the case drawer.`;
       // due_at = 05:00 on the surgery date (2h before a conservative 07:00 first-slot start).
       // Admin UI can make this per-hospital/OT configurable later.
 
@@ -246,7 +246,7 @@ export async function POST(
           (hospital_id, case_id, title, description, owner_role, due_at,
            status, source, source_ref, metadata, created_by)
         VALUES
-          ($1, $2, $3, $4, 'rmo',
+          ($1, $2, $3, $4, 'ot_coordinator',
            ($5::date)::timestamp + INTERVAL '5 hours',
            'pending', 'auto', $6, $7::jsonb, $8)
         ON CONFLICT (case_id, source_ref) WHERE source = 'auto' AND case_id IS NOT NULL DO UPDATE

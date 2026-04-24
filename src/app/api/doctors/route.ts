@@ -23,7 +23,8 @@ const DOCTOR_ROLE_PATTERNS = [
   'specialist',
   'resident',
   'senior_resident',
-  'anaesthesiologist',
+  'anaesthesiologist',  // matches reference_doctors.association only
+  'anesthesiologist',   // matches profiles.role (canonical US spelling)
   'anaesthetist',
   'surgeon',
   'rmo',

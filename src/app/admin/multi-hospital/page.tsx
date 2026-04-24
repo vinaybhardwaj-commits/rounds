@@ -35,7 +35,7 @@ interface Payload {
   grants: Grant[]; affiliations: Affiliation[];
 }
 
-const DOCTOR_ROLES = new Set(['doctor','consultant','specialist','resident','senior_resident','anaesthesiologist','anaesthetist','surgeon','rmo','registrar']);
+const DOCTOR_ROLES = new Set(['doctor','consultant','specialist','resident','senior_resident','anesthesiologist','anaesthesiologist','anaesthetist','surgeon','rmo','registrar']);
 
 export default function AdminMultiHospitalPage() {
   const [data, setData] = useState<Payload | null>(null);

@@ -15,11 +15,11 @@
 // Allowed transitions map (Sprint 3 Day 14 extension — was draft→intake only):
 //   draft          → intake               (ip_coordinator + super_admin; requires kx_uhid)
 //   intake         → pac_scheduled        (ip_coordinator + super_admin)
-//   pac_scheduled  → pac_done             (anaesthesiologist + super_admin)
+//   pac_scheduled  → pac_done             (anesthesiologist + super_admin)
 //   scheduled      → confirmed            (ot_coordinator + ip_coordinator + super_admin)
-//   confirmed      → verified             (resident + senior_resident + rmo + super_admin)
-//   verified       → in_theatre           (rmo + ot_coordinator + super_admin)
-//   in_theatre     → completed            (rmo + consultant + ot_coordinator + super_admin)
+//   confirmed      → verified             (ot_coordinator + ip_coordinator + super_admin)
+//   verified       → in_theatre           (ot_coordinator + super_admin)
+//   in_theatre     → completed            (ot_coordinator + anesthesiologist + super_admin)
 //
 // Tenancy: user_accessible_hospital_ids.
 //
@@ -45,20 +45,32 @@ const TRANSITION_RULES: Record<string, TransitionRule> = {
   'intake→pac_scheduled': {
     allowed_roles: new Set(['ip_coordinator', 'super_admin']),
   },
+  // 25 Apr 2026 (H2 fix): remap to existing UserRole enum values. Originals
+  // referenced 'resident', 'senior_resident', 'rmo', 'consultant' and the UK
+  // spelling 'anaesthesiologist' — none of which are in src/types/index.ts
+  // UserRole nor the profiles.role CHECK. Only super_admin was actually able
+  // to drive the lifecycle past 'scheduled', which passed V's solo e2e test
+  // but blocked every real user.
+  //
+  // Remap per V 25 Apr 2026 decision (keep enum small, use existing roles):
+  //   pac_scheduled→pac_done  : anesthesiologist (US spelling)
+  //   confirmed→verified      : ot_coordinator, ip_coordinator  (pre-op check is coordination)
+  //   verified→in_theatre     : ot_coordinator                   (OT calls the move)
+  //   in_theatre→completed    : ot_coordinator, anesthesiologist (anaesth always present at case end)
   'pac_scheduled→pac_done': {
-    allowed_roles: new Set(['anaesthesiologist', 'super_admin']),
+    allowed_roles: new Set(['anesthesiologist', 'super_admin']),
   },
   'scheduled→confirmed': {
     allowed_roles: new Set(['ot_coordinator', 'ip_coordinator', 'super_admin']),
   },
   'confirmed→verified': {
-    allowed_roles: new Set(['resident', 'senior_resident', 'rmo', 'super_admin']),
+    allowed_roles: new Set(['ot_coordinator', 'ip_coordinator', 'super_admin']),
   },
   'verified→in_theatre': {
-    allowed_roles: new Set(['rmo', 'ot_coordinator', 'super_admin']),
+    allowed_roles: new Set(['ot_coordinator', 'super_admin']),
   },
   'in_theatre→completed': {
-    allowed_roles: new Set(['rmo', 'consultant', 'ot_coordinator', 'super_admin']),
+    allowed_roles: new Set(['ot_coordinator', 'anesthesiologist', 'super_admin']),
     require_reason: false,
   },
 };

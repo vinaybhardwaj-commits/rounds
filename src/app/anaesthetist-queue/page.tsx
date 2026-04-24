@@ -34,7 +34,7 @@ interface QueueCase {
 }
 
 const QUEUE_STATES: Array<QueueCase['state']> = ['intake', 'pac_scheduled', 'pac_done'];
-const PUBLISH_ROLES = new Set(['anaesthesiologist', 'super_admin']);
+const PUBLISH_ROLES = new Set(['anesthesiologist', 'super_admin']);
 
 export default function AnaesthetistQueuePage() {
   const [cases, setCases] = useState<QueueCase[]>([]);

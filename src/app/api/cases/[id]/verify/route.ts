@@ -24,7 +24,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { query, queryOne } from '@/lib/db';
 
-const VERIFY_ROLES = new Set(['resident', 'senior_resident', 'rmo', 'super_admin']);
+// 25 Apr 2026 (H3 fix): same remap as /api/cases/[id]/transition — no 'rmo'
+// in enum; verification is coordination work.
+const VERIFY_ROLES = new Set(['ot_coordinator', 'ip_coordinator', 'super_admin']);
 const VERIFIABLE_FROM_STATES = new Set(['scheduled', 'confirmed']);
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
