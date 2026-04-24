@@ -231,15 +231,37 @@ export interface CreateFormSubmissionInput {
   form_data: Record<string, unknown>;
   completion_score?: number;
   status?: FormStatus;
+  /**
+   * 25 Apr 2026: form_submissions.hospital_id is NOT NULL (Sprint 1 multi-hospital
+   * foundation), but this helper previously didn't set it. Caller can pass an
+   * explicit hospital_id; otherwise we COALESCE from patient_threads.hospital_id
+   * (when patient_thread_id is set) → profiles.primary_hospital_id → fallback EHRC.
+   */
+  hospital_id?: string;
 }
 
 export async function createFormSubmission(input: CreateFormSubmissionInput) {
+  // 25 Apr 2026: Derive hospital_id inline. form_submissions.hospital_id is
+  // NOT NULL; if the caller doesn't pass one, COALESCE through three sources:
+  //   1. patient_threads.hospital_id (for patient-scoped submissions)
+  //   2. profiles.primary_hospital_id (for user-scoped submissions, e.g. admin)
+  //   3. hospitals WHERE slug='ehrc' (single-hospital legacy fallback)
+  // If ALL three are null we'll still fail the NOT NULL check — caller would
+  // need to explicitly pass hospital_id then (should be impossible in practice).
   const rows = await query<{ id: string }>(
     `INSERT INTO form_submissions (
       form_type, form_version, patient_thread_id, getstream_message_id,
       getstream_channel_id, submitted_by, department_id, form_data,
-      completion_score, status
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      completion_score, status, hospital_id
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+      COALESCE(
+        $11::UUID,
+        (SELECT hospital_id FROM patient_threads WHERE id = $3::UUID),
+        (SELECT primary_hospital_id FROM profiles WHERE id = $6::UUID),
+        (SELECT id FROM hospitals WHERE slug = 'ehrc' AND is_active = true LIMIT 1)
+      )
+    )
     RETURNING id`,
     [
       input.form_type,
@@ -252,6 +274,7 @@ export async function createFormSubmission(input: CreateFormSubmissionInput) {
       JSON.stringify(input.form_data),
       input.completion_score || null,
       input.status || 'submitted',
+      input.hospital_id || null,
     ]
   );
   return rows[0];
