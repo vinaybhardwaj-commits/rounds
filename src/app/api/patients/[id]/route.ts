@@ -24,7 +24,7 @@ export async function GET(
     }
 
     // Also fetch form history for this patient
-    const forms = await listFormSubmissions({ patient_thread_id: id, limit: 100 });
+    const forms = await listFormSubmissions({ patient_thread_id: id, limit: 100, user_profile_id: user.profileId });
 
     return NextResponse.json({
       success: true,

@@ -274,6 +274,14 @@ export async function listFormSubmissions(filters?: {
   status?: FormStatus;
   limit?: number;
   offset?: number;
+  /**
+   * 25 Apr 2026 (L12): when provided, restricts results to hospitals the
+   * caller can access via user_accessible_hospital_ids(). Callers that
+   * already scope by a tenant-safe key (e.g. a specific patient_thread_id
+   * whose hospital was already validated upstream) may omit this — but
+   * defence-in-depth is cheap, so prefer passing it in.
+   */
+  user_profile_id?: string;
 }) {
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -294,6 +302,10 @@ export async function listFormSubmissions(filters?: {
   if (filters?.status) {
     conditions.push(`fs.status = $${paramIndex++}`);
     params.push(filters.status);
+  }
+  if (filters?.user_profile_id) {
+    conditions.push(`fs.hospital_id = ANY(user_accessible_hospital_ids($${paramIndex++}::UUID))`);
+    params.push(filters.user_profile_id);
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

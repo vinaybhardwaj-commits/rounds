@@ -42,6 +42,8 @@ export async function GET(request: NextRequest) {
       status: status || undefined,
       limit,
       offset,
+      // 25 Apr 2026 (L12): scope list to caller's accessible hospitals.
+      user_profile_id: user.profileId,
     });
 
     return NextResponse.json({ success: true, data: forms });
