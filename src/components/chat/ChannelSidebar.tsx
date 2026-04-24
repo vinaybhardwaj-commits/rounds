@@ -8,7 +8,7 @@
 // Message" button, global search trigger.
 // ============================================
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Hash,
   Users,
@@ -124,13 +124,21 @@ export function ChannelSidebar({
   );
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  // Ref flag: only show the full-screen spinner on the INITIAL load.
+  // Without this, any GetStream event (mark_read, message.new, etc.) refetches
+  // the sidebar and briefly flashes the spinner — collapsing the scrollable
+  // container and resetting scrollTop to 0.
+  const hasLoadedOnceRef = useRef(false);
+  // Debounce timer for event-driven refreshes so a burst of GetStream events
+  // (e.g. 5 message.new in quick succession) collapses into a single reload.
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Fetch and group channels — query each type separately so department
   // and cross-functional channels aren't crowded out by patient threads
   const loadChannels = useCallback(async () => {
     if (!client) return;
 
-    setLoading(true);
+    if (!hasLoadedOnceRef.current) setLoading(true);
     try {
       const userId = client.userID!;
       const sort = [{ last_message_at: -1 as const }];
@@ -276,6 +284,7 @@ export function ChannelSidebar({
       console.error('Failed to load channels:', error);
     } finally {
       setLoading(false);
+      hasLoadedOnceRef.current = true;
     }
   }, [client, onUnreadCountChange]);
 
@@ -287,8 +296,13 @@ export function ChannelSidebar({
   useEffect(() => {
     if (!client) return;
 
+    // Debounce: burst of events (5x message.new in <1s is common during
+    // active hours) collapses into a single refetch.
     const handleEvent = () => {
-      loadChannels();
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+      reloadTimerRef.current = setTimeout(() => {
+        loadChannels();
+      }, 250);
     };
 
     client.on('channel.updated', handleEvent);
@@ -298,6 +312,7 @@ export function ChannelSidebar({
     client.on('notification.mark_read', handleEvent);
 
     return () => {
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
       client.off('channel.updated', handleEvent);
       client.off('notification.added_to_channel', handleEvent);
       client.off('notification.removed_from_channel', handleEvent);
