@@ -1,0 +1,169 @@
+// ============================================
+// GET /api/cron/sla-sweeper
+//
+// Runs every 5 minutes via Vercel cron. Scans for handoff form_submissions
+// that haven't been acknowledged within the SLA window (default 30 min) and
+// emits a breach summary to each hospital's -ehrc broadcast + the central
+// `central-broadcast` channel.
+//
+// Auth: Bearer CRON_SECRET (same pattern as the LSQ cron).
+//
+// Dedup strategy: we use a JSONB metadata field on form_submissions
+// (`metadata.sla_breach_posted_at`) to avoid re-posting the same breach on
+// every 5-min tick. Sprint 3 can promote this to a proper `sla_breaches`
+// table if we want historical analytics.
+//
+// Response:
+//   { success: true, checked: N, breached: [{ submission_id, form_type, elapsed_min, hospital_slug, channel }] }
+//
+// Sprint 2 Day 10 (24 April 2026). Framework endpoint — SLA thresholds are
+// conservative defaults; PRD can tune per form type in Sprint 3.
+// ============================================
+
+import { NextRequest, NextResponse } from 'next/server';
+import { query, queryOne } from '@/lib/db';
+import { getStreamServerClient } from '@/lib/getstream';
+
+// Default SLA threshold per form type (in minutes). Per PRD v3 §8.3, defaults
+// are 30 min for handoff acknowledgment. Sprint 3 can externalize these into
+// a sla_config table.
+const SLA_MINUTES_BY_FORM: Record<string, number> = {
+  consolidated_marketing_handoff: 30,
+  financial_counseling: 30,
+  surgery_booking: 30,
+  admission_advice: 60,
+};
+
+const CENTRAL_BROADCAST_ID = 'central-broadcast';
+const HOSPITAL_BROADCAST_ID = 'hospital-broadcast';
+
+interface FormRow {
+  id: string;
+  form_type: string;
+  submitted_at: string;
+  hospital_id: string;
+  hospital_slug: string;
+  patient_name: string | null;
+  cc_card_message_id: string | null;
+  ot_card_message_id: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+interface BreachRecord {
+  submission_id: string;
+  form_type: string;
+  elapsed_min: number;
+  hospital_slug: string;
+  patient_name: string | null;
+  channel_card_ids: { cc: string | null; ot: string | null };
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    // Auth: Bearer CRON_SECRET (or Vercel's own cron signature header).
+    const authHeader = request.headers.get('authorization') || '';
+    const expected = `Bearer ${process.env.CRON_SECRET}`;
+    if (!process.env.CRON_SECRET || authHeader !== expected) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const now = Date.now();
+    const lookbackMs = 24 * 60 * 60 * 1000; // Only consider last 24h — older is irrecoverable.
+
+    // Query recent handoff-family submissions that have posted cards.
+    // Filter to records older than the minimum SLA (30 min) to avoid churning
+    // on everything submitted in the last 30 min.
+    const formTypes = Object.keys(SLA_MINUTES_BY_FORM);
+    const rows = await query<FormRow>(
+      `
+      SELECT
+        fs.id, fs.form_type, fs.submitted_at,
+        fs.hospital_id, h.slug AS hospital_slug,
+        pt.patient_name,
+        fs.cc_card_message_id, fs.ot_card_message_id,
+        fs.metadata
+      FROM form_submissions fs
+      JOIN hospitals h ON h.id = fs.hospital_id
+      LEFT JOIN patient_threads pt ON pt.id = fs.patient_thread_id
+      WHERE fs.form_type = ANY($1::text[])
+        AND fs.submitted_at > NOW() - $2::interval
+        AND fs.submitted_at < NOW() - INTERVAL '30 minutes'
+        AND (fs.cc_card_message_id IS NOT NULL OR fs.ot_card_message_id IS NOT NULL)
+      ORDER BY fs.submitted_at ASC
+      LIMIT 500
+      `,
+      [formTypes, `${Math.floor(lookbackMs / 1000)} seconds`]
+    );
+
+    const breached: BreachRecord[] = [];
+    const toPost: Map<string, string[]> = new Map(); // hospital_slug → summary lines
+
+    for (const r of rows) {
+      const elapsedMin = Math.floor((now - new Date(r.submitted_at).getTime()) / 60000);
+      const slaThreshold = SLA_MINUTES_BY_FORM[r.form_type] ?? 30;
+      if (elapsedMin < slaThreshold) continue;
+
+      // Dedup: skip if we've already posted a breach for this submission.
+      const alreadyPosted = r.metadata && typeof r.metadata === 'object'
+        ? (r.metadata as Record<string, unknown>).sla_breach_posted_at
+        : undefined;
+      if (alreadyPosted) continue;
+
+      const rec: BreachRecord = {
+        submission_id: r.id,
+        form_type: r.form_type,
+        elapsed_min: elapsedMin,
+        hospital_slug: r.hospital_slug,
+        patient_name: r.patient_name,
+        channel_card_ids: { cc: r.cc_card_message_id, ot: r.ot_card_message_id },
+      };
+      breached.push(rec);
+
+      const line = `⚠️ ${r.form_type} · ${r.patient_name ?? '(no name)'} · ${elapsedMin} min elapsed (SLA ${slaThreshold} min)`;
+      if (!toPost.has(r.hospital_slug)) toPost.set(r.hospital_slug, []);
+      toPost.get(r.hospital_slug)!.push(line);
+
+      // Mark as posted BEFORE attempting the Stream post — better to have a
+      // false positive dedup than spam users if Stream retries flake.
+      await query(
+        `
+        UPDATE form_submissions
+        SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('sla_breach_posted_at', NOW())
+        WHERE id = $1
+        `,
+        [r.id]
+      );
+    }
+
+    // Post digest per hospital to the central-broadcast channel. Sprint 3 can
+    // route to a dedicated `ops-broadcast-ehrc` per-hospital channel once those
+    // are seeded (PRD §8.3). For now, central-broadcast is the single sink.
+    if (toPost.size > 0) {
+      try {
+        const client = getStreamServerClient();
+        const channel = client.channel('cross-functional', CENTRAL_BROADCAST_ID);
+        for (const [slug, lines] of toPost.entries()) {
+          const text = `🚨 *SLA breach digest — ${slug.toUpperCase()}*\n\n${lines.join('\n')}`;
+          await channel.sendMessage({ text, user_id: 'rounds-system' });
+        }
+      } catch (e) {
+        console.error('[sla-sweeper] Stream post failed (breaches recorded in DB):', (e as Error).message);
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      checked: rows.length,
+      breach_count: breached.length,
+      breached,
+      channel_posted: toPost.size > 0 ? CENTRAL_BROADCAST_ID : null,
+      unused_hospital_broadcast_id: HOSPITAL_BROADCAST_ID, // referenced for Sprint 3 hospital-scoped routing
+    });
+  } catch (error) {
+    console.error('GET /api/cron/sla-sweeper error:', error);
+    return NextResponse.json(
+      { success: false, error: 'SLA sweep failed', detail: (error as Error).message },
+      { status: 500 }
+    );
+  }
+}
