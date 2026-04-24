@@ -60,7 +60,7 @@ export default function PatientFormSubmissions({ patientThreadId }: Props) {
     (async () => {
       try {
         const res = await fetch(
-          `/api/forms?patient_thread_id=${patientThreadId}&limit=100`
+          `/api/forms?patient_thread_id=${patientThreadId}&status=submitted&limit=100`
         );
         const json = await res.json();
         if (cancelled || !json.success) return;

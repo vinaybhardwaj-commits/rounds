@@ -84,7 +84,7 @@ export default function FormViewPage({ params }: { params: { id: string } }) {
   useEffect(() => {
     if (!data || !data.patient_thread_id) return;
     fetch(
-      `/api/forms?form_type=${encodeURIComponent(data.form_type)}&patient_thread_id=${encodeURIComponent(data.patient_thread_id)}&limit=20`
+      `/api/forms?form_type=${encodeURIComponent(data.form_type)}&patient_thread_id=${encodeURIComponent(data.patient_thread_id)}&status=submitted&limit=20`
     )
       .then((r) => r.json())
       .then((body) => {
