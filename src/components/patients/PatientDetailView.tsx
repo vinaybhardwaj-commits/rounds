@@ -43,6 +43,7 @@ import { SurgeryPanel } from '@/components/ot/SurgeryPanel';
 import CasePanel from '@/components/drawer/CasePanel';
 import { PatientFilesTab } from './PatientFilesTab';
 import FCVersionHistory from '@/components/forms/FCVersionHistory';
+import PatientFormSubmissions from './PatientFormSubmissions';
 
 type DetailTab = 'overview' | 'files';
 
@@ -996,6 +997,11 @@ export function PatientDetailView({
             userRole={userRole}
             userId={userId}
           />
+        )}
+
+        {/* ── Form Submissions Panel (24 Apr 2026) ── */}
+        {patient && (
+          <PatientFormSubmissions patientThreadId={patient.id} />
         )}
 
         {/* ── Advance Stage ── */}
