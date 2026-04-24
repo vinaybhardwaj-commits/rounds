@@ -40,7 +40,13 @@ function NewFormPage() {
   const [schema, setSchema] = useState<FormSchema | null>(null);
   const [patient, setPatient] = useState<{ id: string; patient_name: string; uhid: string | null } | null>(null);
   // 24 Apr 2026 — current user name for counsellor_name auto-fill on Marketing Handoff.
+  // 25 Apr 2026 (M8 fix): also track a 'loaded' flag so FormRenderer render is
+  // gated on this fetch completing. FormRenderer's useState initialiser only
+  // reads initialData once on mount — if /api/profiles/me arrives after mount,
+  // the readonly counsellor_name stays empty and required-validation blocks
+  // submission with no user recourse.
   const [currentUserName, setCurrentUserName] = useState<string>('');
+  const [currentUserLoaded, setCurrentUserLoaded] = useState<boolean>(false);
   // 24 Apr 2026 (Commit D) — prefill from most recent submitted version of
   // this form for this patient. Lets marketing edit just the fields that
   // changed without re-entering every mandatory field. Form becomes 'new
@@ -82,7 +88,8 @@ function NewFormPage() {
         const name = res?.data?.full_name || res?.data?.email || '';
         if (name) setCurrentUserName(name);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setCurrentUserLoaded(true));
   }, []);
 
   // 24 Apr 2026 (Commit D) — prefill initialData from the most recent
@@ -282,7 +289,7 @@ function NewFormPage() {
 
         {schema && (
           <>
-            {prefillLoaded && (
+            {prefillLoaded && currentUserLoaded && (
               <FormRenderer
                 schema={schema}
                 initialData={{
@@ -295,10 +302,10 @@ function NewFormPage() {
                 patientId={patientId || undefined}
               />
             )}
-            {!prefillLoaded && (
+            {(!prefillLoaded || !currentUserLoaded) && (
               <div className="flex items-center gap-2 py-8 text-sm text-gray-500">
                 <div className="h-4 w-4 rounded-full border-2 border-gray-300 border-t-gray-600 animate-spin" />
-                Checking for prior submissions…
+                Loading form…
               </div>
             )}
           </>
