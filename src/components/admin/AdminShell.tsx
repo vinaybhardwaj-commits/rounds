@@ -10,7 +10,6 @@ interface AdminShellProps {
   userRole?: string;
   badges?: {
     approvals?: number;
-    admissions?: number;
     escalations?: number;
     dedup?: number;
   };
@@ -36,7 +35,7 @@ export function AdminShell({
   children,
   activeSection,
   userRole = 'admin',
-  badges = { approvals: 0, admissions: 0, escalations: 0, dedup: 0 },
+  badges = { approvals: 0, escalations: 0, dedup: 0 },
   health,
 }: AdminShellProps) {
   // Start collapsed on mobile (< 1024px)

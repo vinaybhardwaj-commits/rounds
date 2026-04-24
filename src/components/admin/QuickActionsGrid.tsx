@@ -11,7 +11,6 @@ import {
 interface QuickActionsGridProps {
   badges?: {
     approvals?: number;
-    admissions?: number;
     escalations?: number;
     rosterEntries?: number;
   };
@@ -37,7 +36,6 @@ export function QuickActionsGrid({ badges = {}, userRole = 'admin' }: QuickActio
     { label: 'Bulk Import', description: 'CSV import staff', href: '/admin/profiles/import', icon: <Upload size={16} />, iconBg: 'bg-even-blue' },
     { label: 'Users', description: 'Manage all users', href: '/admin/users', icon: <Shield size={16} />, iconBg: 'bg-even-blue' },
     { label: 'Duty Roster', description: 'Shift assignments', href: '/admin/duty-roster', icon: <Calendar size={16} />, iconBg: 'bg-teal-600', badge: badges.rosterEntries },
-    { label: 'Admissions', description: 'Active admissions', href: '/admin/admissions', icon: <Activity size={16} />, iconBg: 'bg-blue-500', badge: badges.admissions },
     { label: 'Changelog', description: 'Patient history', href: '/admin/changelog', icon: <ClipboardList size={16} />, iconBg: 'bg-purple-500' },
     { label: 'Escalations', description: 'Open issues', href: '/admin/escalations', icon: <AlertTriangle size={16} />, iconBg: 'bg-red-500', badge: badges.escalations },
     { label: 'LeadSquared', description: 'LSQ sync & logs', href: '/admin/leadsquared', icon: <Link2 size={16} />, iconBg: 'bg-indigo-500' },

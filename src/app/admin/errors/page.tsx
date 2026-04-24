@@ -197,7 +197,7 @@ function ErrorDetailModal({ error, onClose }: { error: ErrorCluster; onClose: ()
 // Main Page
 export default function ErrorForensicsPage() {
   const [userRole, setUserRole] = useState('admin');
-  const [badges, setBadges] = useState({ approvals: 0, admissions: 0, escalations: 0 });
+  const [badges, setBadges] = useState({ approvals: 0, escalations: 0 });
   const [healthData, setHealthData] = useState<any>(null);
 
   const [data, setData] = useState<ErrorData | null>(null);
@@ -215,12 +215,10 @@ export default function ErrorForensicsPage() {
     Promise.all([
       fetch('/api/admin/approvals').then(r => r.json()).catch(() => ({ data: [] })),
       fetch('/api/escalation/log?resolved=false').then(r => r.json()).catch(() => ({ data: [] })),
-      fetch('/api/admission-tracker').then(r => r.json()).catch(() => ({ data: [] })),
-    ]).then(([approvals, escalations, admissions]) => {
+    ]).then(([approvals, escalations]) => {
       setBadges({
         approvals: approvals.data?.length || 0,
         escalations: escalations.data?.length || 0,
-        admissions: admissions.data?.length || 0,
       });
     });
 

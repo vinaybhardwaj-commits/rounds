@@ -66,7 +66,7 @@ export default function AdminDashboard() {
   const [healthData, setHealthData] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState('admin');
-  const [badges, setBadges] = useState({ approvals: 0, admissions: 0, escalations: 0, dedup: 0 });
+  const [badges, setBadges] = useState({ approvals: 0, escalations: 0, dedup: 0 });
 
   const fetchDashboard = useCallback(async () => {
     try {
@@ -95,16 +95,14 @@ export default function AdminDashboard() {
 
   const fetchBadges = useCallback(async () => {
     try {
-      const [approvals, escalations, admissions, dedup] = await Promise.all([
+      const [approvals, escalations, dedup] = await Promise.all([
         fetch('/api/admin/approvals').then(r => r.json()).catch(() => ({ data: [] })),
         fetch('/api/escalation/log?resolved=false').then(r => r.json()).catch(() => ({ data: [] })),
-        fetch('/api/admission-tracker').then(r => r.json()).catch(() => ({ data: [] })),
         fetch('/api/admin/dedup/candidates?status=pending&limit=500').then(r => r.json()).catch(() => ({ data: { candidates: [] } })),
       ]);
       setBadges({
         approvals: approvals.data?.length || 0,
         escalations: escalations.data?.length || 0,
-        admissions: admissions.data?.length || 0,
         dedup: dedup.data?.candidates?.length || 0,
       });
     } catch {}
