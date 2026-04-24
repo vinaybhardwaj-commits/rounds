@@ -39,6 +39,8 @@ function NewFormPage() {
 
   const [schema, setSchema] = useState<FormSchema | null>(null);
   const [patient, setPatient] = useState<{ id: string; patient_name: string; uhid: string | null } | null>(null);
+  // 24 Apr 2026 — current user name for counsellor_name auto-fill on Marketing Handoff.
+  const [currentUserName, setCurrentUserName] = useState<string>('');
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
   const [submitError, setSubmitError] = useState<string>('');
   const [createdFormId, setCreatedFormId] = useState<string>('');
@@ -62,6 +64,18 @@ function NewFormPage() {
       })
       .catch(() => {});
   }, [patientId]);
+
+  // 24 Apr 2026 — fetch current user once, used as initialData for the readonly
+  // counsellor_name field on Marketing Handoff.
+  useEffect(() => {
+    fetch('/api/profiles/me')
+      .then((r) => r.json())
+      .then((res) => {
+        const name = res?.data?.full_name || res?.data?.email || '';
+        if (name) setCurrentUserName(name);
+      })
+      .catch(() => {});
+  }, []);
 
   // Submit handler
   const handleSubmit = useCallback(
@@ -239,6 +253,7 @@ function NewFormPage() {
         {schema && (
           <FormRenderer
             schema={schema}
+            initialData={currentUserName ? { counsellor_name: currentUserName } : undefined}
             onSubmit={handleSubmit}
             onSaveDraft={handleSaveDraft}
             isSubmitting={submitState === 'submitting'}

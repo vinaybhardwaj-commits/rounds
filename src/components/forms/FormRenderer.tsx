@@ -767,6 +767,7 @@ function FieldRenderer({
       <input
         id={`input-${field.key}`}
         type={field.type === 'email' ? 'email' : field.type === 'phone' ? 'tel' : 'text'}
+        readOnly={field.readonly}
         value={(value as string) || ''}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
