@@ -145,6 +145,11 @@ export function ChannelSidebar({
     'ops-broadcast': [],
     'whatsapp-analysis': [],
   });
+  // 25 Apr 2026 (L14 fix): track which archived channels we've already
+  // auto-marked-read so a burst of debounced reloads doesn't re-issue
+  // markRead() on the same channel. GetStream treats mark-read as
+  // idempotent but each call is still a network roundtrip.
+  const markedReadArchivedRef = useRef<Set<string>>(new Set());
 
   // Fetch and group channels — query each type separately so department
   // and cross-functional channels aren't crowded out by patient threads
@@ -332,11 +337,19 @@ export function ChannelSidebar({
       }
       onUnreadCountChange?.(activeUnread);
 
-      // Auto-mark archived channels as read so they don't pollute GetStream's global count
+      // Auto-mark archived channels as read so they don't pollute GetStream's global count.
+      // Dedup: only mark channels we haven't already marked this session.
       const allArchived = [...archivedPostDC, ...archivedRemoved];
       for (const ch of allArchived) {
+        const cid = ch.id || ch.cid;
+        if (!cid) continue;
+        if (markedReadArchivedRef.current.has(cid)) continue;
         if ((ch.countUnread?.() || 0) > 0) {
           ch.markRead().catch(() => {});
+          markedReadArchivedRef.current.add(cid);
+        } else {
+          // No unread now — record so we don't re-check on every reload either.
+          markedReadArchivedRef.current.add(cid);
         }
       }
     } catch (error) {
