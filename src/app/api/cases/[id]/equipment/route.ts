@@ -47,7 +47,7 @@ interface CreateBody {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { caseId: string } }
+  { params }: { params: { id: string } }
 ) {
   try {
     const user = await getCurrentUser();
@@ -64,7 +64,7 @@ export async function POST(
       );
     }
 
-    const { caseId } = params;
+    const { id: caseId } = params;  // keep internal var name for clarity — the URL param is `id`
     if (!UUID_RE.test(caseId)) {
       return NextResponse.json({ success: false, error: 'Invalid case id' }, { status: 400 });
     }

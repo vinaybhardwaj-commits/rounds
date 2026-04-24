@@ -70,7 +70,7 @@ async function guard(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { caseId: string; reqId: string } }
+  { params }: { params: { id: string; reqId: string } }
 ) {
   try {
     const user = await getCurrentUser();
@@ -80,7 +80,7 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: 'Case model disabled' }, { status: 503 });
     }
 
-    const g = await guard(params.caseId, params.reqId, user.profileId, user.role);
+    const g = await guard(params.id, params.reqId, user.profileId, user.role);
     if ('error' in g) {
       return NextResponse.json({ success: false, error: g.error }, { status: g.status });
     }
@@ -143,7 +143,7 @@ export async function PATCH(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { caseId: string; reqId: string } }
+  { params }: { params: { id: string; reqId: string } }
 ) {
   try {
     const user = await getCurrentUser();
@@ -153,7 +153,7 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Case model disabled' }, { status: 503 });
     }
 
-    const g = await guard(params.caseId, params.reqId, user.profileId, user.role);
+    const g = await guard(params.id, params.reqId, user.profileId, user.role);
     if ('error' in g) {
       return NextResponse.json({ success: false, error: g.error }, { status: g.status });
     }
