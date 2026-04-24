@@ -222,6 +222,61 @@ export async function POST(
       if (row) insertedKitRequests.push(row.id);
     }
 
+    // 4. Auto-generate RMO pre-op verification task (Sprint 3 Day 11.5).
+    //    Partial unique index idx_tasks_auto_dedup on (case_id, source_ref)
+    //    WHERE source='auto' — so re-scheduling won't duplicate the task; it
+    //    silently no-ops on conflict. If the caller is rescheduling and the
+    //    task already exists, we update its due_at to the new surgery date.
+    //    Patient name is resolved via the patient_threads join for a readable title.
+    let autoTaskId: string | null = null;
+    try {
+      const patientRow = await queryOne<{ patient_name: string | null }>(
+        `SELECT pt.patient_name FROM surgical_cases sc JOIN patient_threads pt ON pt.id = sc.patient_thread_id WHERE sc.id = $1`,
+        [caseId]
+      );
+      const patientName = patientRow?.patient_name ?? 'patient';
+      const title = `Pre-op verification for ${patientName}`;
+      const description = `RMO to complete day-of verification checklist before ${body.planned_surgery_date} (OT-${body.ot_room}). Opens the Day-of Verification modal on the case drawer.`;
+      // due_at = 05:00 on the surgery date (2h before a conservative 07:00 first-slot start).
+      // Admin UI can make this per-hospital/OT configurable later.
+
+      const taskRow = await queryOne<{ id: string }>(
+        `
+        INSERT INTO tasks
+          (hospital_id, case_id, title, description, owner_role, due_at,
+           status, source, source_ref, metadata, created_by)
+        VALUES
+          ($1, $2, $3, $4, 'rmo',
+           ($5::date)::timestamp + INTERVAL '5 hours',
+           'pending', 'auto', $6, $7::jsonb, $8)
+        ON CONFLICT (case_id, source_ref) WHERE source = 'auto' AND case_id IS NOT NULL DO UPDATE
+          SET due_at = EXCLUDED.due_at,
+              metadata = tasks.metadata || EXCLUDED.metadata,
+              updated_at = NOW()
+        RETURNING id
+        `,
+        [
+          c.hospital_id,             // $1
+          caseId,                    // $2
+          title,                     // $3
+          description,               // $4
+          body.planned_surgery_date, // $5 — the date used for due_at expr
+          'case:verify_preop',       // $6
+          JSON.stringify({
+            scheduled_surgery_date: body.planned_surgery_date,
+            ot_room: body.ot_room,
+          }),                        // $7
+          user.profileId,            // $8
+        ]
+      );
+      autoTaskId = taskRow?.id ?? null;
+    } catch (e) {
+      // Non-fatal: scheduling is already committed. Log and continue.
+      // If the ON CONFLICT partial-index clause syntax is rejected by Neon
+      // HTTP, fall back to a two-step: check + insert.
+      console.error('[schedule] auto-task insert failed (non-fatal):', (e as Error).message);
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -235,6 +290,7 @@ export async function POST(
         kits_attached: validKits.map((k) => ({ id: k.id, code: k.code, label: k.label })),
         equipment_request_ids: insertedKitRequests,
         reschedule: isReschedule,
+        auto_task_id: autoTaskId,
       },
     });
   } catch (error) {
