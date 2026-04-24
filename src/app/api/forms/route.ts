@@ -768,13 +768,33 @@ export async function POST(request: NextRequest) {
             `**Section A — Clinical Handoff**`,
             `Priority: ${val(fd.priority)} | OPD Doctor: ${val(fd.target_opd_doctor)} | Dept: ${val(fd.target_department)}`,
             `Clinical Summary: ${val(fd.clinical_summary)}`,
-            `Insurance: ${val(fd.insurance_status)} | Room: ${val(fd.room_category_preference)} | Admission: ${val(fd.preferred_admission_date)}`,
+            `Insurance: ${val(fd.insurance_status)} | Preferred Room: ${val(fd.room_category_preference)} | Admission: ${val(fd.preferred_admission_date)}`,
           ];
           if (fd.patient_objections) lines.push(`Concerns: ${fd.patient_objections}`);
           if (fd.special_notes) lines.push(`Notes: ${fd.special_notes}`);
+          // Sprint 1 Day 3 — attachments. Array of {url, filename, size, contentType}.
+          if (Array.isArray(fd.attachments) && fd.attachments.length > 0) {
+            const files = fd.attachments as Array<{ filename?: string }>;
+            const names = files.slice(0, 3).map((f) => f.filename || 'file').join(', ');
+            const extra = files.length > 3 ? ` +${files.length - 3} more` : '';
+            lines.push(`📎 ${files.length} attachment${files.length === 1 ? '' : 's'}: ${names}${extra}`);
+          }
 
           lines.push('', `**Section B — Financial Counseling**`);
           lines.push(`Payment: ${val(fd.payment_mode)} | Est. Cost: ${currency(fd.estimated_total_cost)}`);
+          // Sprint 1 Day 3 — surface room billing vs allocated (Niharika's 22 Apr ask).
+          if (fd.billing_room_category || fd.allocated_room_category) {
+            lines.push(`Billing Room: ${val(fd.billing_room_category)} | Allocated: ${val(fd.allocated_room_category)}`);
+          }
+          // Sprint 1 Day 3 — lead source + Practo flat-fee flag (22 Apr ask).
+          if (fd.lead_source) {
+            const flag = fd.lead_source === 'practo' ? ' ⚑ flat-fee pricing likely' : '';
+            lines.push(`Lead Source: ${fd.lead_source}${flag}`);
+          }
+          // Sprint 1 Day 3 — coupon / discount (22 Apr ask).
+          if (fd.coupon_code || (fd.discount_pct !== undefined && fd.discount_pct !== null && fd.discount_pct !== '')) {
+            lines.push(`Coupon: ${val(fd.coupon_code)} | Discount: ${val(fd.discount_pct)}%`);
+          }
           if (fd.insurance_status === 'insured') {
             lines.push(`Insurer: ${val(fd.insurer_name)} | Policy: ${val(fd.policy_member_id)}`);
             lines.push(`Coverage: ${currency(fd.insurance_coverage_amount)} | Co-pay: ${currency(fd.copay_patient_responsibility)}`);
@@ -809,11 +829,32 @@ export async function POST(request: NextRequest) {
             ccLines.push(`TPA Details: ${val(fd.insurance_tpa_details, 'CC to complete')}`);
             ccLines.push(`Coverage: ${currency(fd.insurance_coverage_amount)} | Co-pay: ${currency(fd.copay_patient_responsibility)}`);
           }
+          // Sprint 1 Day 3 — lead source flag (Practo = flat-fee). Surfaced near top
+          // so CC sees it before hitting the cost line.
+          if (fd.lead_source) {
+            const flag = fd.lead_source === 'practo' ? ' ⚑ flat-fee pricing likely' : '';
+            ccLines.push(`Lead Source: ${fd.lead_source}${flag}`);
+          }
           ccLines.push(`Package: ${val(fd.package_name, 'CC to complete')}`);
+          // Sprint 1 Day 3 — room billing vs allocated (Niharika's 22 Apr ask).
+          if (fd.billing_room_category || fd.allocated_room_category) {
+            ccLines.push(`Billing Room: ${val(fd.billing_room_category)} | Allocated: ${val(fd.allocated_room_category)}`);
+          }
           ccLines.push(`Est. Cost: ${currency(fd.estimated_total_cost)} | Payment: ${val(fd.payment_mode, 'CC to complete')}`);
+          // Sprint 1 Day 3 — coupon / discount (22 Apr ask).
+          if (fd.coupon_code || (fd.discount_pct !== undefined && fd.discount_pct !== null && fd.discount_pct !== '')) {
+            ccLines.push(`Coupon: ${val(fd.coupon_code)} | Discount: ${val(fd.discount_pct)}%`);
+          }
           ccLines.push(`Deposit Required: ${currency(fd.deposit_required)}${fd.deposit_collected ? ' ✅ Collected: ' + currency(fd.deposit_collected_amount) : ''}`);
           if (fd.patient_family_acknowledged) ccLines.push(`✅ Patient/family acknowledged costs`);
           if (fd.counselor_notes) ccLines.push(`Notes: ${fd.counselor_notes}`);
+          // Sprint 1 Day 3 — surface attachments so CC can open insurance card / reports.
+          if (Array.isArray(fd.attachments) && fd.attachments.length > 0) {
+            const files = fd.attachments as Array<{ filename?: string }>;
+            const names = files.slice(0, 3).map((f) => f.filename || 'file').join(', ');
+            const extra = files.length > 3 ? ` +${files.length - 3} more` : '';
+            ccLines.push(`📎 ${files.length} attachment${files.length === 1 ? '' : 's'}: ${names}${extra}`);
+          }
           ccLines.push(``, `🔗 View patient thread for full context`);
 
           try {
