@@ -132,6 +132,11 @@ export function ChannelSidebar({
   // Debounce timer for event-driven refreshes so a burst of GetStream events
   // (e.g. 5 message.new in quick succession) collapses into a single reload.
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks whether we've EVER successfully seen channels for this user. Used
+  // to distinguish 'user genuinely has 0 channels' (first-load empty — show
+  // empty state) from 'queries all returned empty due to transient GetStream
+  // errors' (refresh-empty — preserve previous state, don't wipe the sidebar).
+  const hasHadChannelsRef = useRef(false);
 
   // Fetch and group channels — query each type separately so department
   // and cross-functional channels aren't crowded out by patient threads
@@ -263,7 +268,20 @@ export function ChannelSidebar({
         });
       }
 
-      setChannelGroups(result);
+      // Guard against all-queries-empty refreshes. If we've successfully
+      // loaded channels before but this refresh returned zero across all 6
+      // channel-type queries, it's almost certainly a swallowed GetStream
+      // error (rate limit, WebSocket reconnect). Preserve the previous
+      // state rather than wiping the sidebar.
+      if (hasHadChannelsRef.current && result.length === 0) {
+        console.warn(
+          '[ChannelSidebar] Refresh returned 0 channels across all 6 queries ' +
+          '— likely a transient GetStream error. Preserving previous sidebar state.'
+        );
+      } else {
+        setChannelGroups(result);
+        if (result.length > 0) hasHadChannelsRef.current = true;
+      }
 
       // Compute unread count from ACTIVE channels only (exclude archived)
       const activeChannels = Object.values(groups).flat();
