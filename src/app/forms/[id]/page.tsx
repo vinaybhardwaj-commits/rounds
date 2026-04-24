@@ -298,6 +298,21 @@ export default function FormViewPage({ params }: { params: { id: string } }) {
         {schema ? (
           // Render using schema structure
           schema.sections.map((section) => {
+            // 25 Apr 2026 (M7 fix): respect section-level visibleWhen so a
+            // Section C (surgery_booking) hidden by _is_surgical_case=false
+            // doesn't render with stale values carried over from a prior
+            // submission.
+            if (section.visibleWhen) {
+              const val = data.form_data[section.visibleWhen.field];
+              const op = section.visibleWhen.operator;
+              const want = section.visibleWhen.value;
+              const met = op === 'truthy' ? !!val
+                : op === 'eq' ? val === want
+                : op === 'neq' ? val !== want
+                : op === 'in' ? Array.isArray(want) && (want as unknown[]).includes(val)
+                : false;
+              if (!met) return null;
+            }
             const visibleFields = section.fields.filter((f) => {
               if (!f.visibleWhen) return true;
               const val = data.form_data[f.visibleWhen.field];

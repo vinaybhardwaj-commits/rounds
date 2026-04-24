@@ -333,9 +333,38 @@ export default function FormRenderer({
         return;
       }
 
-      const score = computeCompletionScore(schema, formData);
+      // 25 Apr 2026 (M7 fix): strip fields that belong to a hidden section
+      // from the submitted payload. Prevents stale prefill carryover — e.g.
+      // a patient originally filled as surgical gets re-filed as non-surgical;
+      // Section C hides in the UI but its old values linger in formData and
+      // would otherwise get POSTed + render on /forms/[id]. Always keep keys
+      // starting with '_' (computed metadata like _is_surgical_case).
+      const cleaned: Record<string, unknown> = {};
+      const hiddenFieldKeys = new Set<string>();
+      for (const section of schema.sections) {
+        if (section.visibleWhen) {
+          const v = formData[section.visibleWhen.field];
+          const op = section.visibleWhen.operator;
+          const want = section.visibleWhen.value;
+          const met = op === 'truthy' ? !!v
+            : op === 'eq' ? v === want
+            : op === 'neq' ? v !== want
+            : op === 'in' ? Array.isArray(want) && (want as unknown[]).includes(v)
+            : false;
+          if (!met) {
+            for (const f of section.fields) hiddenFieldKeys.add(f.key);
+          }
+        }
+      }
+      for (const [k, val] of Object.entries(formData)) {
+        if (k.startsWith('_') || !hiddenFieldKeys.has(k)) {
+          cleaned[k] = val;
+        }
+      }
+
+      const score = computeCompletionScore(schema, cleaned);
       trackFeature('form_submit', { form_type: schema.type || schema.title, completion_score: Math.round(score * 100) });
-      await onSubmit(formData, score);
+      await onSubmit(cleaned, score);
     },
     [schema, formData, onSubmit]
   );
