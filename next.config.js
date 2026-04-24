@@ -4,6 +4,19 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // Redirects
+  async redirects() {
+    return [
+      {
+        // Soft-deprecated 24 Apr 2026: pre-pivot admissions tracker superseded by
+        // surgical_cases + /admin/cases (Sprint 3). Table + API + downstream
+        // billing/claims code kept intact — only the UI entry point is hidden.
+        source: '/admin/admissions',
+        destination: '/admin/cases',
+        permanent: true,
+      },
+    ];
+  },
   // Security + PWA headers
   async headers() {
     return [

@@ -31,7 +31,6 @@ interface AdminSidebarProps {
   userRole?: string;
   badges?: {
     approvals?: number;
-    admissions?: number;
     escalations?: number;
     dedup?: number;
   };
@@ -80,7 +79,6 @@ const navItems: NavItem[] = [
   { group: 'OPERATIONS', label: 'Approvals', href: '/admin/approvals', icon: <UserCheck size={iconSize} />, badge: 0 },
   { group: 'OPERATIONS', label: 'Departments', href: '/admin/departments', icon: <Building2 size={iconSize} /> },
   { group: 'OPERATIONS', label: 'Duty Roster', href: '/admin/duty-roster', icon: <Calendar size={iconSize} /> },
-  { group: 'OPERATIONS', label: 'Admission Tracker', href: '/admin/admissions', icon: <Activity size={iconSize} />, badge: 0 },
   { group: 'OPERATIONS', label: 'Escalation Log', href: '/admin/escalations', icon: <AlertTriangle size={iconSize} />, badge: 0 },
   { group: 'OPERATIONS', label: 'Patient Changelog', href: '/admin/changelog', icon: <ClipboardList size={iconSize} /> },
   {
@@ -112,7 +110,7 @@ export function AdminSidebar({
   collapsed: externalCollapsed,
   onToggle,
   userRole = 'admin',
-  badges = { approvals: 0, admissions: 0, escalations: 0, dedup: 0 },
+  badges = { approvals: 0, escalations: 0, dedup: 0 },
 }: AdminSidebarProps) {
   const [internalCollapsed, setInternalCollapsed] = useState(false);
   const isCollapsed = externalCollapsed !== undefined ? externalCollapsed : internalCollapsed;
@@ -139,7 +137,6 @@ export function AdminSidebar({
   // Helper to get badge value
   const getBadgeValue = (label: string): number | undefined => {
     if (label === 'Approvals') return badges.approvals;
-    if (label === 'Admission Tracker') return badges.admissions;
     if (label === 'Escalation Log') return badges.escalations;
     if (label === 'Dedup Hub') return badges.dedup;
     return undefined;
