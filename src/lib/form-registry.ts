@@ -467,7 +467,7 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
         // If false, Section C is hidden and no surgical_cases row is created on submit.
         { key: 'surgery_planned', label: 'Surgery planned for this patient?', type: 'checkbox', defaultValue: true, helpText: 'Uncheck if this is an intake-only handoff (no surgery yet). Hides the surgical plan below.' },
         { key: 'surgeon_name', label: 'Surgeon Name', type: 'text', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true }, placeholder: 'Who will operate (may differ from OPD doctor)', width: 'half' },
-        { key: 'surgical_specialty', label: 'Surgical Specialty', type: 'select', validation: { required: true }, options: [
+        { key: 'surgical_specialty', label: 'Surgical Specialty', type: 'select', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true }, options: [
           { value: 'general_surgery', label: 'General Surgery' },
           { value: 'orthopaedics', label: 'Orthopaedics' },
           { value: 'ent', label: 'ENT' },
@@ -482,20 +482,20 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
           { value: 'gastro_surgery', label: 'GI / Laparoscopic Surgery' },
           { value: 'other', label: 'Other' },
         ], width: 'half' },
-        { key: 'proposed_procedure', label: 'Proposed Procedure', type: 'text', validation: { required: true }, placeholder: 'What surgery is planned' },
-        { key: 'laterality', label: 'Laterality', type: 'select', validation: { required: true }, options: [
+        { key: 'proposed_procedure', label: 'Proposed Procedure', type: 'text', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true }, placeholder: 'What surgery is planned' },
+        { key: 'laterality', label: 'Laterality', type: 'select', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true }, options: [
           { value: 'left', label: 'Left' },
           { value: 'right', label: 'Right' },
           { value: 'bilateral', label: 'Bilateral' },
           { value: 'na', label: 'N/A' },
         ], width: 'half' },
-        { key: 'surgery_urgency', label: 'Urgency', type: 'select', validation: { required: true }, options: [
+        { key: 'surgery_urgency', label: 'Urgency', type: 'select', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true }, options: [
           { value: 'elective', label: 'Elective' },
           { value: 'urgent', label: 'Urgent' },
           { value: 'emergency', label: 'Emergency' },
         ], width: 'half' },
-        { key: 'clinical_justification', label: 'Clinical Justification', type: 'textarea', placeholder: 'Indication for surgery' },
-        { key: 'known_comorbidities', label: 'Known Co-morbidities', type: 'multiselect', options: [
+        { key: 'clinical_justification', label: 'Clinical Justification', type: 'textarea', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, placeholder: 'Indication for surgery' },
+        { key: 'known_comorbidities', label: 'Known Co-morbidities', type: 'multiselect', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, options: [
           { value: 'diabetes', label: 'Diabetes' },
           { value: 'cardiac_disease', label: 'Cardiac Disease' },
           { value: 'renal_disease', label: 'Renal Disease' },
@@ -507,12 +507,12 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
           { value: 'thrombocytopenia', label: 'Thrombocytopenia' },
           { value: 'none', label: 'None' },
         ] },
-        { key: 'comorbidities_controlled', label: 'Are co-morbidities well controlled?', type: 'select', options: [
+        { key: 'comorbidities_controlled', label: 'Are co-morbidities well controlled?', type: 'select', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, options: [
           { value: 'yes', label: 'Yes' },
           { value: 'no', label: 'No' },
           { value: 'unknown', label: 'Unknown' },
         ], helpText: 'Diabetes: HbA1c < 8, RBS < 180 · BP: < 150/100 on ≥2 readings · TSH: < 5 · Heart disease/CVD: cardiology clearance obtained · Renal: eGFR > 60 · BMI > 35: documented · Hb > 8 · Platelets > 80,000 · Respiratory: SpO2 > 94% on room air · Fever: resolved > 1 week ago', width: 'half' },
-        { key: 'habits', label: 'Habits', type: 'multiselect', options: [
+        { key: 'habits', label: 'Habits', type: 'multiselect', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, options: [
           { value: 'smoking', label: 'Smoking' },
           { value: 'alcohol', label: 'Alcohol' },
           { value: 'tobacco_chewing', label: 'Tobacco Chewing' },
@@ -522,21 +522,21 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
           { value: 'yes', label: 'Yes' },
           { value: 'no', label: 'No' },
         ], width: 'half' },
-        { key: 'current_medication', label: 'Current Medication', type: 'textarea', placeholder: 'Active prescriptions, especially anticoagulants' },
-        { key: 'pac_status', label: 'PAC Status', type: 'select', validation: { required: true }, options: [
+        { key: 'current_medication', label: 'Current Medication', type: 'textarea', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, placeholder: 'Active prescriptions, especially anticoagulants' },
+        { key: 'pac_status', label: 'PAC Status', type: 'select', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true }, options: [
           { value: 'not_done', label: 'Not Done' },
           { value: 'done_fit', label: 'Done — Fit' },
           { value: 'done_unfit', label: 'Done — Unfit' },
           { value: 'pending_review', label: 'Pending Review' },
         ], width: 'half' },
-        { key: 'preferred_surgery_date', label: 'Preferred Surgery Date', type: 'date', validation: { required: true }, width: 'half' },
-        { key: 'preferred_surgery_time', label: 'Preferred Surgery Time', type: 'select', validation: { required: true }, options: [
+        { key: 'preferred_surgery_date', label: 'Preferred Surgery Date', type: 'date', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true }, width: 'half' },
+        { key: 'preferred_surgery_time', label: 'Preferred Surgery Time', type: 'select', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true }, options: [
           { value: 'morning', label: 'Morning' },
           { value: 'afternoon', label: 'Afternoon' },
           { value: 'no_preference', label: 'No Preference' },
         ], width: 'half' },
-        { key: 'support_requirements', label: 'Support Requirements', type: 'textarea', placeholder: 'ICU bed, ventilator, blood products, etc.' },
-        { key: 'special_requirements', label: 'Special Requirements', type: 'textarea', validation: { required: true }, placeholder: 'Implants, consumables, special equipment' },
+        { key: 'support_requirements', label: 'Support Requirements', type: 'textarea', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, placeholder: 'ICU bed, ventilator, blood products, etc.' },
+        { key: 'special_requirements', label: 'Special Requirements', type: 'textarea', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true }, placeholder: 'Implants, consumables, special equipment' },
       ],
     },
 
