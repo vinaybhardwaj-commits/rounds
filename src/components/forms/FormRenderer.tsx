@@ -204,13 +204,21 @@ export default function FormRenderer({
     if (!usesPickerB) return;
     const docId = formData.admitting_doctor_id as string | undefined;
     if (!docId) return;
+
+    // 24 Apr 2026 tweak: 'Other' clears the manual field so user starts fresh,
+    // and skips affiliations lookup since there is no doctor ID to resolve.
+    if (docId === 'other') {
+      setFormData((prev) => ({ ...prev, target_opd_doctor: '' }));
+      return;
+    }
+
     const doc = doctorOptions.find((d) => d.id === docId);
     if (!doc) return;
 
-    // Only fill target_opd_doctor if it's empty — don't overwrite user's manual typing.
-    if (!formData.target_opd_doctor) {
-      setFormData((prev) => ({ ...prev, target_opd_doctor: doc.name }));
-    }
+    // Picker is authoritative for the doctor name — overwrite to reflect the
+    // current selection. (Previously only filled when empty; that left stale
+    // names when marketing switched between doctors.)
+    setFormData((prev) => ({ ...prev, target_opd_doctor: doc.name }));
 
     let cancelled = false;
     fetch(`/api/doctors/${docId}/affiliations`)
@@ -338,27 +346,50 @@ export default function FormRenderer({
       {schema.sections.map((section) => {
         // Sprint 1 Day 4 — inject dynamic options into the admitting_doctor_id
         // select so Picker B shows the actual doctor list from /api/doctors.
+        // Sprint 1 Day 4 + 24 Apr 2026 tweak: populate admitting_doctor_id
+        // dropdown with live doctors + always append 'Other' so the user has
+        // an explicit manual-entry path. target_opd_doctor (free text) is now
+        // hidden when a real doctor is picked and shown only when the picker
+        // is unset or 'Other' is chosen.
         const sectionForRender = usesPickerB && section.fields.some((f) => f.key === 'admitting_doctor_id')
           ? {
               ...section,
-              fields: section.fields.map((f) =>
-                f.key === 'admitting_doctor_id'
-                  ? {
-                      ...f,
-                      options: doctorOptions.map((d) => ({
+              fields: section.fields.map((f) => {
+                if (f.key === 'admitting_doctor_id') {
+                  return {
+                    ...f,
+                    options: [
+                      ...doctorOptions.map((d) => ({
                         value: d.id,
                         label: `${d.name}${d.primary_hospital_slug ? ` · ${d.primary_hospital_slug.toUpperCase()}` : ''}`,
                       })),
-                      helpText: doctorsLoading
-                        ? 'Loading doctor list…'
-                        : doctorsError
-                        ? `Couldn't load doctors: ${doctorsError}. Type the name manually below.`
-                        : doctorOptions.length === 0
-                        ? 'No doctor profiles on file yet. Type the name manually below.'
-                        : f.helpText,
-                    }
-                  : f
-              ),
+                      { value: 'other', label: 'Other — type manually' },
+                    ],
+                    helpText: doctorsLoading
+                      ? 'Loading doctor list…'
+                      : doctorsError
+                      ? `Couldn't load doctors: ${doctorsError}. Choose Other to type a name.`
+                      : doctorOptions.length === 0
+                      ? 'No doctors seeded yet. Choose Other to type the name.'
+                      : 'Pick a doctor, or choose Other to type manually.',
+                  };
+                }
+                if (f.key === 'target_opd_doctor') {
+                  // Hide unless picker is empty or 'Other'. 'in' operator supports
+                  // array membership; undefined and '' both count as 'not picked'.
+                  return {
+                    ...f,
+                    visibleWhen: {
+                      field: 'admitting_doctor_id',
+                      operator: 'in' as const,
+                      value: ['', 'other', undefined, null],
+                    },
+                    label: 'Admitting Doctor — Manual Entry',
+                    helpText: 'Shown because you chose Other (or haven\u2019t picked yet). Type the full name here.',
+                  };
+                }
+                return f;
+              }),
             }
           : section;
         return (
