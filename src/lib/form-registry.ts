@@ -99,6 +99,12 @@ export interface FormSection {
   description?: string;
   /** Fields in this section */
   fields: FormField[];
+  /** Show this section only when condition is met. Applied to every field in the section. */
+  visibleWhen?: {
+    field: string;
+    operator: 'eq' | 'neq' | 'in' | 'truthy';
+    value?: unknown;
+  };
 }
 
 export interface FormSchema {
@@ -154,12 +160,26 @@ export function validateFormData(
   const errors: ValidationError[] = [];
   const allFields = getAllFields(schema);
 
+  // Build a map of field.key -> section so we can check section.visibleWhen.
+  const sectionByFieldKey: Record<string, FormSection> = {};
+  for (const section of schema.sections) {
+    for (const f of section.fields) sectionByFieldKey[f.key] = section;
+  }
+
   for (const field of allFields) {
     const value = data[field.key];
     const v = field.validation;
     if (!v) continue;
 
-    // Check visibility condition — skip validation if field is hidden
+    // Check section visibility first — hidden sections skip all validation.
+    const section = sectionByFieldKey[field.key];
+    if (section?.visibleWhen) {
+      const condValue = data[section.visibleWhen.field];
+      const met = evaluateCondition(condValue, section.visibleWhen.operator, section.visibleWhen.value);
+      if (!met) continue;
+    }
+
+    // Check field-level visibility condition — skip validation if field is hidden
     if (field.visibleWhen) {
       const condValue = data[field.visibleWhen.field];
       const met = evaluateCondition(condValue, field.visibleWhen.operator, field.visibleWhen.value);
@@ -323,7 +343,49 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
           { value: 'urgent', label: 'Urgent' },
           { value: 'emergency', label: 'Emergency' },
         ], width: 'half' },
-        { key: 'target_department', label: 'Target Department', type: 'text', validation: { required: true }, placeholder: 'e.g. Orthopaedics, General Surgery', width: 'half' },
+        // 24 Apr 2026 — target_department is now a select driven by doctor mapping.
+        // Auto-filled by FormRenderer from the selected doctor's specialty; editable.
+        // When 'Other' doctor is picked, user picks manually. Value drives Section C visibility.
+        { key: 'target_department', label: 'Target Department / Specialty', type: 'select', validation: { required: true }, options: [
+          { value: 'Anaesthesia', label: 'Anaesthesia' },
+          { value: 'Cardiology', label: 'Cardiology' },
+          { value: 'Dentistry', label: 'Dentistry' },
+          { value: 'Dermatology', label: 'Dermatology' },
+          { value: 'ENT', label: 'ENT' },
+          { value: 'Emergency', label: 'Emergency' },
+          { value: 'Endocrinology', label: 'Endocrinology' },
+          { value: 'Gastroenterology', label: 'Gastroenterology' },
+          { value: 'General Surgery', label: 'General Surgery' },
+          { value: 'ICU', label: 'ICU' },
+          { value: 'Internal Medicine', label: 'Internal Medicine' },
+          { value: 'Medical Oncology', label: 'Medical Oncology' },
+          { value: 'Nephrology', label: 'Nephrology' },
+          { value: 'Neurology', label: 'Neurology' },
+          { value: 'Neurosurgery', label: 'Neurosurgery' },
+          { value: 'Obstetrics & Gynecology', label: 'Obstetrics & Gynecology' },
+          { value: 'Oncology', label: 'Oncology' },
+          { value: 'Ophthalmology', label: 'Ophthalmology' },
+          { value: 'Oral & Maxillofacial Surgery', label: 'Oral & Maxillofacial Surgery' },
+          { value: 'Orthopedics', label: 'Orthopedics' },
+          { value: 'Paediatric Haemato-Oncology', label: 'Paediatric Haemato-Oncology' },
+          { value: 'Paediatric Surgery', label: 'Paediatric Surgery' },
+          { value: 'Pain & Palliative Care', label: 'Pain & Palliative Care' },
+          { value: 'Pathology', label: 'Pathology' },
+          { value: 'Pediatrics', label: 'Pediatrics' },
+          { value: 'Physiatry', label: 'Physiatry' },
+          { value: 'Physiotherapy', label: 'Physiotherapy' },
+          { value: 'Plastic Surgery', label: 'Plastic Surgery' },
+          { value: 'Psychiatry', label: 'Psychiatry' },
+          { value: 'Pulmonology', label: 'Pulmonology' },
+          { value: 'Radiation Oncology', label: 'Radiation Oncology' },
+          { value: 'Radiology', label: 'Radiology' },
+          { value: 'Rheumatology', label: 'Rheumatology' },
+          { value: 'Surgical Gastroenterology', label: 'Surgical Gastroenterology' },
+          { value: 'Surgical Oncology', label: 'Surgical Oncology' },
+          { value: 'Urology', label: 'Urology' },
+          { value: 'Vascular Surgery', label: 'Vascular Surgery' },
+          { value: 'Wards', label: 'Wards' },
+        ], helpText: 'Auto-fills from selected doctor. Change if the patient is being referred to a different specialty.', width: 'half' },
         { key: 'insurance_status', label: 'Insurance Status', type: 'select', validation: { required: true }, options: [
           { value: 'insured', label: 'Insured' },
           { value: 'uninsured', label: 'Uninsured' },
@@ -393,10 +455,13 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
     },
 
     // ── Section C: Surgery Booking ──
+    // 24 Apr 2026 — section is hidden when the admitting doctor/specialty is
+    // non-surgical. FormRenderer computes _is_surgical_case from target_department.
     {
       id: 'surgery_booking',
       title: 'Section C — Surgery Booking',
-      description: 'Surgical plan, clinical risk profile, and OT scheduling. Fields left blank are flagged "Pending — OT/Anaesthesia to complete."',
+      description: 'Surgical plan, clinical risk profile, and OT scheduling. Only shown for surgical specialties.',
+      visibleWhen: { field: '_is_surgical_case', operator: 'truthy' },
       fields: [
         // Sprint 1 Day 3 — surgery_planned drives draft auto-creation (Decision: Framing B).
         // If false, Section C is hidden and no surgical_cases row is created on submit.

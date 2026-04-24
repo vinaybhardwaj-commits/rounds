@@ -37,6 +37,7 @@ interface DoctorRow {
   role: string;
   primary_hospital_id: string | null;
   primary_hospital_slug: string | null;
+  specialty: string | null;
 }
 
 export async function GET() {
@@ -58,7 +59,8 @@ export async function GET() {
         p.email,
         p.role,
         p.primary_hospital_id,
-        h.slug AS primary_hospital_slug
+        h.slug AS primary_hospital_slug,
+        NULL::text AS specialty
       FROM profiles p
       LEFT JOIN hospitals h ON h.id = p.primary_hospital_id
       WHERE p.role = ANY($1::text[])
@@ -71,7 +73,8 @@ export async function GET() {
         NULL::text AS email,
         COALESCE(rd.association, 'consultant') AS role,
         rd.primary_hospital_id,
-        h2.slug AS primary_hospital_slug
+        h2.slug AS primary_hospital_slug,
+        rd.specialty
       FROM reference_doctors rd
       LEFT JOIN hospitals h2 ON h2.id = rd.primary_hospital_id
       WHERE rd.is_active = true
@@ -80,6 +83,16 @@ export async function GET() {
       `,
       [DOCTOR_ROLE_PATTERNS]
     );
+
+    // 24 Apr 2026 — canonical surgical-specialty set, must stay in sync
+    // with SURGICAL_SPECIALTIES in FormRenderer.tsx.
+    const SURGICAL = new Set([
+      'Dentistry', 'Dermatology', 'ENT', 'General Surgery', 'Neurosurgery',
+      'Obstetrics & Gynecology', 'Oncology', 'Ophthalmology',
+      'Oral & Maxillofacial Surgery', 'Orthopedics', 'Paediatric Surgery',
+      'Plastic Surgery', 'Surgical Gastroenterology', 'Surgical Oncology',
+      'Urology', 'Vascular Surgery',
+    ]);
 
     return NextResponse.json({
       success: true,
@@ -90,6 +103,8 @@ export async function GET() {
         role: r.role,
         primary_hospital_id: r.primary_hospital_id,
         primary_hospital_slug: r.primary_hospital_slug,
+        specialty: r.specialty,
+        is_surgical: r.specialty ? SURGICAL.has(r.specialty) : false,
       })),
       count: rows.length,
     });

@@ -54,6 +54,7 @@ const VERSIONED_FORM_TYPES = new Set([
 ]);
 
 // Sprint 1 Day 4 — doctor profile shape (from /api/doctors)
+// 24 Apr 2026 added: specialty + is_surgical for Marketing Handoff auto-fill.
 interface DoctorOption {
   id: string;
   name: string;
@@ -61,6 +62,23 @@ interface DoctorOption {
   role: string;
   primary_hospital_id: string | null;
   primary_hospital_slug: string | null;
+  specialty?: string | null;
+  is_surgical?: boolean;
+}
+
+// 24 Apr 2026 — surgical-specialty rule. Canonical specialties from the
+// doctor roster mapped to boolean is_surgical. Kept in sync with the
+// server-side rule in /api/doctors and the canonical specialty set in
+// migration-reference-doctors-specialty.sql.
+const SURGICAL_SPECIALTIES = new Set([
+  'Dentistry', 'Dermatology', 'ENT', 'General Surgery', 'Neurosurgery',
+  'Obstetrics & Gynecology', 'Oncology', 'Ophthalmology',
+  'Oral & Maxillofacial Surgery', 'Orthopedics', 'Paediatric Surgery',
+  'Plastic Surgery', 'Surgical Gastroenterology', 'Surgical Oncology',
+  'Urology', 'Vascular Surgery',
+]);
+function isSurgicalSpecialty(spec: string | undefined | null): boolean {
+  return !!spec && SURGICAL_SPECIALTIES.has(spec);
 }
 
 // Sprint 1 Day 3 — shape returned by /api/patients/[id]/lsq-prefill
@@ -217,8 +235,13 @@ export default function FormRenderer({
 
     // Picker is authoritative for the doctor name — overwrite to reflect the
     // current selection. (Previously only filled when empty; that left stale
-    // names when marketing switched between doctors.)
-    setFormData((prev) => ({ ...prev, target_opd_doctor: doc.name }));
+    // names when marketing switched between doctors.) Also auto-fills
+    // target_department from doctor.specialty; user can edit.
+    setFormData((prev) => ({
+      ...prev,
+      target_opd_doctor: doc.name,
+      ...(doc.specialty ? { target_department: doc.specialty } : {}),
+    }));
 
     let cancelled = false;
     fetch(`/api/doctors/${docId}/affiliations`)
@@ -240,6 +263,20 @@ export default function FormRenderer({
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.admitting_doctor_id, doctorOptions, usesPickerB]);
+
+  // 24 Apr 2026 — Derived _is_surgical_case for Section C visibility. Runs
+  // whenever target_department changes (from picker auto-fill, manual edit, or
+  // specialty dropdown for 'Other'). Stored in form_data so the schema's
+  // section.visibleWhen can read it. Harmless extra key in submissions.
+  useEffect(() => {
+    if (schema.formType !== 'consolidated_marketing_handoff') return;
+    const spec = (formData.target_department as string | undefined) || '';
+    const isSurg = isSurgicalSpecialty(spec);
+    setFormData((prev) => {
+      if (prev._is_surgical_case === isSurg) return prev;
+      return { ...prev, _is_surgical_case: isSurg };
+    });
+  }, [formData.target_department, schema.formType]);
 
   // Mark field as touched on blur
   const touchField = useCallback((key: string) => {
@@ -344,6 +381,19 @@ export default function FormRenderer({
 
       {/* Sections */}
       {schema.sections.map((section) => {
+        // 24 Apr 2026 — section-level visibleWhen. Skip the entire section
+        // (no header, no fields) when the condition evaluates false.
+        if (section.visibleWhen) {
+          const condValue = formData[section.visibleWhen.field];
+          const op = section.visibleWhen.operator;
+          const want = section.visibleWhen.value;
+          const met = op === 'truthy' ? !!condValue
+            : op === 'eq' ? condValue === want
+            : op === 'neq' ? condValue !== want
+            : op === 'in' ? Array.isArray(want) && (want as unknown[]).includes(condValue)
+            : false;
+          if (!met) return null;
+        }
         // Sprint 1 Day 4 — inject dynamic options into the admitting_doctor_id
         // select so Picker B shows the actual doctor list from /api/doctors.
         // Sprint 1 Day 4 + 24 Apr 2026 tweak: populate admitting_doctor_id
