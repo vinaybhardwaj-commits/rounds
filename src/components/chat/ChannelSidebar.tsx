@@ -132,11 +132,19 @@ export function ChannelSidebar({
   // Debounce timer for event-driven refreshes so a burst of GetStream events
   // (e.g. 5 message.new in quick succession) collapses into a single reload.
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Tracks whether we've EVER successfully seen channels for this user. Used
-  // to distinguish 'user genuinely has 0 channels' (first-load empty — show
-  // empty state) from 'queries all returned empty due to transient GetStream
-  // errors' (refresh-empty — preserve previous state, don't wipe the sidebar).
-  const hasHadChannelsRef = useRef(false);
+  // Per-type cache of the last successful channel list. When a queryChannels
+  // call errors (rate limit / network / auth), we reuse the last-known
+  // channels for that type instead of wiping them to []. Layer 1 of the
+  // error-handling refactor — supersedes the coarse 'preserve everything if
+  // all-empty' guard with surgical per-type preservation.
+  const lastKnownChannelsRef = useRef<Record<string, Channel[]>>({
+    department: [],
+    'cross-functional': [],
+    'patient-thread': [],
+    direct: [],
+    'ops-broadcast': [],
+    'whatsapp-analysis': [],
+  });
 
   // Fetch and group channels — query each type separately so department
   // and cross-functional channels aren't crowded out by patient threads
@@ -149,28 +157,70 @@ export function ChannelSidebar({
       const sort = [{ last_message_at: -1 as const }];
       const opts = { watch: true, state: true };
 
-      // Query each channel type in parallel with appropriate limits
-      const [deptChannels, cfChannels, ptChannels, directChannels, broadcastChannels, waChannels] =
-        await Promise.all([
-          client.queryChannels(
-            { type: 'department', members: { $in: [userId] } }, sort, { ...opts, limit: 30 }
-          ).catch(() => [] as Channel[]),
-          client.queryChannels(
-            { type: 'cross-functional', members: { $in: [userId] } }, sort, { ...opts, limit: 20 }
-          ).catch(() => [] as Channel[]),
-          client.queryChannels(
-            { type: 'patient-thread', members: { $in: [userId] } }, sort, { ...opts, limit: 200 }
-          ).catch(() => [] as Channel[]),
-          client.queryChannels(
-            { type: 'direct', members: { $in: [userId] } }, sort, { ...opts, limit: 30 }
-          ).catch(() => [] as Channel[]),
-          client.queryChannels(
-            { type: 'ops-broadcast', members: { $in: [userId] } }, sort, { ...opts, limit: 5 }
-          ).catch(() => [] as Channel[]),
-          client.queryChannels(
-            { type: 'whatsapp-analysis', members: { $in: [userId] } }, sort, { ...opts, limit: 5 }
-          ).catch(() => [] as Channel[]),
-        ]);
+      // Layer 1 error handling: each query returns a discriminated result
+      // carrying either the channels or a classified error. On error we
+      // fall back to the last-known channels for that type (preserved in
+      // lastKnownChannelsRef) so a transient failure of one type doesn't
+      // wipe that type's group from the sidebar.
+      type SafeResult =
+        | { ok: true; type: string; channels: Channel[] }
+        | { ok: false; type: string; error: 'rate_limit' | 'auth' | 'network' | 'unknown'; message: string };
+
+      const safeQuery = async (type: string, limit: number): Promise<SafeResult> => {
+        try {
+          const channels = await client.queryChannels(
+            { type, members: { $in: [userId] } }, sort, { ...opts, limit }
+          );
+          return { ok: true, type, channels };
+        } catch (e) {
+          const err = e as { status?: number; code?: number; message?: string };
+          let kind: 'rate_limit' | 'auth' | 'network' | 'unknown' = 'unknown';
+          if (err.status === 429) kind = 'rate_limit';
+          else if (err.status === 401 || err.status === 403) kind = 'auth';
+          else if (err.status === undefined) kind = 'network';
+          return { ok: false, type, error: kind, message: err.message || 'Unknown' };
+        }
+      };
+
+      const results = await Promise.all([
+        safeQuery('department', 30),
+        safeQuery('cross-functional', 20),
+        safeQuery('patient-thread', 200),
+        safeQuery('direct', 30),
+        safeQuery('ops-broadcast', 5),
+        safeQuery('whatsapp-analysis', 5),
+      ]);
+
+      // Partial merge — for each type, use fresh channels if the query
+      // succeeded, otherwise last-known. Cache successful results.
+      const pick = (idx: number, typeKey: string): Channel[] => {
+        const r = results[idx];
+        if (r.ok) {
+          lastKnownChannelsRef.current[typeKey] = r.channels;
+          return r.channels;
+        }
+        return lastKnownChannelsRef.current[typeKey] || [];
+      };
+      const deptChannels = pick(0, 'department');
+      const cfChannels = pick(1, 'cross-functional');
+      const ptChannels = pick(2, 'patient-thread');
+      const directChannels = pick(3, 'direct');
+      const broadcastChannels = pick(4, 'ops-broadcast');
+      const waChannels = pick(5, 'whatsapp-analysis');
+
+      // Surgical warn: log exactly which types failed + what kind. First
+      // error message included for quick debugging.
+      const failed = results.filter(
+        (r): r is Extract<SafeResult, { ok: false }> => !r.ok
+      );
+      if (failed.length > 0) {
+        const summary = failed.map((f) => `${f.type}=${f.error}`).join(', ');
+        console.warn(
+          `[ChannelSidebar] ${failed.length}/6 queries errored: ${summary}. ` +
+          'Preserved last-known channels for errored types. ' +
+          (failed[0].message ? `First error: ${failed[0].message}` : '')
+        );
+      }
 
       const groups: Record<string, Channel[]> = {};
       const archivedPostDC: Channel[] = [];
@@ -268,20 +318,11 @@ export function ChannelSidebar({
         });
       }
 
-      // Guard against all-queries-empty refreshes. If we've successfully
-      // loaded channels before but this refresh returned zero across all 6
-      // channel-type queries, it's almost certainly a swallowed GetStream
-      // error (rate limit, WebSocket reconnect). Preserve the previous
-      // state rather than wiping the sidebar.
-      if (hasHadChannelsRef.current && result.length === 0) {
-        console.warn(
-          '[ChannelSidebar] Refresh returned 0 channels across all 6 queries ' +
-          '— likely a transient GetStream error. Preserving previous sidebar state.'
-        );
-      } else {
-        setChannelGroups(result);
-        if (result.length > 0) hasHadChannelsRef.current = true;
-      }
+      // Per-type preservation (above) already filled in last-known channels
+      // for any errored queries, so 'result' reflects the best available
+      // view — fresh where we could, preserved where we had to. Errors
+      // are already logged surgically; safe to set unconditionally.
+      setChannelGroups(result);
 
       // Compute unread count from ACTIVE channels only (exclude archived)
       const activeChannels = Object.values(groups).flat();
