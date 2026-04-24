@@ -1,34 +1,66 @@
 // ============================================
 // POST /api/cases/[id]/transition
 //
-// Transitions a surgical_case from one state to another. Sprint 1 Day 5
-// implements only the draft→intake transition for the Drafts Inbox; other
-// transitions (intake→pac_scheduled, pac_done→fit/conds/defer/unfit, etc.)
-// land in Sprint 2.
+// Generic state-transition endpoint. Handles the "simple" transitions that
+// don't need their own specialized endpoint (cancel, postpone, verify,
+// schedule, pac publish all have dedicated routes with extra logic).
 //
-// Invariant: every state mutation on surgical_cases.state is accompanied by
-// an INSERT into case_state_events.
+// Every state mutation accompanied by case_state_events insert — invariant.
 //
 // Body:
-//   { to_state: 'intake', kx_uhid: '...', transition_reason?: string }
+//   { to_state: 'intake'|'pac_scheduled'|'pac_done'|'confirmed'|'in_theatre'|'completed',
+//     kx_uhid?: string,                 // required for draft → intake
+//     transition_reason?: string }
 //
-// Access control:
-//   - caller must have access to the case's hospital_id (via
-//     user_accessible_hospital_ids)
-//   - for draft→intake: caller must have role ip_coordinator OR super_admin
+// Allowed transitions map (Sprint 3 Day 14 extension — was draft→intake only):
+//   draft          → intake               (ip_coordinator + super_admin; requires kx_uhid)
+//   intake         → pac_scheduled        (ip_coordinator + super_admin)
+//   pac_scheduled  → pac_done             (anaesthesiologist + super_admin)
+//   scheduled      → confirmed            (ot_coordinator + ip_coordinator + super_admin)
+//   confirmed      → verified             (resident + senior_resident + rmo + super_admin)
+//   verified       → in_theatre           (rmo + ot_coordinator + super_admin)
+//   in_theatre     → completed            (rmo + consultant + ot_coordinator + super_admin)
 //
-// Sprint 1 Day 5 (23 April 2026) — behind FEATURE_CASE_MODEL_ENABLED.
+// Tenancy: user_accessible_hospital_ids.
+//
+// Sprint 3 Day 14 (24 April 2026) — behind FEATURE_CASE_MODEL_ENABLED.
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { query as sqlQuery, queryOne } from '@/lib/db';
 
-const INTAKE_ALLOWED_ROLES = new Set(['ip_coordinator', 'super_admin']);
+interface TransitionRule {
+  allowed_roles: Set<string>;
+  require_kx_uhid?: boolean;
+  require_reason?: boolean;
+}
 
-// The only transition implemented today. Keep this map small — Sprint 2 extends it.
-const ALLOWED_TRANSITIONS: Record<string, Set<string>> = {
-  draft: new Set(['intake']),
+// Per-transition rules. Key = "{from}→{to}".
+const TRANSITION_RULES: Record<string, TransitionRule> = {
+  'draft→intake': {
+    allowed_roles: new Set(['ip_coordinator', 'super_admin']),
+    require_kx_uhid: true,
+  },
+  'intake→pac_scheduled': {
+    allowed_roles: new Set(['ip_coordinator', 'super_admin']),
+  },
+  'pac_scheduled→pac_done': {
+    allowed_roles: new Set(['anaesthesiologist', 'super_admin']),
+  },
+  'scheduled→confirmed': {
+    allowed_roles: new Set(['ot_coordinator', 'ip_coordinator', 'super_admin']),
+  },
+  'confirmed→verified': {
+    allowed_roles: new Set(['resident', 'senior_resident', 'rmo', 'super_admin']),
+  },
+  'verified→in_theatre': {
+    allowed_roles: new Set(['rmo', 'ot_coordinator', 'super_admin']),
+  },
+  'in_theatre→completed': {
+    allowed_roles: new Set(['rmo', 'consultant', 'ot_coordinator', 'super_admin']),
+    require_reason: false,
+  },
 };
 
 interface CaseRow {
@@ -82,42 +114,47 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Case not found or access denied' }, { status: 404 });
     }
 
-    // Validate transition against the allowed map.
-    const allowed = ALLOWED_TRANSITIONS[c.state];
-    if (!allowed || !allowed.has(body.to_state)) {
+    const ruleKey = `${c.state}→${body.to_state}`;
+    const rule = TRANSITION_RULES[ruleKey];
+
+    if (!rule) {
+      // Enumerate allowed destinations from current state for the error body.
+      const allowedFromHere = Object.keys(TRANSITION_RULES)
+        .filter((k) => k.startsWith(`${c.state}→`))
+        .map((k) => k.split('→')[1]);
       return NextResponse.json(
         {
           success: false,
           error: `Transition not allowed: ${c.state} → ${body.to_state}`,
-          allowed_from_current: Array.from(allowed ?? []),
+          current_state: c.state,
+          allowed_from_current: allowedFromHere,
+          hint: allowedFromHere.length === 0
+            ? `No simple transitions from "${c.state}" via this endpoint. Use specialized endpoints: /pac/publish-outcome, /schedule, /verify, /cancel, /postpone.`
+            : undefined,
         },
         { status: 409 }
       );
     }
 
-    // Specific gates for draft → intake.
-    if (c.state === 'draft' && body.to_state === 'intake') {
-      // Role gate per sprint plan + PRD.
-      if (!INTAKE_ALLOWED_ROLES.has(user.role)) {
-        return NextResponse.json(
-          { success: false, error: `Role ${user.role} cannot transition draft → intake. Required: ${[...INTAKE_ALLOWED_ROLES].join(' or ')}.` },
-          { status: 403 }
-        );
-      }
-      // KX UHID required to move into intake — this captures the opaque KE patient link.
-      if (!body.kx_uhid || !body.kx_uhid.trim()) {
-        return NextResponse.json(
-          { success: false, error: 'kx_uhid is required to transition from draft to intake' },
-          { status: 400 }
-        );
-      }
+    if (!rule.allowed_roles.has(user.role)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Role ${user.role} cannot perform ${ruleKey}. Required: ${[...rule.allowed_roles].join(' or ')}.`,
+        },
+        { status: 403 }
+      );
     }
 
-    // Perform the mutation. Two writes: update surgical_cases + insert case_state_events.
-    // We DON'T wrap in an explicit transaction because the Neon HTTP driver runs each
-    // call in its own transaction. If the state update succeeds and the event insert
-    // fails, we still have an inconsistency. Accept that for Sprint 1; Sprint 2 wraps
-    // this in a stored procedure.
+    if (rule.require_kx_uhid && (!body.kx_uhid || !body.kx_uhid.trim())) {
+      return NextResponse.json(
+        { success: false, error: `kx_uhid is required to transition ${ruleKey}` },
+        { status: 400 }
+      );
+    }
+
+    // Perform the mutation. Update surgical_cases + INSERT case_state_events.
+    // For draft → intake, also persist kx_uhid into surgical_cases.kx_case_id.
     await sqlQuery(
       `
       UPDATE surgical_cases
@@ -139,13 +176,12 @@ export async function POST(
         id,
         c.state,
         body.to_state,
-        body.transition_reason ?? null,
+        body.transition_reason ?? ruleKey,
         user.profileId,
-        JSON.stringify({ via: 'api/cases/transition', kx_uhid_set: !!body.kx_uhid }),
+        JSON.stringify({ via: 'api/cases/transition', rule: ruleKey, kx_uhid_set: !!body.kx_uhid }),
       ]
     );
 
-    // Return the updated case.
     const updated = await queryOne<CaseRow>(
       `SELECT id, hospital_id, state, kx_case_id AS kx_uhid, patient_thread_id FROM surgical_cases WHERE id = $1`,
       [id]
@@ -154,7 +190,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       data: updated,
-      transition: { from: c.state, to: body.to_state },
+      transition: { from: c.state, to: body.to_state, rule: ruleKey },
     });
   } catch (error) {
     console.error('POST /api/cases/[id]/transition error:', error);

@@ -256,9 +256,14 @@ export default function OtCalendarPage() {
         <div className="space-y-6 overflow-x-auto">
           {hospitals.map((hs) => (
             <section key={hs} className="rounded-lg border border-gray-200 bg-white">
-              <header className="border-b border-gray-100 px-3 py-2">
-                <h2 className="text-sm font-semibold text-gray-900">{hs.toUpperCase()}</h2>
-                <p className="text-xs text-gray-500">3 OTs</p>
+              <header className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">{hs.toUpperCase()}</h2>
+                  <p className="text-xs text-gray-500">3 OTs</p>
+                </div>
+                {canSchedule && (
+                  <LockListButton hospitalSlug={hs} weekStart={weekStart} />
+                )}
               </header>
               <div className="grid grid-cols-[80px_repeat(7,minmax(120px,1fr))] border-t border-gray-100">
                 <div className="border-r border-b border-gray-100 bg-gray-50 px-2 py-1 text-[11px] font-medium text-gray-500">&nbsp;</div>
@@ -308,6 +313,162 @@ export default function OtCalendarPage() {
         />
       )}
     </main>
+  );
+}
+
+// ---- LockListButton (Sprint 3 Day 14) ----
+//
+// Small dropdown + button pair. Picks a list_date (default: tomorrow) and
+// POSTs to /api/ot-lists/lock. On success, shows the composed WhatsApp
+// message in a modal with a "Copy to clipboard" button for manual dispatch.
+
+interface LockListButtonProps {
+  hospitalSlug: string;
+  weekStart: Date;
+}
+
+function LockListButton({ hospitalSlug, weekStart }: LockListButtonProps) {
+  const [open, setOpen] = useState(false);
+  const [listDate, setListDate] = useState(() => {
+    const t = new Date();
+    t.setDate(t.getDate() + 1);
+    return t.toISOString().slice(0, 10);
+  });
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{
+    message_text: string;
+    case_count: number;
+    dispatch: { attempted: boolean; sent?: number; errors?: string[]; reason?: string };
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const weekDates: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    weekDates.push(d.toISOString().slice(0, 10));
+  }
+
+  const doLock = async () => {
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await fetch('/api/ot-lists/lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hospital_slug: hospitalSlug, list_date: listDate }),
+      });
+      const body = await res.json();
+      if (!res.ok || !body.success) throw new Error(body?.error || `HTTP ${res.status}`);
+      setResult(body.data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyMessage = async () => {
+    if (!result) return;
+    try {
+      await navigator.clipboard.writeText(result.message_text);
+    } catch { /* non-fatal */ }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+      >
+        Lock list…
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) { setOpen(false); setResult(null); setError(null); } }}
+        >
+          <div className="w-full max-w-lg rounded-xl bg-white shadow-xl">
+            <header className="border-b border-gray-200 px-4 py-3">
+              <h3 className="text-sm font-semibold text-gray-900">
+                Lock OT list — {hospitalSlug.toUpperCase()}
+              </h3>
+              <p className="mt-0.5 text-xs text-gray-600">
+                Writes the final_930pm version to ot_list_versions. Only one final per hospital/date.
+              </p>
+            </header>
+            <div className="px-4 py-3">
+              {!result && (
+                <>
+                  <label className="block text-xs font-medium text-gray-700">List date</label>
+                  <select
+                    value={listDate}
+                    onChange={(e) => setListDate(e.target.value)}
+                    disabled={busy}
+                    className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                  >
+                    {weekDates.map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                  {error && (
+                    <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+                      {error}
+                    </div>
+                  )}
+                </>
+              )}
+              {result && (
+                <div>
+                  <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-900">
+                    ✓ Locked · {result.case_count} case(s)
+                    {result.dispatch.attempted ? (
+                      <> · dispatched to {result.dispatch.sent ?? 0} recipient(s){result.dispatch.errors && result.dispatch.errors.length > 0 && ` (${result.dispatch.errors.length} errors)`}</>
+                    ) : (
+                      <> · no auto-dispatch — copy the message below</>
+                    )}
+                  </div>
+                  <label className="block text-xs font-medium text-gray-700">WhatsApp message</label>
+                  <pre className="mt-1 max-h-60 overflow-auto rounded-md border border-gray-200 bg-gray-50 p-2 text-[11px] font-mono text-gray-900 whitespace-pre-wrap">{result.message_text}</pre>
+                </div>
+              )}
+            </div>
+            <footer className="flex items-center justify-end gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => { setOpen(false); setResult(null); setError(null); }}
+                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                {result ? 'Close' : 'Cancel'}
+              </button>
+              {!result && (
+                <button
+                  type="button"
+                  onClick={doLock}
+                  disabled={busy}
+                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {busy ? 'Locking…' : 'Lock'}
+                </button>
+              )}
+              {result && (
+                <button
+                  type="button"
+                  onClick={copyMessage}
+                  className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                >
+                  Copy message
+                </button>
+              )}
+            </footer>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
