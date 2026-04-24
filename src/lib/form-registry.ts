@@ -331,13 +331,6 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
           { value: 'private', label: 'Private' },
           { value: 'suite', label: 'Suite' },
         ], width: 'half' },
-        { key: 'lead_quality_score', label: 'Lead Quality Score', type: 'select', options: [
-          { value: '1', label: '1 — Cold' },
-          { value: '2', label: '2 — Warm' },
-          { value: '3', label: '3 — Interested' },
-          { value: '4', label: '4 — High Intent' },
-          { value: '5', label: '5 — Confirmed' },
-        ], width: 'half' },
         { key: 'special_notes', label: 'Special Notes', type: 'textarea', placeholder: 'Anything else for the care team: VIP, language preference, accessibility needs' },
         // Sprint 1 Day 3 — multi-file upload. Stored in form_data as an array of {url, filename, size, contentType}.
         // FormRenderer posts each file to /api/files/upload (Vercel Blob) before form submit.
