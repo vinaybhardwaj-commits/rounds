@@ -180,99 +180,81 @@ export async function POST(
     }
 
     // -------- MUTATIONS BEGIN --------
-    // Neon HTTP driver doesn't support a cross-statement transaction. Order
-    // matters: write the pac_events row FIRST so that if the state update
-    // fails we at least have a record of the publish attempt. Accept partial
-    // failure risk for Sprint 2; Sprint 3 can move to a stored procedure.
+    // 25 Apr 2026 (M11 fix): previously 4 separate writes back-to-back under
+    // the Neon HTTP driver — no cross-statement transaction, so a failure
+    // mid-sequence left pac_events orphaned and a retry wrote duplicates.
+    // Now wrapped in a single PL/pgSQL function call (publish_pac_outcome);
+    // all four writes share one implicit transaction. The function also
+    // guards the UPDATE with 'AND state = p_from_state' so two concurrent
+    // anaesthetists publishing in parallel don't stomp each other — the
+    // second attempt raises ERRCODE 40001 and we surface a 409 below.
+    //
+    // See src/lib/migration-pac-publish-stored-proc.sql.
 
-    // 1. pac_events
-    const pacRow = await queryOne<{ id: string; published_at: string }>(
-      `
-      INSERT INTO pac_events (case_id, anaesthetist_id, outcome, notes, kx_pac_record_id)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, published_at
-      `,
-      [
-        caseId,
-        user.profileId,
-        body.outcome,
-        body.notes ?? null,
-        body.kx_pac_record_id ?? null,
-      ]
-    );
-
-    // 2. surgical_cases.state → outcome state
-    //    Also update the case's kx_pac_record_id pointer for future reference
-    //    if the caller provided one (doesn't overwrite existing with NULL).
-    await query(
-      `
-      UPDATE surgical_cases
-      SET state = $1,
-          kx_pac_record_id = COALESCE($2, kx_pac_record_id),
-          updated_at = NOW()
-      WHERE id = $3
-      `,
-      [body.outcome, body.kx_pac_record_id ?? null, caseId]
-    );
-
-    // 3. case_state_events — one row per transition
-    await query(
-      `
-      INSERT INTO case_state_events
-        (case_id, from_state, to_state, transition_reason, actor_profile_id, metadata)
-      VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-      `,
-      [
-        caseId,
-        c.state,
-        body.outcome,
-        'pac_publish_outcome',
-        user.profileId,
-        JSON.stringify({
-          via: 'api/cases/pac/publish-outcome',
-          pac_event_id: pacRow?.id ?? null,
-          condition_count: conditionCodes.length + customConditions.length,
-        }),
-      ]
-    );
-
-    // 4. condition_cards (one per library code + one per custom condition).
-    //    D8 purity: library_code XOR custom_label — never both, never neither.
-    //    The CT7 CHECK constraint enforces this at the DB level too.
-    const insertedCards: string[] = [];
-    for (const code of conditionCodes) {
-      const row = await queryOne<{ id: string }>(
+    let spResult:
+      | { pac_event_id: string; published_at: string; condition_card_ids: string[] }
+      | null = null;
+    try {
+      const row = await queryOne<{ result: typeof spResult }>(
         `
-        INSERT INTO condition_cards (case_id, library_code, custom_label, status, owner_profile_id)
-        VALUES ($1, $2, NULL, 'pending', NULL)
-        RETURNING id
+        SELECT publish_pac_outcome(
+          $1::UUID,
+          $2::TEXT,
+          $3::TEXT,
+          $4::UUID,
+          $5::TEXT,
+          $6::TEXT,
+          $7::TEXT[],
+          $8::JSONB
+        ) AS result
         `,
-        [caseId, code]
+        [
+          caseId,
+          c.state,
+          body.outcome,
+          user.profileId,
+          body.notes ?? null,
+          body.kx_pac_record_id ?? null,
+          conditionCodes,
+          JSON.stringify(customConditions),
+        ]
       );
-      if (row) insertedCards.push(row.id);
+      spResult = row?.result ?? null;
+    } catch (e) {
+      const err = e as { code?: string; message?: string };
+      // 40001 = serialization_failure — raised by the SP when the case's
+      // state changed between our validation fetch and the UPDATE. Another
+      // anaesthetist published first; the client should refetch.
+      if (err.code === '40001' || (err.message && err.message.includes('state changed'))) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Case state changed while publishing PAC. Reload and try again.',
+            current_state: 'unknown',
+          },
+          { status: 409 }
+        );
+      }
+      throw e;
     }
-    for (const custom of customConditions) {
-      const row = await queryOne<{ id: string }>(
-        `
-        INSERT INTO condition_cards (case_id, library_code, custom_label, status, note, owner_profile_id)
-        VALUES ($1, NULL, $2, 'pending', $3, $4)
-        RETURNING id
-        `,
-        [caseId, custom.label, custom.note ?? null, custom.owner_profile_id ?? null]
+
+    if (!spResult) {
+      return NextResponse.json(
+        { success: false, error: 'PAC publish succeeded on DB but returned no payload' },
+        { status: 500 }
       );
-      if (row) insertedCards.push(row.id);
     }
 
     return NextResponse.json({
       success: true,
       data: {
         pac_event: {
-          id: pacRow?.id ?? null,
-          published_at: pacRow?.published_at ?? null,
+          id: spResult.pac_event_id,
+          published_at: spResult.published_at,
           outcome: body.outcome,
         },
         transition: { from: c.state, to: body.outcome },
-        condition_cards_created: insertedCards,
+        condition_cards_created: spResult.condition_card_ids ?? [],
       },
     });
   } catch (error) {
