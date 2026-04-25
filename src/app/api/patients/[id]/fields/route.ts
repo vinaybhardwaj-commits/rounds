@@ -21,7 +21,15 @@ export async function PATCH(
 
     const { id } = params;
     const body = await request.json();
-    const { primary_consultant_id, department_id, bed_number, room_number } = body;
+    const {
+      primary_consultant_id,
+      // 25 Apr 2026: client may send resolved name (id may be from
+      // /api/doctors which unions profiles + reference_doctors).
+      primary_consultant_name: bodyConsultantName,
+      department_id,
+      bed_number,
+      room_number,
+    } = body;
 
     // Get current patient for old values
     const patient = await getPatientThread(id);
@@ -40,12 +48,21 @@ export async function PATCH(
 
     // --- Consultant change ---
     if (primary_consultant_id !== undefined && primary_consultant_id !== patient.primary_consultant_id) {
-      let newConsultantName: string | null = null;
-      if (primary_consultant_id) {
+      let newConsultantName: string | null = bodyConsultantName || null;
+      if (primary_consultant_id && !newConsultantName) {
+        // Try profiles first, then reference_doctors. Both tables share
+        // a UUID id space so a single id will match at most one row.
         const profile = await queryOne<{ full_name: string }>(
           `SELECT full_name FROM profiles WHERE id = $1`, [primary_consultant_id]
         );
-        newConsultantName = profile?.full_name || null;
+        if (profile?.full_name) {
+          newConsultantName = profile.full_name;
+        } else {
+          const ref = await queryOne<{ full_name: string }>(
+            `SELECT full_name FROM reference_doctors WHERE id = $1`, [primary_consultant_id]
+          );
+          newConsultantName = ref?.full_name || null;
+        }
       }
 
       changelogs.push({
@@ -56,7 +73,12 @@ export async function PATCH(
         new_display: newConsultantName || 'None',
       });
 
-      await updatePatientThread(id, { primary_consultant_id: primary_consultant_id || null });
+      // 25 Apr 2026: write both id + name (no FK on id since the consultant
+      // may live in reference_doctors, not profiles).
+      await updatePatientThread(id, {
+        primary_consultant_id: primary_consultant_id || null,
+        primary_consultant_name: newConsultantName,
+      });
     }
 
     // --- Department change ---

@@ -99,11 +99,14 @@ interface Department {
 interface ConsultantOption {
   id: string;
   full_name: string;
+  primary_hospital_id: string | null;
+  specialty: string | null;
 }
 
 interface PatientDetail {
   id: string;
   patient_name: string;
+  hospital_id: string | null;
   uhid: string | null;
   ip_number: string | null;
   current_stage: PatientStage;
@@ -258,21 +261,24 @@ export function PatientDetailView({
   useEffect(() => { fetchDischargeStatus(); }, [fetchDischargeStatus]);
   useEffect(() => { fetchClaimStatus(); }, [fetchClaimStatus]);
 
-  // Fetch departments and consultants for inline edit
+  // Fetch departments and consultants for inline edit.
+  // 25 Apr 2026: Consultant dropdown now sources from /api/doctors (the same
+  // endpoint that powers the Marketing Handoff doctor picker — unions
+  // profiles + reference_doctors). We filter client-side to the patient's
+  // hospital so cross-hospital noise doesn't clutter the picker.
   useEffect(() => {
     fetch('/api/departments').then(r => { if (!r.ok) throw new Error(`Request failed: ${r.status}`); return r.json(); }).then(d => {
       if (d.success) setDepartments(d.data || []);
     }).catch(() => {});
-    fetch('/api/profiles?role=department_head&limit=100').then(r => { if (!r.ok) throw new Error(`Request failed: ${r.status}`); return r.json(); }).then(d => {
-      if (d.success) setConsultants(d.data || []);
-    }).catch(() => {});
-    // Also fetch all doctors/consultants
-    fetch('/api/profiles?limit=200').then(r => { if (!r.ok) throw new Error(`Request failed: ${r.status}`); return r.json(); }).then(d => {
-      if (d.success) {
-        setConsultants(d.data?.map((p: { id: string; full_name: string }) => ({
-          id: p.id,
-          full_name: p.full_name,
-        })) || []);
+
+    fetch('/api/doctors').then(r => { if (!r.ok) throw new Error(`Request failed: ${r.status}`); return r.json(); }).then(d => {
+      if (d.success && Array.isArray(d.data)) {
+        setConsultants(d.data.map((doc: { id: string; name: string; primary_hospital_id: string | null; specialty: string | null }) => ({
+          id: doc.id,
+          full_name: doc.name,
+          primary_hospital_id: doc.primary_hospital_id,
+          specialty: doc.specialty,
+        })));
       }
     }).catch(() => {});
   }, []);
@@ -297,9 +303,28 @@ export function PatientDetailView({
     if (!patient) return;
     setEditSaving(true);
     try {
-      const body: Record<string, string> = {};
-      if (field === 'consultant') body.primary_consultant_id = editValue;
-      else if (field === 'department') body.department_id = editValue;
+      const body: Record<string, string | null> = {};
+      if (field === 'consultant') {
+        body.primary_consultant_id = editValue || null;
+        // Resolve display name from the in-memory list. If empty (None), name
+        // also becomes null. The PATCH endpoint will fall back to looking up
+        // profiles → reference_doctors if name is missing, but sending it here
+        // saves a roundtrip.
+        const picked = consultants.find(c => c.id === editValue);
+        body.primary_consultant_name = picked?.full_name || null;
+
+        // Auto-fill department from the doctor's specialty when the patient
+        // doesn't already have one. Match specialty → departments[].name.
+        if (picked?.specialty && !patient.department_id) {
+          const matchedDept = departments.find(
+            d => d.name.toLowerCase() === picked.specialty!.toLowerCase()
+          );
+          if (matchedDept) {
+            body.department_id = matchedDept.id;
+          }
+        }
+      }
+      else if (field === 'department') body.department_id = editValue || null;
       else if (field === 'bed') body.bed_number = editValue;
 
       const res = await fetch(`/api/patients/${patient.id}/fields`, {
@@ -545,9 +570,17 @@ export function PatientDetailView({
                     autoFocus
                   >
                     <option value="">— None —</option>
-                    {consultants.map(c => (
-                      <option key={c.id} value={c.id}>{c.full_name}</option>
-                    ))}
+                    {consultants
+                      .filter(c =>
+                        // Filter to patient's hospital; show entries with no
+                        // primary_hospital set as a fallback (legacy data).
+                        !patient.hospital_id ||
+                        !c.primary_hospital_id ||
+                        c.primary_hospital_id === patient.hospital_id
+                      )
+                      .map(c => (
+                        <option key={c.id} value={c.id}>{c.full_name}</option>
+                      ))}
                   </select>
                   <button onClick={() => saveEdit('consultant')} disabled={editSaving} className="p-1 text-green-600 hover:bg-green-50 rounded">
                     <Check size={14} />

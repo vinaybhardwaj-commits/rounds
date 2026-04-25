@@ -103,7 +103,7 @@ export async function createPatientThread(input: CreatePatientThreadInput) {
 
 export async function getPatientThread(id: string) {
   return queryOne(
-    `SELECT pt.*, p.full_name as primary_consultant_name, d.name as department_name,
+    `SELECT pt.*, d.name as department_name,
             at.bed_number, at.room_number, at.room_category,
             COALESCE(at.financial_category, pt.financial_category) as financial_category
      FROM patient_threads pt
@@ -145,7 +145,7 @@ export async function listPatientThreads(filters?: {
   const offset = filters?.offset || 0;
 
   return query(
-    `SELECT pt.*, p.full_name as primary_consultant_name, d.name as department_name,
+    `SELECT pt.*, d.name as department_name,
             at.bed_number, at.room_number, at.room_category,
             COALESCE(at.financial_category, pt.financial_category) as financial_category
      FROM patient_threads pt
@@ -191,7 +191,8 @@ export async function updatePatientThread(
     planned_surgery_date: string;
     primary_diagnosis: string;
     planned_procedure: string;
-    primary_consultant_id: string;
+    primary_consultant_id: string | null;
+    primary_consultant_name: string | null;
     department_id: string;
     pac_status: string | null;
   }>
@@ -1007,7 +1008,7 @@ export async function listArchivedPatientThreads(archiveType?: 'post_discharge' 
   const params = archiveType ? [archiveType] : [];
 
   return query(
-    `SELECT pt.*, p.full_name as primary_consultant_name, d.name as department_name,
+    `SELECT pt.*, d.name as department_name,
             ap.full_name as archived_by_name,
             at.bed_number, at.room_number, at.room_category, at.financial_category
      FROM patient_threads pt
