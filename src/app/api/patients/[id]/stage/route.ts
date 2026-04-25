@@ -142,26 +142,29 @@ export async function PATCH(
         if (existingCase.length === 0) {
           const inferredState =
             newStage === 'surgery' ? 'in_theatre' : 'pac_scheduled';
-          const newCase = await query<{ id: string; state: string }>(
-            `INSERT INTO surgical_cases
-               (hospital_id, patient_thread_id, state, urgency, created_by, created_at, updated_at)
-             VALUES ($1, $2, $3, 'elective', $4, NOW(), NOW())
-             RETURNING id, state`,
-            [patient.hospital_id, id, inferredState, user.profileId]
-          );
-          if (newCase[0]) {
-            await query(
-              `INSERT INTO case_state_events
+          // 26 Apr 2026 audit fix (P1-1): atomize via CTE so the case +
+          // state event commit together.
+          const metadataJson = JSON.stringify({
+            via: 'PATCH /api/patients/[id]/stage',
+            from_stage: currentStage,
+            to_stage: newStage,
+          });
+          await query<{ id: string; state: string }>(
+            `WITH new_case AS (
+               INSERT INTO surgical_cases
+                 (hospital_id, patient_thread_id, state, urgency, created_by, created_at, updated_at)
+               VALUES ($1, $2, $3, 'elective', $4, NOW(), NOW())
+               RETURNING id, state
+             ),
+             new_event AS (
+               INSERT INTO case_state_events
                  (case_id, from_state, to_state, transition_reason, actor_profile_id, metadata)
-               VALUES ($1, NULL, $2, 'auto_create_on_stage_advance', $3, $4::jsonb)`,
-              [
-                newCase[0].id,
-                newCase[0].state,
-                user.profileId,
-                JSON.stringify({ via: 'PATCH /api/patients/[id]/stage', from_stage: currentStage, to_stage: newStage }),
-              ]
-            );
-          }
+               SELECT id, NULL, state, 'auto_create_on_stage_advance', $4, $5::jsonb FROM new_case
+               RETURNING case_id
+             )
+             SELECT id, state FROM new_case`,
+            [patient.hospital_id, id, inferredState, user.profileId, metadataJson]
+          );
         }
       } catch (caseErr) {
         // Non-fatal — stage advance still succeeds.

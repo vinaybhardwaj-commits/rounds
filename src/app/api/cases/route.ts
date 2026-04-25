@@ -283,23 +283,28 @@ export async function POST(request: NextRequest) {
       }
     })();
 
+    // 26 Apr 2026 audit fix (P1-1): atomize the surgical_cases INSERT and the
+    // case_state_events INSERT into a single statement via CTE chaining.
+    // PG runs CTE writes in one implicit transaction — both rows commit
+    // together or neither does. Avoids the orphan-case-without-event hazard
+    // that the previous two-statement Neon HTTP path had.
+    const metadataJson = JSON.stringify({ via: 'POST /api/cases' });
     const inserted = await queryOne<{ id: string; state: string }>(
-      `INSERT INTO surgical_cases
-         (hospital_id, patient_thread_id, state, urgency, planned_procedure, created_by, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-       RETURNING id, state`,
-      [patient.hospital_id, patientThreadId, inferredState, urgency, plannedProcedure, user.profileId]
-    );
-
-    if (inserted) {
-      // Append initial state event (Invariant: every state mutation logs).
-      await query(
-        `INSERT INTO case_state_events
+      `WITH new_case AS (
+         INSERT INTO surgical_cases
+           (hospital_id, patient_thread_id, state, urgency, planned_procedure, created_by, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+         RETURNING id, state
+       ),
+       new_event AS (
+         INSERT INTO case_state_events
            (case_id, from_state, to_state, transition_reason, actor_profile_id, metadata)
-         VALUES ($1, NULL, $2, 'manual_create', $3, $4::jsonb)`,
-        [inserted.id, inserted.state, user.profileId, JSON.stringify({ via: 'POST /api/cases' })]
-      );
-    }
+         SELECT id, NULL, state, 'manual_create', $6, $7::jsonb FROM new_case
+         RETURNING case_id
+       )
+       SELECT id, state FROM new_case`,
+      [patient.hospital_id, patientThreadId, inferredState, urgency, plannedProcedure, user.profileId, metadataJson]
+    );
 
     return NextResponse.json({
       success: true,
