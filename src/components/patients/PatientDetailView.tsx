@@ -41,7 +41,7 @@ import { FORM_TYPE_LABELS, FORMS_BY_STAGE, ALL_FORM_TYPES } from '@/lib/form-reg
 import { PredictionCard } from '@/components/ai/PredictionCard';
 import { SurgeryPanel } from '@/components/ot/SurgeryPanel';
 // Sprint 2 Day 6.B — new case-model panel (different domain from OT Readiness).
-import CasePanel from '@/components/drawer/CasePanel';
+import OTPlanningPanel from '@/components/drawer/OTPlanningPanel';
 import { PatientFilesTab } from './PatientFilesTab';
 import FCVersionHistory from '@/components/forms/FCVersionHistory';
 import PatientFormSubmissions from './PatientFormSubmissions';
@@ -1075,10 +1075,15 @@ export function PatientDetailView({
           </div>
         )}
 
-        {/* ── Case Panel (new surgical_cases lifecycle, Sprint 2 Day 6.B) ── */}
-        {/* Renders nothing when FEATURE_CASE_MODEL_ENABLED is off or no case exists. */}
+        {/* ── OT Planning Panel (25 Apr 2026 — replaces CasePanel) ── */}
+        {/* Universal: shows for admitted+ stages with deep-links + embedded
+            CaseDrawer; empty-state with "Create surgical case" button if no
+            case exists yet. Renders nothing for opd/pre_admission patients. */}
         {patient && (
-          <CasePanel patientThreadId={patient.id} />
+          <OTPlanningPanel
+            patientThreadId={patient.id}
+            patientStage={patient.current_stage}
+          />
         )}
 
         {/* ── Surgery Panel (legacy OT Readiness, surgery_postings table) ── */}

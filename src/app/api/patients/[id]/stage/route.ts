@@ -124,6 +124,51 @@ export async function PATCH(
 
     await updatePatientThread(id, updateData as Parameters<typeof updatePatientThread>[1]);
 
+    // 25 Apr 2026 — auto-create surgical_case when patient enters admitted+/OT
+    // stages. Universal coverage so no admitted patient is ever without an OT
+    // tracking row (was previously only created via Marketing Handoff submit).
+    if (
+      ['admitted', 'pre_op', 'surgery'].includes(newStage) &&
+      patient.hospital_id &&
+      process.env.FEATURE_CASE_MODEL_ENABLED === 'true'
+    ) {
+      try {
+        const existingCase = await query(
+          `SELECT id FROM surgical_cases
+            WHERE patient_thread_id = $1 AND archived_at IS NULL
+            LIMIT 1`,
+          [id]
+        );
+        if (existingCase.length === 0) {
+          const inferredState =
+            newStage === 'surgery' ? 'in_theatre' : 'pac_scheduled';
+          const newCase = await query<{ id: string; state: string }>(
+            `INSERT INTO surgical_cases
+               (hospital_id, patient_thread_id, state, urgency, created_by, created_at, updated_at)
+             VALUES ($1, $2, $3, 'elective', $4, NOW(), NOW())
+             RETURNING id, state`,
+            [patient.hospital_id, id, inferredState, user.profileId]
+          );
+          if (newCase[0]) {
+            await query(
+              `INSERT INTO case_state_events
+                 (case_id, from_state, to_state, transition_reason, actor_profile_id, metadata)
+               VALUES ($1, NULL, $2, 'auto_create_on_stage_advance', $3, $4::jsonb)`,
+              [
+                newCase[0].id,
+                newCase[0].state,
+                user.profileId,
+                JSON.stringify({ via: 'PATCH /api/patients/[id]/stage', from_stage: currentStage, to_stage: newStage }),
+              ]
+            );
+          }
+        }
+      } catch (caseErr) {
+        // Non-fatal — stage advance still succeeds.
+        console.error('[stage] auto-case-create failed:', caseErr);
+      }
+    }
+
     // 2. Log to changelog
     const fromLabel = PATIENT_STAGE_LABELS[currentStage as PatientStage] || currentStage;
     const toLabel = PATIENT_STAGE_LABELS[newStage] || newStage;

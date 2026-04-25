@@ -187,3 +187,130 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+// =============================================================================
+// POST /api/cases
+//
+// Manual creation of a surgical_case for a patient that doesn't yet have one.
+// Used by the Patient Overview "Create surgical case" button (25 Apr 2026).
+//
+// Idempotent: if an active case already exists for this patient, returns it
+// instead of creating a duplicate.
+//
+// Body:
+//   patient_thread_id (required)
+//   urgency           (optional, default 'elective')
+//   planned_procedure (optional)
+//
+// Auth: any user with mutate access on the patient's hospital. Defensive
+// hospital_id resolution: derived from the patient's hospital_id (single
+// source of truth).
+// =============================================================================
+
+import { queryOne } from '@/lib/db';
+
+export async function POST(request: NextRequest) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const featureEnabled = process.env.FEATURE_CASE_MODEL_ENABLED === 'true';
+    if (!featureEnabled) {
+      return NextResponse.json({
+        success: false,
+        error: 'FEATURE_CASE_MODEL_ENABLED is off',
+      }, { status: 400 });
+    }
+
+    const body = await request.json();
+    const patientThreadId = body.patient_thread_id;
+    if (!patientThreadId) {
+      return NextResponse.json({ success: false, error: 'patient_thread_id is required' }, { status: 400 });
+    }
+
+    const urgency = ['elective', 'urgent', 'emergency'].includes(body.urgency) ? body.urgency : 'elective';
+    const plannedProcedure = typeof body.planned_procedure === 'string' && body.planned_procedure.trim()
+      ? body.planned_procedure.trim()
+      : null;
+
+    // Tenancy + existence check on the patient.
+    const patient = await queryOne<{ id: string; hospital_id: string | null; current_stage: string }>(
+      `SELECT id, hospital_id, current_stage
+         FROM patient_threads
+        WHERE id = $1
+          AND hospital_id = ANY(user_accessible_hospital_ids($2::UUID))`,
+      [patientThreadId, user.profileId]
+    );
+    if (!patient) {
+      return NextResponse.json({ success: false, error: 'Patient not found or not accessible' }, { status: 404 });
+    }
+    if (!patient.hospital_id) {
+      return NextResponse.json({ success: false, error: 'Patient has no hospital_id; cannot create case' }, { status: 400 });
+    }
+
+    // Idempotency: return existing active case if one exists.
+    const existing = await queryOne<{ id: string; state: string }>(
+      `SELECT id, state FROM surgical_cases
+        WHERE patient_thread_id = $1 AND archived_at IS NULL
+        ORDER BY created_at DESC LIMIT 1`,
+      [patientThreadId]
+    );
+    if (existing) {
+      return NextResponse.json({
+        success: true,
+        data: existing,
+        action: 'existing',
+        message: 'Returning existing active case for this patient.',
+      });
+    }
+
+    // State inferred from current_stage (consistent with backfill migration).
+    const inferredState = (() => {
+      switch (patient.current_stage) {
+        case 'admitted':
+        case 'pre_op':
+          return 'pac_scheduled';
+        case 'surgery':
+          return 'in_theatre';
+        case 'post_op':
+        case 'post_op_care':
+        case 'discharge':
+          return 'completed';
+        default:
+          return 'draft';
+      }
+    })();
+
+    const inserted = await queryOne<{ id: string; state: string }>(
+      `INSERT INTO surgical_cases
+         (hospital_id, patient_thread_id, state, urgency, planned_procedure, created_by, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+       RETURNING id, state`,
+      [patient.hospital_id, patientThreadId, inferredState, urgency, plannedProcedure, user.profileId]
+    );
+
+    if (inserted) {
+      // Append initial state event (Invariant: every state mutation logs).
+      await query(
+        `INSERT INTO case_state_events
+           (case_id, from_state, to_state, transition_reason, actor_profile_id, metadata)
+         VALUES ($1, NULL, $2, 'manual_create', $3, $4::jsonb)`,
+        [inserted.id, inserted.state, user.profileId, JSON.stringify({ via: 'POST /api/cases' })]
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: inserted,
+      action: 'created',
+    });
+  } catch (error) {
+    console.error('POST /api/cases error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to create case' },
+      { status: 500 }
+    );
+  }
+}
