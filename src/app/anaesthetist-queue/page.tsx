@@ -22,6 +22,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { hasRole } from '@/lib/roles';
 import PacPublishModal from '@/components/drawer/PacPublishModal';
+// 26 Apr 2026 — V's typeahead ask: anaesthetist self-schedule.
+import PatientPacSearch from '@/components/anaesthetist/PatientPacSearch';
 
 interface QueueCase {
   id: string;
@@ -108,7 +110,7 @@ export default function AnaesthetistQueuePage() {
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Anaesthetist Queue</h1>
           <p className="mt-1 text-sm text-gray-600">
-            Cases awaiting PAC action in your accessible hospitals. Click a row to publish an outcome.
+            Cases awaiting PAC action in your accessible hospitals. Use the search to add a patient yourself, or click a row to publish an outcome.
           </p>
         </div>
         <button
@@ -120,6 +122,14 @@ export default function AnaesthetistQueuePage() {
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>
       </header>
+
+      {/* 26 Apr 2026 — typeahead patient search: anaesthetist self-schedule. */}
+      <div className="mb-5">
+        <PatientPacSearch
+          onScheduled={load}
+          disabled={!featureEnabled || (role !== null && !canPublish)}
+        />
+      </div>
 
       {!featureEnabled && (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
