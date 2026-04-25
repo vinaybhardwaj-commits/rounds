@@ -24,10 +24,12 @@
 // =============================================================================
 
 import { useEffect, useState, useCallback } from 'react';
-import { ExternalLink, Stethoscope, ClipboardList, Calendar, AlertCircle } from 'lucide-react';
+import { ExternalLink, Stethoscope, ClipboardList, Calendar, AlertCircle, Plus } from 'lucide-react';
 // 26 Apr 2026 audit fix (P2-3): client-side nav, no full reload.
 import Link from 'next/link';
 import CaseDrawer from './CaseDrawer';
+// 26 Apr 2026 V's modal-redesign bug — inline equipment-request entry point.
+import EquipmentRequestModal from '../ot/EquipmentRequestModal';
 
 interface MinimalCase {
   id: string;
@@ -81,6 +83,8 @@ export default function OTPlanningPanel({ patientThreadId, patientStage }: OTPla
   const [checked, setChecked] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 26 Apr 2026 — modal opens with preset case from the panel context.
+  const [equipmentModalOpen, setEquipmentModalOpen] = useState(false);
 
   const load = useCallback(() => {
     setChecked(false);
@@ -202,6 +206,15 @@ export default function OTPlanningPanel({ patientThreadId, patientStage }: OTPla
         >
           <Calendar className="h-3 w-3" /> OT Calendar
         </Link>
+        {/* 26 Apr 2026 — opens the modal with this case pre-locked, no picker. */}
+        <button
+          type="button"
+          onClick={() => setEquipmentModalOpen(true)}
+          className="inline-flex items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+          title="File a new equipment request linked to this case"
+        >
+          <Plus className="h-3 w-3" /> Equipment request
+        </button>
       </div>
 
       {/* Embedded CaseDrawer in panel mode — Track 1/2/3 summary */}
@@ -209,6 +222,13 @@ export default function OTPlanningPanel({ patientThreadId, patientStage }: OTPla
         caseId={caseRow.id}
         mode="panel"
         fullViewHref={`/case/${caseRow.id}`}
+      />
+
+      <EquipmentRequestModal
+        isOpen={equipmentModalOpen}
+        onClose={() => setEquipmentModalOpen(false)}
+        presetCaseId={caseRow.id}
+        onCreated={load}
       />
     </div>
   );
