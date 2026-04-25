@@ -43,10 +43,11 @@ import { SurgeryPanel } from '@/components/ot/SurgeryPanel';
 // Sprint 2 Day 6.B — new case-model panel (different domain from OT Readiness).
 import OTPlanningPanel from '@/components/drawer/OTPlanningPanel';
 import { PatientFilesTab } from './PatientFilesTab';
+import { PatientOTTab } from './PatientOTTab';
 import FCVersionHistory from '@/components/forms/FCVersionHistory';
 import PatientFormSubmissions from './PatientFormSubmissions';
 
-type DetailTab = 'overview' | 'files';
+type DetailTab = 'overview' | 'files' | 'ot';
 
 // ── Ordered stages for the progress bar ──
 const STAGES_ORDERED: PatientStage[] = [
@@ -510,6 +511,13 @@ export function PatientDetailView({
         {([
           { id: 'overview' as DetailTab, label: 'Overview', icon: <FileText size={14} /> },
           { id: 'files' as DetailTab, label: 'Files', icon: <Paperclip size={14} /> },
+          // 25 Apr 2026: OT tab is visible whenever the patient is at admitted+
+          // stage (matches OTPlanningPanel visibility rule). For OPD / pre_admission
+          // patients the tab is hidden to avoid noise. The tab itself handles the
+          // empty state if a surgical_case doesn't yet exist.
+          ...(['admitted', 'pre_op', 'surgery', 'post_op', 'post_op_care', 'discharge'].includes(patient.current_stage)
+            ? [{ id: 'ot' as DetailTab, label: 'OT Planning', icon: <Stethoscope size={14} /> }]
+            : []),
         ]).map(tab => (
           <button
             key={tab.id}
@@ -524,6 +532,17 @@ export function PatientDetailView({
           </button>
         ))}
       </div>
+
+      {/* ── OT Planning Tab (25 Apr 2026) ── */}
+      {activeTab === 'ot' && (
+        <div className="flex-1 overflow-hidden">
+          <PatientOTTab
+            patientThreadId={patient.id}
+            patientName={patient.patient_name}
+            patientStage={patient.current_stage}
+          />
+        </div>
+      )}
 
       {/* ── Files Tab ── */}
       {activeTab === 'files' && (
