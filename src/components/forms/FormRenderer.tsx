@@ -20,6 +20,8 @@ import {
   getAllFields,
 } from '@/lib/form-registry';
 import CHARGE_MASTER_PACKAGES from '@/lib/charge-master-packages.json';
+// 26 Apr 2026 audit fix (P1-6): single source of truth for SURGICAL_SPECIALTIES.
+import { isSurgicalSpecialty } from '@/lib/clinical-specialties';
 
 // 25 Apr 2026 — Charge Master integration. The JSON has 161 packaged
 // procedures across 6 surgical specialties. Group by specialty for fast
@@ -88,20 +90,8 @@ interface DoctorOption {
   is_surgical?: boolean;
 }
 
-// 24 Apr 2026 — surgical-specialty rule. Canonical specialties from the
-// doctor roster mapped to boolean is_surgical. Kept in sync with the
-// server-side rule in /api/doctors and the canonical specialty set in
-// migration-reference-doctors-specialty.sql.
-const SURGICAL_SPECIALTIES = new Set([
-  'Dentistry', 'Dermatology', 'ENT', 'General Surgery', 'Neurosurgery',
-  'Obstetrics & Gynecology', 'Oncology', 'Ophthalmology',
-  'Oral & Maxillofacial Surgery', 'Orthopedics', 'Paediatric Surgery',
-  'Plastic Surgery', 'Surgical Gastroenterology', 'Surgical Oncology',
-  'Urology', 'Vascular Surgery',
-]);
-function isSurgicalSpecialty(spec: string | undefined | null): boolean {
-  return !!spec && SURGICAL_SPECIALTIES.has(spec);
-}
+// 26 Apr 2026 audit fix (P1-6): SURGICAL_SPECIALTIES + isSurgicalSpecialty
+// now live in `@/lib/clinical-specialties` — see import above.
 
 // Sprint 1 Day 3 — shape returned by /api/patients/[id]/lsq-prefill
 interface LsqPrefillData {

@@ -16,6 +16,8 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { query } from '@/lib/db';
+// 26 Apr 2026 audit fix (P1-6): single source of truth for surgical specialties.
+import { SURGICAL_SPECIALTIES } from '@/lib/clinical-specialties';
 
 const DOCTOR_ROLE_PATTERNS = [
   'doctor',
@@ -109,16 +111,8 @@ export async function GET() {
       [user.profileId, DOCTOR_ROLE_PATTERNS]
     );
 
-    // 24 Apr 2026 — canonical surgical-specialty set, must stay in sync
-    // with SURGICAL_SPECIALTIES in FormRenderer.tsx.
-    const SURGICAL = new Set([
-      'Dentistry', 'Dermatology', 'ENT', 'General Surgery', 'Neurosurgery',
-      'Obstetrics & Gynecology', 'Oncology', 'Ophthalmology',
-      'Oral & Maxillofacial Surgery', 'Orthopedics', 'Paediatric Surgery',
-      'Plastic Surgery', 'Surgical Gastroenterology', 'Surgical Oncology',
-      'Urology', 'Vascular Surgery',
-    ]);
-
+    // 26 Apr 2026 audit fix (P1-6): SURGICAL_SPECIALTIES imported from
+    // @/lib/clinical-specialties — single source of truth across the app.
     return NextResponse.json({
       success: true,
       data: rows.map((r) => ({
@@ -129,7 +123,7 @@ export async function GET() {
         primary_hospital_id: r.primary_hospital_id,
         primary_hospital_slug: r.primary_hospital_slug,
         specialty: r.specialty,
-        is_surgical: r.specialty ? SURGICAL.has(r.specialty) : false,
+        is_surgical: r.specialty ? SURGICAL_SPECIALTIES.has(r.specialty) : false,
       })),
       count: rows.length,
     });
