@@ -52,7 +52,15 @@ interface Grouped {
 export default function PatientFormSubmissions({ patientThreadId }: Props) {
   const [groups, setGroups] = useState<Grouped>({});
   const [loading, setLoading] = useState(true);
-  const [drawerType, setDrawerType] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  // Empty string = open the unified drawer with no initial-form hint (top group expanded).
+  // A form_type string = expand that specific group on open.
+  const [drawerInitialType, setDrawerInitialType] = useState<string>('');
+  const openDrawer = (initialFormType: string) => {
+    setDrawerInitialType(initialFormType);
+    setDrawerOpen(true);
+  };
+  const closeDrawer = () => setDrawerOpen(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,9 +98,20 @@ export default function PatientFormSubmissions({ patientThreadId }: Props) {
 
   return (
     <div className="mx-4 mb-4">
-      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-        Form Submissions
-      </h3>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          Form Submissions
+        </h3>
+        {Object.keys(groups).length > 0 && (
+          <button
+            type="button"
+            onClick={() => openDrawer('')}
+            className="text-xs font-medium text-even-blue hover:underline"
+          >
+            Form history
+          </button>
+        )}
+      </div>
       <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
         {loading ? (
           <div className="p-3 text-xs text-gray-400">Loading…</div>
@@ -132,7 +151,7 @@ export default function PatientFormSubmissions({ patientThreadId }: Props) {
                       {count > 1 && (
                         <button
                           type="button"
-                          onClick={() => setDrawerType(key)}
+                          onClick={() => openDrawer(key)}
                           className="text-xs font-medium text-gray-700 hover:text-gray-900"
                         >
                           All versions
@@ -154,13 +173,12 @@ export default function PatientFormSubmissions({ patientThreadId }: Props) {
         )}
       </div>
 
-      {drawerType && groups[drawerType]?.[0] && (
+      {drawerOpen && (
         <VersionHistoryDrawer
           patientThreadId={patientThreadId}
-          formType={drawerType}
-          currentFormId={groups[drawerType][0].id}
-          open={true}
-          onClose={() => setDrawerType(null)}
+          initialFormType={drawerInitialType || undefined}
+          open={drawerOpen}
+          onClose={closeDrawer}
         />
       )}
     </div>

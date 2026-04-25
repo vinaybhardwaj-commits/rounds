@@ -772,7 +772,7 @@ export default function FormRenderer({
       {showVersionButton && patientId && (
         <VersionHistoryDrawer
           patientThreadId={patientId}
-          formType={schema.formType}
+          initialFormType={schema.formType}
           currentFormId={currentFormId}
           open={versionDrawerOpen}
           onClose={() => setVersionDrawerOpen(false)}
