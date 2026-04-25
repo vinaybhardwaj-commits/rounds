@@ -142,18 +142,65 @@ export async function PATCH(
         if (existingCase.length === 0) {
           const inferredState =
             newStage === 'surgery' ? 'in_theatre' : 'pac_scheduled';
+
+          // 26 Apr 2026 follow-up F2 (P2-1): hydrate from patient_threads +
+          // latest MH so the OT panel has useful metadata immediately.
+          let hydratedProcedure: string | null = null;
+          let surgeonId: string | null = null;
+          try {
+            const mh = await query<{ form_data: Record<string, unknown> }>(
+              `SELECT form_data FROM form_submissions
+                WHERE patient_thread_id = $1
+                  AND form_type = 'consolidated_marketing_handoff'
+                  AND status = 'submitted'
+                ORDER BY submitted_at DESC NULLS LAST, created_at DESC
+                LIMIT 1`,
+              [id]
+            );
+            const fd = mh[0]?.form_data as Record<string, unknown> | undefined;
+            if (fd) {
+              const proc = (fd.proposed_procedure ?? fd.clinical_summary ?? '') as string;
+              if (typeof proc === 'string' && proc.trim()) {
+                hydratedProcedure = proc.trim().slice(0, 500);
+              }
+            }
+          } catch (e) {
+            console.warn('[stage] MH hydration skipped:', e instanceof Error ? e.message : e);
+          }
+          const pt = patient as Record<string, unknown>;
+          const consultantId = (pt.primary_consultant_id as string | null) ?? null;
+          if (consultantId) {
+            try {
+              const sid = await query<{ id: string }>(
+                `SELECT id FROM profiles WHERE id = $1
+                 UNION
+                 SELECT id FROM reference_doctors WHERE id = $1
+                 LIMIT 1`,
+                [consultantId]
+              );
+              if (sid.length > 0) surgeonId = sid[0].id;
+            } catch (e) {
+              console.warn('[stage] consultant resolution skipped:', e instanceof Error ? e.message : e);
+            }
+          }
+
           // 26 Apr 2026 audit fix (P1-1): atomize via CTE so the case +
           // state event commit together.
           const metadataJson = JSON.stringify({
             via: 'PATCH /api/patients/[id]/stage',
             from_stage: currentStage,
             to_stage: newStage,
+            hydrated: {
+              procedure_from_mh: hydratedProcedure !== null,
+              consultant_resolved: surgeonId !== null,
+            },
           });
           await query<{ id: string; state: string }>(
             `WITH new_case AS (
                INSERT INTO surgical_cases
-                 (hospital_id, patient_thread_id, state, urgency, created_by, created_at, updated_at)
-               VALUES ($1, $2, $3, 'elective', $4, NOW(), NOW())
+                 (hospital_id, patient_thread_id, state, urgency,
+                  planned_procedure, surgeon_id, created_by, created_at, updated_at)
+               VALUES ($1, $2, $3, 'elective', $6, $7::UUID, $4, NOW(), NOW())
                RETURNING id, state
              ),
              new_event AS (
@@ -163,7 +210,7 @@ export async function PATCH(
                RETURNING case_id
              )
              SELECT id, state FROM new_case`,
-            [patient.hospital_id, id, inferredState, user.profileId, metadataJson]
+            [patient.hospital_id, id, inferredState, user.profileId, metadataJson, hydratedProcedure, surgeonId]
           );
         }
       } catch (caseErr) {

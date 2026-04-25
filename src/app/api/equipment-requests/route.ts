@@ -24,12 +24,13 @@ const VALID_STATUSES = new Set(['requested', 'vendor_confirmed', 'in_transit', '
 
 interface Row {
   id: string;
-  case_id: string;
+  case_id: string | null;
+  hospital_id: string;
   hospital_slug: string;
   patient_name: string | null;
   planned_surgery_date: string | null;
   ot_room: number | null;
-  case_state: string;
+  case_state: string | null;
   item_type: string;
   item_label: string;
   quantity: number;
@@ -40,6 +41,8 @@ interface Row {
   notes: string | null;
   kit_id: string | null;
   auto_verified: boolean;
+  is_rental: boolean;
+  rental_description: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -75,7 +78,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const where: string[] = [`sc.hospital_id = ANY(user_accessible_hospital_ids($1::UUID))`];
+    // 26 Apr 2026 follow-up F1: kanban now lists null-case requests too.
+    // Tenancy now uses the denormalized er.hospital_id added in
+    // migration-equipment-case-optional.sql.
+    const where: string[] = [`er.hospital_id = ANY(user_accessible_hospital_ids($1::UUID))`];
     const params: unknown[] = [user.profileId];
 
     if (statusFilter) {
@@ -96,6 +102,7 @@ export async function GET(request: NextRequest) {
       `
       SELECT
         er.id, er.case_id,
+        er.hospital_id,
         h.slug AS hospital_slug,
         pt.patient_name,
         sc.planned_surgery_date,
@@ -104,10 +111,11 @@ export async function GET(request: NextRequest) {
         er.item_type, er.item_label, er.quantity, er.status,
         er.vendor_name, er.vendor_phone, er.eta, er.notes,
         er.kit_id, er.auto_verified,
+        er.is_rental, er.rental_description,
         er.created_at, er.updated_at
       FROM equipment_requests er
-      JOIN surgical_cases sc ON sc.id = er.case_id
-      JOIN hospitals h ON h.id = sc.hospital_id
+      JOIN hospitals h ON h.id = er.hospital_id
+      LEFT JOIN surgical_cases sc ON sc.id = er.case_id
       LEFT JOIN patient_threads pt ON pt.id = sc.patient_thread_id
       WHERE ${where.join(' AND ')}
       ORDER BY
@@ -142,7 +150,19 @@ export async function GET(request: NextRequest) {
 }
 
 // 26 Apr 2026 audit follow-up: POST handler additions for case-optional path.
-const CREATE_ROLES = new Set(['biomedical_engineer', 'ot_coordinator']);
+// 26 Apr 2026 follow-up F3: V added nurses, anaesthetists, consultants and
+// surgeons to the create gate. 'charge_nurse', 'consultant', 'surgeon' are
+// not yet in UserRole enum — they remain here as a forward-compatibility
+// marker.
+const CREATE_ROLES = new Set([
+  'biomedical_engineer', // legacy — not yet in UserRole enum
+  'ot_coordinator',
+  'nurse',
+  'charge_nurse', // not yet in UserRole enum
+  'anesthesiologist',
+  'consultant',   // not yet in UserRole enum
+  'surgeon',      // not yet in UserRole enum
+]);
 const VALID_ITEM_TYPES = new Set([
   'specialty', 'rental', 'implant', 'blood', 'imaging',
   'surgical_equipment', 'infrastructure', 'consumable', 'kit',

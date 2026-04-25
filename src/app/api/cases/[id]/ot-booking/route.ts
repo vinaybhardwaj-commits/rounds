@@ -32,7 +32,18 @@ import { getCurrentUser } from '@/lib/auth';
 import { hasRole } from '@/lib/roles';
 import { query, queryOne } from '@/lib/db';
 
-const BOOK_ROLES = new Set(['ot_coordinator', 'anesthesiologist', 'consultant', 'surgeon']);
+// 26 Apr 2026 follow-up F3: V widened the gate.
+// 'consultant' and 'surgeon' are not yet in UserRole enum — they remain
+// here as a forward-compatibility marker for when those roles are added.
+const BOOK_ROLES = new Set([
+  'ot_coordinator',
+  'anesthesiologist',
+  'ip_coordinator',
+  'nurse',
+  'charge_nurse',  // not yet in UserRole enum — see comment above
+  'consultant',    // not yet in UserRole enum
+  'surgeon',       // not yet in UserRole enum
+]);
 
 const VALID_ANAE = new Set(['GA', 'SA', 'LA', 'Block', 'Other']);
 const VALID_EQUIP = new Set(['Ready', 'CSSD', 'Outside', 'Other']);

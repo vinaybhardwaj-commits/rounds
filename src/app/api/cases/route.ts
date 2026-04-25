@@ -123,6 +123,13 @@ export async function GET(request: NextRequest) {
       whereClauses.push(`h.slug = $${params.length}`);
     }
     if (patientThreadIdFilter) {
+      // 26 Apr 2026 follow-up F4 (P3-2): validate UUID before pushing into the
+      // query — malformed input would otherwise cause PG ::UUID cast to throw
+      // and surface as a generic 500.
+      const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+      if (!UUID_RE.test(patientThreadIdFilter)) {
+        return NextResponse.json({ success: false, error: 'Invalid patient_thread_id' }, { status: 400 });
+      }
       // Added Sprint 2 Day 6.B — CasePanel uses this to find a patient's active case.
       params.push(patientThreadIdFilter);
       whereClauses.push(`sc.patient_thread_id = $${params.length}::UUID`);
@@ -258,8 +265,20 @@ export async function POST(request: NextRequest) {
       : null;
 
     // Tenancy + existence check on the patient.
-    const patient = await queryOne<{ id: string; hospital_id: string | null; current_stage: string }>(
-      `SELECT id, hospital_id, current_stage
+    // 26 Apr 2026 follow-up F2 (P2-1): hydrate auto-created cases from
+    // patient_threads (consultant + dept) so the OT panel/tab metadata row
+    // isn't blank for the empty-state-button path. Falls back gracefully
+    // when fields are NULL.
+    const patient = await queryOne<{
+      id: string;
+      hospital_id: string | null;
+      current_stage: string;
+      primary_consultant_id: string | null;
+      primary_consultant_name: string | null;
+      target_department: string | null;
+    }>(
+      `SELECT id, hospital_id, current_stage,
+              primary_consultant_id, primary_consultant_name, target_department
          FROM patient_threads
         WHERE id = $1
           AND hospital_id = ANY(user_accessible_hospital_ids($2::UUID))`,
@@ -311,17 +330,60 @@ export async function POST(request: NextRequest) {
       }
     })();
 
+    // 26 Apr 2026 follow-up F2 (P2-1): pull procedure from latest Marketing
+    // Handoff if the body didn't supply one. Best-effort — fails open if the
+    // form_submissions table layout changes.
+    let hydratedProcedure = plannedProcedure;
+    if (!hydratedProcedure) {
+      try {
+        const mh = await queryOne<{ form_data: Record<string, unknown> }>(
+          `SELECT form_data FROM form_submissions
+            WHERE patient_thread_id = $1
+              AND form_type = 'consolidated_marketing_handoff'
+              AND status = 'submitted'
+            ORDER BY submitted_at DESC NULLS LAST, created_at DESC
+            LIMIT 1`,
+          [patientThreadId]
+        );
+        const fd = mh?.form_data as Record<string, unknown> | undefined;
+        if (fd) {
+          const proc = (fd.proposed_procedure ?? fd.clinical_summary ?? '') as string;
+          if (typeof proc === 'string' && proc.trim()) {
+            hydratedProcedure = proc.trim().slice(0, 500);
+          }
+        }
+      } catch (e) {
+        console.warn('[POST /api/cases] MH hydration skipped:', e instanceof Error ? e.message : e);
+      }
+    }
+    // Resolve the primary consultant — prefer profiles, fall back to reference_doctors.
+    let surgeonId: string | null = null;
+    if (patient.primary_consultant_id) {
+      const sid = await queryOne<{ id: string }>(
+        `SELECT id FROM profiles WHERE id = $1
+         UNION
+         SELECT id FROM reference_doctors WHERE id = $1
+         LIMIT 1`,
+        [patient.primary_consultant_id]
+      );
+      if (sid) surgeonId = sid.id;
+    }
+
     // 26 Apr 2026 audit fix (P1-1): atomize the surgical_cases INSERT and the
     // case_state_events INSERT into a single statement via CTE chaining.
-    // PG runs CTE writes in one implicit transaction — both rows commit
-    // together or neither does. Avoids the orphan-case-without-event hazard
-    // that the previous two-statement Neon HTTP path had.
-    const metadataJson = JSON.stringify({ via: 'POST /api/cases' });
+    const metadataJson = JSON.stringify({
+      via: 'POST /api/cases',
+      hydrated: {
+        procedure_from_mh: hydratedProcedure !== plannedProcedure,
+        consultant_resolved: surgeonId !== null,
+      },
+    });
     const inserted = await queryOne<{ id: string; state: string }>(
       `WITH new_case AS (
          INSERT INTO surgical_cases
-           (hospital_id, patient_thread_id, state, urgency, planned_procedure, created_by, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+           (hospital_id, patient_thread_id, state, urgency, planned_procedure,
+            surgeon_id, created_by, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $8::UUID, $6, NOW(), NOW())
          RETURNING id, state
        ),
        new_event AS (
@@ -331,7 +393,7 @@ export async function POST(request: NextRequest) {
          RETURNING case_id
        )
        SELECT id, state FROM new_case`,
-      [patient.hospital_id, patientThreadId, inferredState, urgency, plannedProcedure, user.profileId, metadataJson]
+      [patient.hospital_id, patientThreadId, inferredState, urgency, hydratedProcedure, user.profileId, metadataJson, surgeonId]
     );
 
     return NextResponse.json({

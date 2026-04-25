@@ -27,12 +27,13 @@ import { hasRole } from '@/lib/roles';
 
 interface EquipmentRow {
   id: string;
-  case_id: string;
+  case_id: string | null;
+  hospital_id: string;
   hospital_slug: string;
   patient_name: string | null;
   planned_surgery_date: string | null;
   ot_room: number | null;
-  case_state: string;
+  case_state: string | null;
   item_type: string;
   item_label: string;
   quantity: number;
@@ -43,6 +44,8 @@ interface EquipmentRow {
   notes: string | null;
   kit_id: string | null;
   auto_verified: boolean;
+  is_rental: boolean;
+  rental_description: string | null;
 }
 
 const COLS = [
@@ -114,7 +117,8 @@ export default function EquipmentKanbanPage() {
       const prev = rows;
       setRows((rs) => rs.map((r) => (r.id === rowId ? { ...r, status: newStatus } : r)));
       try {
-        const res = await fetch(`/api/cases/${row.case_id}/equipment/${rowId}`, {
+        // 26 Apr 2026 follow-up F1: generic endpoint works for null-case rows too.
+        const res = await fetch(`/api/equipment-requests/${rowId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: newStatus }),
@@ -246,11 +250,20 @@ export default function EquipmentKanbanPage() {
                         </span>
                       </div>
                       <p className="mt-1 text-gray-700">
-                        {r.patient_name || '(no patient)'} ·{' '}
+                        {r.case_id
+                          ? (r.patient_name || '(no patient)')
+                          : <span className="italic text-gray-500">No case linked</span>}{' '}
+                        ·{' '}
                         <span className="inline-flex items-center rounded bg-gray-100 px-1 py-0 text-[10px]">
                           {r.hospital_slug.toUpperCase()}
                         </span>
+                        {r.is_rental && (
+                          <span className="ml-1 inline-flex items-center rounded bg-amber-100 px-1 py-0 text-[10px] text-amber-900">RENTAL</span>
+                        )}
                       </p>
+                      {r.is_rental && r.rental_description && (
+                        <p className="mt-0.5 text-[11px] text-amber-800 line-clamp-2">{r.rental_description}</p>
+                      )}
                       {r.planned_surgery_date && (
                         <p className="mt-0.5 text-gray-600">
                           Surgery {new Date(r.planned_surgery_date).toLocaleDateString()}

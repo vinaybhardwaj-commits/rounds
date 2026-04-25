@@ -21,7 +21,10 @@ import { getCurrentUser } from '@/lib/auth';
 import { hasRole } from '@/lib/roles';
 import { query, queryOne } from '@/lib/db';
 
-const SCHEDULE_ROLES = new Set(['anesthesiologist']);
+// 26 Apr 2026 follow-up F3: V added IPD coordinator + OT coordinator. The
+// IPD coordinator is the typical assigner; OT coordinator can pre-emptively
+// queue cases for the day's PAC list. Anaesthetist still owns the path.
+const SCHEDULE_ROLES = new Set(['anesthesiologist', 'ip_coordinator', 'ot_coordinator']);
 
 // Case states from which scheduling for PAC is allowed.
 const SCHEDULABLE_FROM = new Set(['draft', 'intake']);

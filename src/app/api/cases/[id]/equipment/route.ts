@@ -31,7 +31,19 @@ import { hasRole } from '@/lib/roles';
 import { queryOne } from '@/lib/db';
 
 // 25 Apr 2026: super_admin auto-passes via hasRole; keep allow-set narrow.
-const CREATE_ROLES = new Set(['biomedical_engineer', 'ot_coordinator']);
+// 26 Apr 2026 follow-up F3: V added nurses, anaesthetists, consultants and
+// surgeons to the create gate. 'charge_nurse', 'consultant', 'surgeon' are
+// not yet in UserRole enum — they remain here as a forward-compatibility
+// marker.
+const CREATE_ROLES = new Set([
+  'biomedical_engineer', // legacy — not yet in UserRole enum
+  'ot_coordinator',
+  'nurse',
+  'charge_nurse', // not yet in UserRole enum
+  'anesthesiologist',
+  'consultant',   // not yet in UserRole enum
+  'surgeon',      // not yet in UserRole enum
+]);
 // Expanded item_types after the equipment_inventory migration. The DB CHECK
 // was relaxed in the same migration to accept these.
 const VALID_ITEM_TYPES = new Set([
