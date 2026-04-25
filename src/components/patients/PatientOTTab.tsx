@@ -22,6 +22,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { ExternalLink, ClipboardList, Calendar, Stethoscope, AlertCircle } from 'lucide-react';
+// 26 Apr 2026 audit fix (P2-3): client-side nav, no full reload.
+import Link from 'next/link';
 import CaseDrawer from '../drawer/CaseDrawer';
 
 interface CaseRow {
@@ -170,30 +172,30 @@ export function PatientOTTab({ patientThreadId, patientName, patientStage }: Pat
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <a
+              <Link
                 href={`/case/${caseRow.id}`}
                 className="inline-flex items-center gap-1 rounded-md border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50"
               >
                 <ExternalLink className="h-3 w-3" /> Full case page
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/equipment-kanban"
                 className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
               >
                 <ClipboardList className="h-3 w-3" /> Equipment Kanban
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/anaesthetist-queue"
                 className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
               >
                 <Stethoscope className="h-3 w-3" /> Anaesthetist Queue
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/ot-calendar"
                 className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
               >
                 <Calendar className="h-3 w-3" /> OT Calendar
-              </a>
+              </Link>
             </div>
           </div>
 

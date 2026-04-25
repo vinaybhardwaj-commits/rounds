@@ -25,6 +25,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { ExternalLink, Stethoscope, ClipboardList, Calendar, AlertCircle } from 'lucide-react';
+// 26 Apr 2026 audit fix (P2-3): client-side nav, no full reload.
+import Link from 'next/link';
 import CaseDrawer from './CaseDrawer';
 
 interface MinimalCase {
@@ -171,33 +173,33 @@ export default function OTPlanningPanel({ patientThreadId, patientStage }: OTPla
 
       {/* Deep-link row — quick access to OT surfaces */}
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 pb-3">
-        <a
+        <Link
           href={`/case/${caseRow.id}`}
           className="inline-flex items-center gap-1 rounded-md border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50"
         >
           <ExternalLink className="h-3 w-3" /> Full case view
-        </a>
-        <a
+        </Link>
+        <Link
           href="/equipment-kanban"
           className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
           title="View this case in the Equipment Kanban (filter by patient name)"
         >
           <ClipboardList className="h-3 w-3" /> Equipment Kanban
-        </a>
-        <a
+        </Link>
+        <Link
           href="/anaesthetist-queue"
           className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
           title="Anaesthetist Queue — pre-PAC + post-PAC publish"
         >
           <Stethoscope className="h-3 w-3" /> Anaesthetist Queue
-        </a>
-        <a
+        </Link>
+        <Link
           href="/ot-calendar"
           className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
           title="OT scheduling calendar"
         >
           <Calendar className="h-3 w-3" /> OT Calendar
-        </a>
+        </Link>
       </div>
 
       {/* Embedded CaseDrawer in panel mode — Track 1/2/3 summary */}
