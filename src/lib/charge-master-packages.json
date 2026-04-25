@@ -1,0 +1,1612 @@
+[
+  {
+    "code": "ENT-PKG-001",
+    "name": "ADENOIDECTOMY",
+    "specialty": "ENT",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 88000,
+    "tariff_private_inr": 98000,
+    "tariff_suite_inr": 117600
+  },
+  {
+    "code": "ENT-PKG-002",
+    "name": "ADENOTONSILLECTOMY",
+    "specialty": "ENT",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 115800,
+    "tariff_private_inr": 125800,
+    "tariff_suite_inr": 150960
+  },
+  {
+    "code": "ENT-PKG-020",
+    "name": "COCHL EAR IMPLANT SURGERY",
+    "specialty": "ENT",
+    "days": 5,
+    "icu_days": 0,
+    "tariff_general_inr": 140000,
+    "tariff_private_inr": 150000,
+    "tariff_suite_inr": 180000
+  },
+  {
+    "code": "ENT-PKG-021",
+    "name": "DIRECT LARYNGOSCOPY",
+    "specialty": "ENT",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 50000,
+    "tariff_private_inr": 60000,
+    "tariff_suite_inr": 72000
+  },
+  {
+    "code": "ENT-PKG-004",
+    "name": "FESS - BILATERAL",
+    "specialty": "ENT",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 140800,
+    "tariff_private_inr": 150800,
+    "tariff_suite_inr": 180960
+  },
+  {
+    "code": "ENT-PKG-005",
+    "name": "FESS - UNILATERAL",
+    "specialty": "ENT",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 98000,
+    "tariff_private_inr": 108000,
+    "tariff_suite_inr": 129600
+  },
+  {
+    "code": "ENT-PKG-019",
+    "name": "HEAD & NECK SURGERIES",
+    "specialty": "ENT",
+    "days": 7,
+    "icu_days": 1,
+    "tariff_general_inr": 140000,
+    "tariff_private_inr": 150000,
+    "tariff_suite_inr": 180000
+  },
+  {
+    "code": "ENT-PKG-023",
+    "name": "HEMI PAROTIDECTOMY/HEMI THYROIDECTOMY",
+    "specialty": "ENT",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 110000,
+    "tariff_private_inr": 120000,
+    "tariff_suite_inr": 155000
+  },
+  {
+    "code": "ENT-PKG-008",
+    "name": "MASTOIDECTOMY",
+    "specialty": "ENT",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 122000,
+    "tariff_private_inr": 132500,
+    "tariff_suite_inr": 159000
+  },
+  {
+    "code": "ENT-PKG-009",
+    "name": "MASTOIDECTOMY & TYMPANOPLASTY",
+    "specialty": "ENT",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 150000,
+    "tariff_private_inr": 160500,
+    "tariff_suite_inr": 192600
+  },
+  {
+    "code": "ENT-PKG-011",
+    "name": "MINOR PROCEDURE - LA/GA IN OT < 30 MINUTES",
+    "specialty": "ENT",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 38500,
+    "tariff_private_inr": 48500,
+    "tariff_suite_inr": 58200
+  },
+  {
+    "code": "ENT-PKG-012",
+    "name": "MYRINGOTOMY WITH GROMMET INSERTION",
+    "specialty": "ENT",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 53000,
+    "tariff_private_inr": 62500,
+    "tariff_suite_inr": 75000
+  },
+  {
+    "code": "ENT-PKG-006",
+    "name": "POLYPECTOMY OR CONCHOPLASTY-BILATERAL",
+    "specialty": "ENT",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 140500,
+    "tariff_private_inr": 150500,
+    "tariff_suite_inr": 180600
+  },
+  {
+    "code": "ENT-PKG-022",
+    "name": "RADICAL /MODIFIED RADICAL MASTOIDECTOMY",
+    "specialty": "ENT",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 110000,
+    "tariff_private_inr": 120000,
+    "tariff_suite_inr": 155000
+  },
+  {
+    "code": "ENT-PKG-015",
+    "name": "SEPTOPLASTY",
+    "specialty": "ENT",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 77000,
+    "tariff_private_inr": 87000,
+    "tariff_suite_inr": 104400
+  },
+  {
+    "code": "ENT-PKG-016",
+    "name": "SEPTOPLASTY + TURBINOPLASTY + MINI FESS",
+    "specialty": "ENT",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 122500,
+    "tariff_private_inr": 132500,
+    "tariff_suite_inr": 159000
+  },
+  {
+    "code": "ENT-PKG-017",
+    "name": "SEPTOPLASTY + TURBINOPLASTY BIL",
+    "specialty": "ENT",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 92000,
+    "tariff_private_inr": 112000,
+    "tariff_suite_inr": 134400
+  },
+  {
+    "code": "ENT-PKG-018",
+    "name": "SEPTOPLASTY + TURBINOPLASTY UNI",
+    "specialty": "ENT",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 80000,
+    "tariff_private_inr": 90000,
+    "tariff_suite_inr": 108000
+  },
+  {
+    "code": "ENT-PKG-024",
+    "name": "TONSILLECTOMY",
+    "specialty": "ENT",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 67000,
+    "tariff_private_inr": 77000,
+    "tariff_suite_inr": 92400
+  },
+  {
+    "code": "ENT-PKG-025",
+    "name": "TYMPANOPLASTY",
+    "specialty": "ENT",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 98000,
+    "tariff_private_inr": 110000,
+    "tariff_suite_inr": 140000
+  },
+  {
+    "code": "GEN-PKG-031",
+    "name": "APPENDECTOMY - LAP",
+    "specialty": "General Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 110000,
+    "tariff_private_inr": 125000,
+    "tariff_suite_inr": 145000
+  },
+  {
+    "code": "GEN-PKG-032",
+    "name": "APPENDECTOMY - OPEN",
+    "specialty": "General Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 103000,
+    "tariff_private_inr": 140400,
+    "tariff_suite_inr": 135080
+  },
+  {
+    "code": "GEN-PKG-033",
+    "name": "AV FISTULA (DAY CARE)",
+    "specialty": "General Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 45000,
+    "tariff_private_inr": 55000,
+    "tariff_suite_inr": 66000
+  },
+  {
+    "code": "GEN-PKG-034",
+    "name": "BREAST LUMPECTOMY",
+    "specialty": "General Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 80000,
+    "tariff_private_inr": 90000,
+    "tariff_suite_inr": 100000
+  },
+  {
+    "code": "GEN-PKG-035",
+    "name": "CHOLECYSTECTOMY (LAP)",
+    "specialty": "General Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 120000,
+    "tariff_private_inr": 130000,
+    "tariff_suite_inr": 150000
+  },
+  {
+    "code": "GEN-PKG-036",
+    "name": "CHOLECYSTECTOMY (OPEN)",
+    "specialty": "General Surgery",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 120000,
+    "tariff_private_inr": 130000,
+    "tariff_suite_inr": 150000
+  },
+  {
+    "code": "GEN-PKG-037",
+    "name": "CIRCUMCISION (DAY CARE)",
+    "specialty": "General Surgery",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 38500,
+    "tariff_private_inr": 48500,
+    "tariff_suite_inr": 58200
+  },
+  {
+    "code": "GEN-PKG-055",
+    "name": "DIAGNOSTIC LAPROSCOPY",
+    "specialty": "General Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 75000,
+    "tariff_private_inr": 85000,
+    "tariff_suite_inr": 102000
+  },
+  {
+    "code": "GEN-PKG-040",
+    "name": "FISSURECTOMY AND FISSURE DILATATION",
+    "specialty": "General Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 75000,
+    "tariff_private_inr": 85000,
+    "tariff_suite_inr": 102000
+  },
+  {
+    "code": "GEN-PKG-058",
+    "name": "FISTULECTOMY",
+    "specialty": "General Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 78000,
+    "tariff_private_inr": 97000,
+    "tariff_suite_inr": 105000
+  },
+  {
+    "code": "GEN-PKG-045",
+    "name": "GASTRECTOMY",
+    "specialty": "General Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 300000,
+    "tariff_private_inr": 320000,
+    "tariff_suite_inr": 370000
+  },
+  {
+    "code": "GEN-PKG-044",
+    "name": "HIGH END FISTULECTOMY",
+    "specialty": "General Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 115000,
+    "tariff_private_inr": 125000,
+    "tariff_suite_inr": 140600
+  },
+  {
+    "code": "GEN-PKG-046",
+    "name": "HYDROCELE",
+    "specialty": "General Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 79000,
+    "tariff_private_inr": 90000,
+    "tariff_suite_inr": 100000
+  },
+  {
+    "code": "GEN-PKG-030",
+    "name": "I & D (MAJOR)",
+    "specialty": "General Surgery",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 55000,
+    "tariff_private_inr": 70000,
+    "tariff_suite_inr": 80000
+  },
+  {
+    "code": "GEN-PKG-029",
+    "name": "I & D (MINOR)",
+    "specialty": "General Surgery",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 29000,
+    "tariff_private_inr": 39000,
+    "tariff_suite_inr": 46800
+  },
+  {
+    "code": "GEN-PKG-047",
+    "name": "INCISIONAL HERNIOPLASTY",
+    "specialty": "General Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 130000,
+    "tariff_private_inr": 150000,
+    "tariff_suite_inr": 180000
+  },
+  {
+    "code": "GEN-PKG-048",
+    "name": "INGUINAL HERNIA BILATERAL LAP",
+    "specialty": "General Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 175000,
+    "tariff_private_inr": 195000,
+    "tariff_suite_inr": 222000
+  },
+  {
+    "code": "GEN-PKG-049",
+    "name": "INGUINAL HERNIA BILATERAL OPEN",
+    "specialty": "General Surgery",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 130000,
+    "tariff_private_inr": 150000,
+    "tariff_suite_inr": 170000
+  },
+  {
+    "code": "GEN-PKG-056",
+    "name": "INGUINAL/ FEMORAL HERNIOPLASTY-UNILATERAL",
+    "specialty": "General Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 122000,
+    "tariff_private_inr": 132000,
+    "tariff_suite_inr": 160400
+  },
+  {
+    "code": "GEN-PKG-052",
+    "name": "LAP ADHESIOLYSIS",
+    "specialty": "General Surgery",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 125000,
+    "tariff_private_inr": 135000,
+    "tariff_suite_inr": 155000
+  },
+  {
+    "code": "GEN-PKG-050",
+    "name": "LAP HERNIA - BILATERAL (MESH EXCLUDING)",
+    "specialty": "General Surgery",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 175000,
+    "tariff_private_inr": 195000,
+    "tariff_suite_inr": 222000
+  },
+  {
+    "code": "GEN-PKG-051",
+    "name": "LAP HERNIA -UNILATERAL",
+    "specialty": "General Surgery",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 122000,
+    "tariff_private_inr": 132000,
+    "tariff_suite_inr": 160400
+  },
+  {
+    "code": "GEN-PKG-060",
+    "name": "MASTECTOMY(SIMPLE)",
+    "specialty": "General Surgery",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 125000,
+    "tariff_private_inr": 135000,
+    "tariff_suite_inr": 150000
+  },
+  {
+    "code": "GEN-PKG-064",
+    "name": "MECTOMY",
+    "specialty": "General Surgery",
+    "days": 5,
+    "icu_days": 1,
+    "tariff_general_inr": 188000,
+    "tariff_private_inr": 198000,
+    "tariff_suite_inr": 237600
+  },
+  {
+    "code": "GEN-PKG-053",
+    "name": "OPEN HERNIA (MESH EXTRA)",
+    "specialty": "General Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 95000,
+    "tariff_private_inr": 115000,
+    "tariff_suite_inr": 138000
+  },
+  {
+    "code": "GEN-PKG-043",
+    "name": "PAROTIDECTOMY",
+    "specialty": "General Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 120000,
+    "tariff_private_inr": 145000,
+    "tariff_suite_inr": 160000
+  },
+  {
+    "code": "GEN-PKG-061",
+    "name": "PERIANAL ABSCESS",
+    "specialty": "General Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 58000,
+    "tariff_private_inr": 68500,
+    "tariff_suite_inr": 84200
+  },
+  {
+    "code": "GEN-PKG-063",
+    "name": "RIGHT OR LEFT HEMI COLOCTOMY",
+    "specialty": "General Surgery",
+    "days": 5,
+    "icu_days": 1,
+    "tariff_general_inr": 220000,
+    "tariff_private_inr": 260000,
+    "tariff_suite_inr": 276000
+  },
+  {
+    "code": "GEN-PKG-054",
+    "name": "VENTRAL HERNIA",
+    "specialty": "General Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 130000,
+    "tariff_private_inr": 150000,
+    "tariff_suite_inr": 180000
+  },
+  {
+    "code": "OBG-PKG-106",
+    "name": "&C)",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 38000,
+    "tariff_private_inr": 48000,
+    "tariff_suite_inr": 57600
+  },
+  {
+    "code": "OBG-PKG-082",
+    "name": "(CHROMOPERTUBATION)/D&C",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 95000,
+    "tariff_private_inr": 105000,
+    "tariff_suite_inr": 126000
+  },
+  {
+    "code": "OBG-PKG-125",
+    "name": "ADENOMYOTIC UTERUS",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 170000,
+    "tariff_private_inr": 181000,
+    "tariff_suite_inr": 217200
+  },
+  {
+    "code": "OBG-PKG-067",
+    "name": "ANTERIOR + POSTERIOR REPAIR",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 148000,
+    "tariff_private_inr": 158500,
+    "tariff_suite_inr": 190200
+  },
+  {
+    "code": "OBG-PKG-068",
+    "name": "BARTHOLIN CYST EXCISION",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 68000,
+    "tariff_private_inr": 78500,
+    "tariff_suite_inr": 94200
+  },
+  {
+    "code": "OBG-PKG-069",
+    "name": "CERVICAL CERCLAGE",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 68000,
+    "tariff_private_inr": 75000,
+    "tariff_suite_inr": 90000
+  },
+  {
+    "code": "OBG-PKG-070",
+    "name": "CERVICAL ENCIRCLAGE",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 62500,
+    "tariff_private_inr": 72500,
+    "tariff_suite_inr": 87000
+  },
+  {
+    "code": "OBG-PKG-071",
+    "name": "COLPOSCOPY WITH CONE BIOPSY",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 31000,
+    "tariff_private_inr": 41000,
+    "tariff_suite_inr": 49200
+  },
+  {
+    "code": "OBG-PKG-072",
+    "name": "D & C/ MTP - 1ST TRIMESTER",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 35000,
+    "tariff_private_inr": 45800,
+    "tariff_suite_inr": 54960
+  },
+  {
+    "code": "OBG-PKG-073",
+    "name": "D & E / MTP - 2ND TRIMESTER",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 32000,
+    "tariff_private_inr": 42500,
+    "tariff_suite_inr": 51000
+  },
+  {
+    "code": "OBG-PKG-074",
+    "name": "D&C (PACKAGE)",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 38500,
+    "tariff_private_inr": 48900,
+    "tariff_suite_inr": 58680
+  },
+  {
+    "code": "OBG-PKG-075",
+    "name": "DIAGNOSTIC HYSTEROSCOPY UNDER GA",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 68000,
+    "tariff_private_inr": 78500,
+    "tariff_suite_inr": 94200
+  },
+  {
+    "code": "OBG-PKG-078",
+    "name": "DIAGNOSTIC LAPROSCOPY-WCH",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 25000,
+    "tariff_private_inr": 36500,
+    "tariff_suite_inr": 43800
+  },
+  {
+    "code": "OBG-PKG-079",
+    "name": "EMERGENCY - LSCS (OBG PACKAGE)",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 123000,
+    "tariff_private_inr": 133000,
+    "tariff_suite_inr": 159600
+  },
+  {
+    "code": "OBG-PKG-080",
+    "name": "HYSTERO LAPROSCOPY",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 95000,
+    "tariff_private_inr": 105000,
+    "tariff_suite_inr": 126000
+  },
+  {
+    "code": "OBG-PKG-083",
+    "name": "HYSTEROSCOPY + D&C + POLYPECTOMY",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 88000,
+    "tariff_private_inr": 98000,
+    "tariff_suite_inr": 117600
+  },
+  {
+    "code": "OBG-PKG-085",
+    "name": "INSTRUMENTAL DELIVERY",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 118000,
+    "tariff_private_inr": 128000,
+    "tariff_suite_inr": 153600
+  },
+  {
+    "code": "OBG-PKG-087",
+    "name": "LAP ECTOPIC PREGNANCY",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 85000,
+    "tariff_private_inr": 95000,
+    "tariff_suite_inr": 114000
+  },
+  {
+    "code": "OBG-PKG-093",
+    "name": "LAP OVARIAN CYSTECTOMY",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 115000,
+    "tariff_private_inr": 125000,
+    "tariff_suite_inr": 150000
+  },
+  {
+    "code": "OBG-PKG-088",
+    "name": "LAP OVARIAN DRILLING",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 62000,
+    "tariff_private_inr": 72000,
+    "tariff_suite_inr": 86400
+  },
+  {
+    "code": "OBG-PKG-089",
+    "name": "LAP TUBAL INSUFFLATION(DYE TEST)",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 22800,
+    "tariff_private_inr": 32800,
+    "tariff_suite_inr": 39360
+  },
+  {
+    "code": "OBG-PKG-076",
+    "name": "LAP TUBECTOMY",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 33000,
+    "tariff_private_inr": 43000,
+    "tariff_suite_inr": 48000
+  },
+  {
+    "code": "OBG-PKG-090",
+    "name": "LAP.MYOMECTOMY",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 125000,
+    "tariff_private_inr": 135800,
+    "tariff_suite_inr": 163500
+  },
+  {
+    "code": "OBG-PKG-091",
+    "name": "LAP.OVARIAN CYSTECTOMY",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 120000,
+    "tariff_private_inr": 125000,
+    "tariff_suite_inr": 135000
+  },
+  {
+    "code": "OBG-PKG-066",
+    "name": "LAPAROSCOPIC HYSTERECTOMY",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 180000,
+    "tariff_private_inr": 190000,
+    "tariff_suite_inr": 228000
+  },
+  {
+    "code": "OBG-PKG-092",
+    "name": "LAPAROSCOPIC TUBAL LIGATION",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 58000,
+    "tariff_private_inr": 68000,
+    "tariff_suite_inr": 81600
+  },
+  {
+    "code": "OBG-PKG-094",
+    "name": "LAPROSCOPIC ASSISTED VAGINAL HYSTERECTOMY (LAVH)",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 152500,
+    "tariff_private_inr": 162500,
+    "tariff_suite_inr": 195000
+  },
+  {
+    "code": "OBG-PKG-095",
+    "name": "LAPROSCOPIC STERILIZATION",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 87000,
+    "tariff_private_inr": 97000,
+    "tariff_suite_inr": 116400
+  },
+  {
+    "code": "OBG-PKG-096",
+    "name": "LSCS (PACKAGE)",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 95000,
+    "tariff_private_inr": 105000,
+    "tariff_suite_inr": 126000
+  },
+  {
+    "code": "OBG-PKG-097",
+    "name": "LSCS FOR TRIPLETS",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 160000,
+    "tariff_private_inr": 170000,
+    "tariff_suite_inr": 204000
+  },
+  {
+    "code": "OBG-PKG-099",
+    "name": "LSCS FOR TWINS",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 0,
+    "icu_days": 0,
+    "tariff_general_inr": 130000,
+    "tariff_private_inr": 140000,
+    "tariff_suite_inr": 168000
+  },
+  {
+    "code": "OBG-PKG-098",
+    "name": "LSCS WITH TUBETOMY",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 120000,
+    "tariff_private_inr": 130000,
+    "tariff_suite_inr": 156000
+  },
+  {
+    "code": "OBG-PKG-101",
+    "name": "MIRENA INSERTION",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 28000,
+    "tariff_private_inr": 38800,
+    "tariff_suite_inr": 46500
+  },
+  {
+    "code": "OBG-PKG-102",
+    "name": "MTP (OPD)",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 0,
+    "icu_days": 0,
+    "tariff_general_inr": 13000,
+    "tariff_private_inr": 16900,
+    "tariff_suite_inr": 20300
+  },
+  {
+    "code": "OBG-PKG-103",
+    "name": "MTP (WARD)",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 20000,
+    "tariff_private_inr": 28000,
+    "tariff_suite_inr": 33600
+  },
+  {
+    "code": "OBG-PKG-107",
+    "name": "MTP KIT EXCLUDING D &C)",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 42000,
+    "tariff_private_inr": 55000,
+    "tariff_suite_inr": 62000
+  },
+  {
+    "code": "OBG-PKG-105",
+    "name": "MTP SURGICAL PACKAGE",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 38000,
+    "tariff_private_inr": 48000,
+    "tariff_suite_inr": 57600
+  },
+  {
+    "code": "OBG-PKG-108",
+    "name": "MYOMECTOMY - LAPAROSCOPIC",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 122500,
+    "tariff_private_inr": 132500,
+    "tariff_suite_inr": 159000
+  },
+  {
+    "code": "OBG-PKG-111",
+    "name": "NON-DESCENT VAGINAL HYSTERECTOMY",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 178000,
+    "tariff_private_inr": 188400,
+    "tariff_suite_inr": 226080
+  },
+  {
+    "code": "OBG-PKG-114",
+    "name": "NORMAL DELIVERY (PACKAGE)",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 77000,
+    "tariff_private_inr": 87000,
+    "tariff_suite_inr": 104400
+  },
+  {
+    "code": "OBG-PKG-112",
+    "name": "NORMAL DELIVERY - TRIPLETS",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 120000,
+    "tariff_private_inr": 130000,
+    "tariff_suite_inr": 156000
+  },
+  {
+    "code": "OBG-PKG-113",
+    "name": "NORMAL DELIVERY - TWINS",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 100000,
+    "tariff_private_inr": 110000,
+    "tariff_suite_inr": 132000
+  },
+  {
+    "code": "OBG-PKG-115",
+    "name": "POLYPECTOMY - OBG",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 38500,
+    "tariff_private_inr": 48500,
+    "tariff_suite_inr": 58200
+  },
+  {
+    "code": "OBG-PKG-084",
+    "name": "REMOVAL/ESSURE STERILIZATION",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 55000,
+    "tariff_private_inr": 65800,
+    "tariff_suite_inr": 78960
+  },
+  {
+    "code": "OBG-PKG-120",
+    "name": "SALPINGECTOMY/SALPHINGO-OOPHERECTOMY - OBG",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 150000,
+    "tariff_private_inr": 160000,
+    "tariff_suite_inr": 192000
+  },
+  {
+    "code": "OBG-PKG-116",
+    "name": "SPONTANEOUS ABORTION - PACKAGE",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 38500,
+    "tariff_private_inr": 48500,
+    "tariff_suite_inr": 58200
+  },
+  {
+    "code": "OBG-PKG-117",
+    "name": "TAH + BILATERAL SALPINGECTOMY",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 165000,
+    "tariff_private_inr": 175000,
+    "tariff_suite_inr": 210000
+  },
+  {
+    "code": "OBG-PKG-118",
+    "name": "TAH + BSO + ADHESIOLYSIS (LAP)",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 190000,
+    "tariff_private_inr": 235000,
+    "tariff_suite_inr": 285000
+  },
+  {
+    "code": "OBG-PKG-119",
+    "name": "TAH + BSO + ADHESIOLYSIS (OPEN)",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 150000,
+    "tariff_private_inr": 160000,
+    "tariff_suite_inr": 192000
+  },
+  {
+    "code": "OBG-PKG-121",
+    "name": "TOTAL LAPROSCOPIC HYSTERECTOMY (TLH)",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 160000,
+    "tariff_private_inr": 170000,
+    "tariff_suite_inr": 204000
+  },
+  {
+    "code": "OBG-PKG-077",
+    "name": "TUBECTOMY-OPEN",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 18000,
+    "tariff_private_inr": 28000,
+    "tariff_suite_inr": 33600
+  },
+  {
+    "code": "OBG-PKG-126",
+    "name": "VAGINAL HYSTERECTOMY WITH AP REPAIR",
+    "specialty": "Obstetrics & Gynecology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 225000,
+    "tariff_private_inr": 235000,
+    "tariff_suite_inr": 282000
+  },
+  {
+    "code": "ORT-PKG-130",
+    "name": "ACETABULAR FRACTURE FIXATION",
+    "specialty": "Orthopedics",
+    "days": 4,
+    "icu_days": 0,
+    "tariff_general_inr": 250000,
+    "tariff_private_inr": 260000,
+    "tariff_suite_inr": 312000
+  },
+  {
+    "code": "ORT-PKG-131",
+    "name": "ACL & PCL RECONSTRUCTION /REPAIR",
+    "specialty": "Orthopedics",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 275000,
+    "tariff_private_inr": 285000,
+    "tariff_suite_inr": 342000
+  },
+  {
+    "code": "ORT-PKG-132",
+    "name": "ACL RECONSTRUCTION /REPAIR",
+    "specialty": "Orthopedics",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 124000,
+    "tariff_private_inr": 150000,
+    "tariff_suite_inr": 170000
+  },
+  {
+    "code": "ORT-PKG-133",
+    "name": "AMPUTATION ABOVE ELBOW/ KNEE",
+    "specialty": "Orthopedics",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 137000,
+    "tariff_private_inr": 147800,
+    "tariff_suite_inr": 177360
+  },
+  {
+    "code": "ORT-PKG-134",
+    "name": "AMPUTATION BELOW ELBOW/ KNEE",
+    "specialty": "Orthopedics",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 147000,
+    "tariff_private_inr": 157000,
+    "tariff_suite_inr": 188400
+  },
+  {
+    "code": "ORT-PKG-135",
+    "name": "AMPUTATION OF DIGIT -MULTIPLE",
+    "specialty": "Orthopedics",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 165000,
+    "tariff_private_inr": 175000,
+    "tariff_suite_inr": 210000
+  },
+  {
+    "code": "ORT-PKG-136",
+    "name": "AMPUTATION OF DIGIT -SINGLE",
+    "specialty": "Orthopedics",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 152000,
+    "tariff_private_inr": 162000,
+    "tariff_suite_inr": 194400
+  },
+  {
+    "code": "ORT-PKG-138",
+    "name": "ARTHRODESIS - WRIST/ANKLE SUBTALAR",
+    "specialty": "Orthopedics",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 115000,
+    "tariff_private_inr": 123000,
+    "tariff_suite_inr": 147600
+  },
+  {
+    "code": "ORT-PKG-128",
+    "name": "ARTHROSCOPY DIAGNOSTIC",
+    "specialty": "Orthopedics",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 110000,
+    "tariff_private_inr": 133000,
+    "tariff_suite_inr": 150000
+  },
+  {
+    "code": "ORT-PKG-129",
+    "name": "ARTHROSOCPIC MENISECTOMY",
+    "specialty": "Orthopedics",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 118000,
+    "tariff_private_inr": 140000,
+    "tariff_suite_inr": 167000
+  },
+  {
+    "code": "ORT-PKG-145",
+    "name": "CALCANEAL FRACTURE - WITH PLATES",
+    "specialty": "Orthopedics",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 145000,
+    "tariff_private_inr": 155000,
+    "tariff_suite_inr": 186000
+  },
+  {
+    "code": "ORT-PKG-146",
+    "name": "CARPEL TUNNEL RELEASE- BILATERAL",
+    "specialty": "Orthopedics",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 87500,
+    "tariff_private_inr": 97500,
+    "tariff_suite_inr": 117000
+  },
+  {
+    "code": "ORT-PKG-147",
+    "name": "CARPEL TUNNEL RELEASE- UNILATERAL",
+    "specialty": "Orthopedics",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 68500,
+    "tariff_private_inr": 78500,
+    "tariff_suite_inr": 94200
+  },
+  {
+    "code": "ORT-PKG-143",
+    "name": "CERVICAL DECOMPRESSION",
+    "specialty": "Orthopedics",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 135000,
+    "tariff_private_inr": 145000,
+    "tariff_suite_inr": 174000
+  },
+  {
+    "code": "ORT-PKG-142",
+    "name": "CERVICAL STABILIZATION",
+    "specialty": "Orthopedics",
+    "days": 4,
+    "icu_days": 0,
+    "tariff_general_inr": 195000,
+    "tariff_private_inr": 205000,
+    "tariff_suite_inr": 246000
+  },
+  {
+    "code": "ORT-PKG-158",
+    "name": "FOREARM/WRIST",
+    "specialty": "Orthopedics",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 128000,
+    "tariff_private_inr": 138000,
+    "tariff_suite_inr": 165600
+  },
+  {
+    "code": "ORT-PKG-150",
+    "name": "FRACTURE NECK FEMUR",
+    "specialty": "Orthopedics",
+    "days": 4,
+    "icu_days": 0,
+    "tariff_general_inr": 200000,
+    "tariff_private_inr": 215000,
+    "tariff_suite_inr": 258000
+  },
+  {
+    "code": "ORT-PKG-152",
+    "name": "HEMIARTHROPLASTY",
+    "specialty": "Orthopedics",
+    "days": 4,
+    "icu_days": 0,
+    "tariff_general_inr": 200000,
+    "tariff_private_inr": 210600,
+    "tariff_suite_inr": 252720
+  },
+  {
+    "code": "ORT-PKG-153",
+    "name": "IMPLANT REMOVAL OF LARGE BONES",
+    "specialty": "Orthopedics",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 110600,
+    "tariff_private_inr": 120600,
+    "tariff_suite_inr": 144720
+  },
+  {
+    "code": "ORT-PKG-154",
+    "name": "IMPLANT REMOVAL OF SMALL BONES",
+    "specialty": "Orthopedics",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 87000,
+    "tariff_private_inr": 98000,
+    "tariff_suite_inr": 117600
+  },
+  {
+    "code": "ORT-PKG-155",
+    "name": "IMPLANT REMOVAL OF SPINE",
+    "specialty": "Orthopedics",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 77000,
+    "tariff_private_inr": 87000,
+    "tariff_suite_inr": 104400
+  },
+  {
+    "code": "ORT-PKG-156",
+    "name": "LARGE WOUND DEBRIDEMENT",
+    "specialty": "Orthopedics",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 49000,
+    "tariff_private_inr": 59000,
+    "tariff_suite_inr": 70800
+  },
+  {
+    "code": "ORT-PKG-157",
+    "name": "MCL RECONSTRUCTION/REPAIR",
+    "specialty": "Orthopedics",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 109500,
+    "tariff_private_inr": 209500,
+    "tariff_suite_inr": 251400
+  },
+  {
+    "code": "ORT-PKG-159",
+    "name": "OF BOTH BONES FOREARM",
+    "specialty": "Orthopedics",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 132000,
+    "tariff_private_inr": 142000,
+    "tariff_suite_inr": 170400
+  },
+  {
+    "code": "ORT-PKG-162",
+    "name": "PELVIS FRACTURE- EXTERNAL FIXATION",
+    "specialty": "Orthopedics",
+    "days": 4,
+    "icu_days": 0,
+    "tariff_general_inr": 165000,
+    "tariff_private_inr": 175500,
+    "tariff_suite_inr": 210600
+  },
+  {
+    "code": "ORT-PKG-163",
+    "name": "REDUCTION OF DISLOCATION IN GA",
+    "specialty": "Orthopedics",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 28500,
+    "tariff_private_inr": 38500,
+    "tariff_suite_inr": 46200
+  },
+  {
+    "code": "ORT-PKG-164",
+    "name": "SCAPHOID FRACTURE FIXATION",
+    "specialty": "Orthopedics",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 165000,
+    "tariff_private_inr": 175000,
+    "tariff_suite_inr": 210000
+  },
+  {
+    "code": "ORT-PKG-161",
+    "name": "SHOULDER/ HUMEROUS",
+    "specialty": "Orthopedics",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 115000,
+    "tariff_private_inr": 125000,
+    "tariff_suite_inr": 150000
+  },
+  {
+    "code": "ORT-PKG-167",
+    "name": "SMALL WOUND DEBRIDEMENT (DAY CARE)",
+    "specialty": "Orthopedics",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 19100,
+    "tariff_private_inr": 29100,
+    "tariff_suite_inr": 35000
+  },
+  {
+    "code": "ORT-PKG-144",
+    "name": "SPINE STABILIZATION",
+    "specialty": "Orthopedics",
+    "days": 5,
+    "icu_days": 0,
+    "tariff_general_inr": 420000,
+    "tariff_private_inr": 565000,
+    "tariff_suite_inr": 615000
+  },
+  {
+    "code": "ORT-PKG-168",
+    "name": "TENDON REPAIR MULTIPLE",
+    "specialty": "Orthopedics",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 119000,
+    "tariff_private_inr": 129000,
+    "tariff_suite_inr": 154800
+  },
+  {
+    "code": "ORT-PKG-169",
+    "name": "TENDON REPAIR SINGLE",
+    "specialty": "Orthopedics",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 79500,
+    "tariff_private_inr": 89500,
+    "tariff_suite_inr": 107400
+  },
+  {
+    "code": "ORT-PKG-172",
+    "name": "TOTAL HIP REPLACEMENT - PACKAGE - BILATERAL",
+    "specialty": "Orthopedics",
+    "days": 5,
+    "icu_days": 1,
+    "tariff_general_inr": 380000,
+    "tariff_private_inr": 410000,
+    "tariff_suite_inr": 492000
+  },
+  {
+    "code": "ORT-PKG-173",
+    "name": "TOTAL HIP REPLACEMENT - PACKAGE - UNILATERAL",
+    "specialty": "Orthopedics",
+    "days": 5,
+    "icu_days": 0,
+    "tariff_general_inr": 210000,
+    "tariff_private_inr": 230000,
+    "tariff_suite_inr": 276000
+  },
+  {
+    "code": "ORT-PKG-174",
+    "name": "TOTAL KNEE REPLACEMENT - PACKAGE - BILATERAL",
+    "specialty": "Orthopedics",
+    "days": 5,
+    "icu_days": 1,
+    "tariff_general_inr": 380000,
+    "tariff_private_inr": 410000,
+    "tariff_suite_inr": 492000
+  },
+  {
+    "code": "ORT-PKG-175",
+    "name": "TOTAL KNEE REPLACEMENT - PACKAGE - UNILATERAL",
+    "specialty": "Orthopedics",
+    "days": 5,
+    "icu_days": 0,
+    "tariff_general_inr": 210000,
+    "tariff_private_inr": 230000,
+    "tariff_suite_inr": 276000
+  },
+  {
+    "code": "ORT-PKG-171",
+    "name": "UNICONDYLAR/MIDDLE/DISTAL-ORIF/ ORIF",
+    "specialty": "Orthopedics",
+    "days": 4,
+    "icu_days": 0,
+    "tariff_general_inr": 168000,
+    "tariff_private_inr": 178000,
+    "tariff_suite_inr": 213600
+  },
+  {
+    "code": "URO-PKG-178",
+    "name": "A.V.FISTULA",
+    "specialty": "Urology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 50000,
+    "tariff_private_inr": 65000,
+    "tariff_suite_inr": 75000
+  },
+  {
+    "code": "URO-PKG-179",
+    "name": "CYSTOSCOPY (THERAPEUTIC)",
+    "specialty": "Urology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 25000,
+    "tariff_private_inr": 35000,
+    "tariff_suite_inr": 42000
+  },
+  {
+    "code": "URO-PKG-186",
+    "name": "CYSTOSCOPY+RIRS+DJSTENTING UNILATERAL",
+    "specialty": "Urology",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 190000,
+    "tariff_private_inr": 235000,
+    "tariff_suite_inr": 290000
+  },
+  {
+    "code": "URO-PKG-183",
+    "name": "CYSTOSOCPY WITH DJ STENTING",
+    "specialty": "Urology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 62000,
+    "tariff_private_inr": 72000,
+    "tariff_suite_inr": 86400
+  },
+  {
+    "code": "URO-PKG-182",
+    "name": "DJ STENTING (BILATERAL)",
+    "specialty": "Urology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 95000,
+    "tariff_private_inr": 105000,
+    "tariff_suite_inr": 126000
+  },
+  {
+    "code": "URO-PKG-187",
+    "name": "DJSTENT REMOVAL (DAY CARE)",
+    "specialty": "Urology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 15500,
+    "tariff_private_inr": 22500,
+    "tariff_suite_inr": 29500
+  },
+  {
+    "code": "URO-PKG-176",
+    "name": "HOLEP",
+    "specialty": "Urology",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 340000,
+    "tariff_private_inr": 430000,
+    "tariff_suite_inr": 510000
+  },
+  {
+    "code": "URO-PKG-181",
+    "name": "LITHOTRIPSY",
+    "specialty": "Urology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 95000,
+    "tariff_private_inr": 105000,
+    "tariff_suite_inr": 115000
+  },
+  {
+    "code": "URO-PKG-189",
+    "name": "MEATOTOMY (DAY CARE)",
+    "specialty": "Urology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 29300,
+    "tariff_private_inr": 39300,
+    "tariff_suite_inr": 47000
+  },
+  {
+    "code": "URO-PKG-177",
+    "name": "MOLEP",
+    "specialty": "Urology",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 400000,
+    "tariff_private_inr": 495000,
+    "tariff_suite_inr": 530000
+  },
+  {
+    "code": "URO-PKG-190",
+    "name": "NEPHRECTOMY (LAP)",
+    "specialty": "Urology",
+    "days": 4,
+    "icu_days": 1,
+    "tariff_general_inr": 210000,
+    "tariff_private_inr": 220000,
+    "tariff_suite_inr": 264000
+  },
+  {
+    "code": "URO-PKG-191",
+    "name": "NEPHRECTOMY (OPEN)",
+    "specialty": "Urology",
+    "days": 4,
+    "icu_days": 1,
+    "tariff_general_inr": 210000,
+    "tariff_private_inr": 220000,
+    "tariff_suite_inr": 264000
+  },
+  {
+    "code": "URO-PKG-192",
+    "name": "NEPHROLITHOTOMY / PYELOLITHOTOMY",
+    "specialty": "Urology",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 126500,
+    "tariff_private_inr": 136500,
+    "tariff_suite_inr": 163800
+  },
+  {
+    "code": "URO-PKG-193",
+    "name": "ORCHIDECTOMY-BILATERAL",
+    "specialty": "Urology",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 100000,
+    "tariff_private_inr": 110000,
+    "tariff_suite_inr": 132000
+  },
+  {
+    "code": "URO-PKG-194",
+    "name": "ORCHIDECTOMY-UNILATERAL",
+    "specialty": "Urology",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 78500,
+    "tariff_private_inr": 88500,
+    "tariff_suite_inr": 107000
+  },
+  {
+    "code": "URO-PKG-196",
+    "name": "PCNL -UNILATERAL",
+    "specialty": "Urology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 160000,
+    "tariff_private_inr": 175000,
+    "tariff_suite_inr": 198000
+  },
+  {
+    "code": "URO-PKG-195",
+    "name": "PCNL BILATERAL",
+    "specialty": "Urology",
+    "days": 3,
+    "icu_days": 0,
+    "tariff_general_inr": 240000,
+    "tariff_private_inr": 260000,
+    "tariff_suite_inr": 290000
+  },
+  {
+    "code": "URO-PKG-197",
+    "name": "PROSTAT REMOVAL- HOLMIUM/DIODE",
+    "specialty": "Urology",
+    "days": 4,
+    "icu_days": 0,
+    "tariff_general_inr": 188000,
+    "tariff_private_inr": 198500,
+    "tariff_suite_inr": 238200
+  },
+  {
+    "code": "URO-PKG-198",
+    "name": "PROSTATE REMOVAL- LASER TURP",
+    "specialty": "Urology",
+    "days": 4,
+    "icu_days": 0,
+    "tariff_general_inr": 170000,
+    "tariff_private_inr": 180000,
+    "tariff_suite_inr": 216000
+  },
+  {
+    "code": "URO-PKG-199",
+    "name": "PROSTATE REMOVAL- OPEN TURP",
+    "specialty": "Urology",
+    "days": 4,
+    "icu_days": 0,
+    "tariff_general_inr": 135000,
+    "tariff_private_inr": 145000,
+    "tariff_suite_inr": 174000
+  },
+  {
+    "code": "URO-PKG-184",
+    "name": "URETHROPLASTY",
+    "specialty": "Urology",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 145000,
+    "tariff_private_inr": 168000,
+    "tariff_suite_inr": 186000
+  },
+  {
+    "code": "URO-PKG-200",
+    "name": "URS /THEAPEUTIC",
+    "specialty": "Urology",
+    "days": 1,
+    "icu_days": 0,
+    "tariff_general_inr": 78000,
+    "tariff_private_inr": 68000,
+    "tariff_suite_inr": 81600
+  },
+  {
+    "code": "VAS-PKG-172",
+    "name": "VARICOSE VEINS (SURGICAL)",
+    "specialty": "Vascular Surgery",
+    "days": 2,
+    "icu_days": 0,
+    "tariff_general_inr": 130000,
+    "tariff_private_inr": 140500,
+    "tariff_suite_inr": 168600
+  }
+]

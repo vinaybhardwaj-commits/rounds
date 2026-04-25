@@ -19,6 +19,28 @@ import {
   computeCompletionScore,
   getAllFields,
 } from '@/lib/form-registry';
+import CHARGE_MASTER_PACKAGES from '@/lib/charge-master-packages.json';
+
+// 25 Apr 2026 — Charge Master integration. The JSON has 161 packaged
+// procedures across 6 surgical specialties. Group by specialty for fast
+// filter at render time. Specialties not in the map fall back to free-text
+// proposed_procedure (handled via _show_free_procedure_text computed flag).
+interface ChargeMasterPackage {
+  code: string;
+  name: string;
+  specialty: string;
+  days: number;
+  icu_days: number;
+  tariff_general_inr: number;
+  tariff_private_inr: number;
+  tariff_suite_inr: number;
+}
+const PACKAGES_BY_SPECIALTY = new Map<string, ChargeMasterPackage[]>();
+for (const pkg of CHARGE_MASTER_PACKAGES as ChargeMasterPackage[]) {
+  if (!PACKAGES_BY_SPECIALTY.has(pkg.specialty)) PACKAGES_BY_SPECIALTY.set(pkg.specialty, []);
+  PACKAGES_BY_SPECIALTY.get(pkg.specialty)!.push(pkg);
+}
+const SPECIALTIES_WITH_PACKAGES = new Set(PACKAGES_BY_SPECIALTY.keys());
 
 // ============================================
 // TYPES
@@ -356,6 +378,74 @@ export default function FormRenderer({
     schema.formType,
   ]);
 
+  // 25 Apr 2026 — Charge Master computed flags + auto-fills.
+  // Computes _specialty_has_packages from surgical_specialty (drives the
+  // proposed_procedure_id dropdown's visibility) and _show_free_procedure_text
+  // (drives the free-text proposed_procedure visibility). Two flags, one effect.
+  useEffect(() => {
+    if (schema.formType !== 'consolidated_marketing_handoff') return;
+    const spec = (formData.surgical_specialty as string | undefined) || '';
+    const hasPkgs = SPECIALTIES_WITH_PACKAGES.has(spec);
+    const procId = formData.proposed_procedure_id as string | undefined;
+    const showFreeText = !hasPkgs || procId === 'other';
+    setFormData((prev) => {
+      let changed = false;
+      const next: Record<string, unknown> = { ...prev };
+      if (prev._specialty_has_packages !== hasPkgs) { next._specialty_has_packages = hasPkgs; changed = true; }
+      if (prev._show_free_procedure_text !== showFreeText) { next._show_free_procedure_text = showFreeText; changed = true; }
+      return changed ? next : prev;
+    });
+  }, [formData.surgical_specialty, formData.proposed_procedure_id, schema.formType]);
+
+  // 25 Apr 2026 — Auto-fill proposed_procedure (text) when a real package
+  // is picked from proposed_procedure_id. Clear the text when the user picks
+  // 'Other' so they start from blank in the manual-entry box.
+  useEffect(() => {
+    if (schema.formType !== 'consolidated_marketing_handoff') return;
+    const procId = formData.proposed_procedure_id as string | undefined;
+    if (!procId) return;
+    if (procId === 'other') {
+      setFormData((prev) => (prev.proposed_procedure ? { ...prev, proposed_procedure: '' } : prev));
+      return;
+    }
+    const spec = (formData.surgical_specialty as string | undefined) || '';
+    const list = PACKAGES_BY_SPECIALTY.get(spec) || [];
+    const pkg = list.find((p) => p.code === procId);
+    if (!pkg) return;
+    setFormData((prev) => {
+      if (prev.proposed_procedure === pkg.name) return prev;
+      return { ...prev, proposed_procedure: pkg.name };
+    });
+  }, [formData.proposed_procedure_id, formData.surgical_specialty, schema.formType]);
+
+  // 25 Apr 2026 — If surgical_specialty changes to one without packages,
+  // clear proposed_procedure_id so the stale ID doesn't linger. The free-text
+  // path takes over (no packages → _show_free_procedure_text=true above).
+  useEffect(() => {
+    if (schema.formType !== 'consolidated_marketing_handoff') return;
+    const spec = (formData.surgical_specialty as string | undefined) || '';
+    if (SPECIALTIES_WITH_PACKAGES.has(spec)) return;
+    if (!formData.proposed_procedure_id) return;
+    setFormData((prev) => ({ ...prev, proposed_procedure_id: '' }));
+  }, [formData.surgical_specialty, schema.formType]);
+
+  // 25 Apr 2026 — Insurance → default payment_mode='insurance'.
+  // Per V's 25 Apr decision: when marketing picks insurance_status='insured',
+  // auto-flip payment_mode to 'insurance' UNLESS the user has already manually
+  // chosen something else (PDC/EMI/Mixed). Cash + empty are treated as default
+  // and get overridden because cash is the de-facto initial state.
+  useEffect(() => {
+    if (schema.formType !== 'consolidated_marketing_handoff') return;
+    if (formData.insurance_status !== 'insured') return;
+    setFormData((prev) => {
+      const cur = prev.payment_mode as string | undefined;
+      if (!cur || cur === 'cash') {
+        return { ...prev, payment_mode: 'insurance' };
+      }
+      return prev;
+    });
+  }, [formData.insurance_status, schema.formType]);
+
   // Mark field as touched on blur
   const touchField = useCallback((key: string) => {
     setTouchedFields((prev) => new Set(prev).add(key));
@@ -602,6 +692,26 @@ export default function FormRenderer({
                   helpText: isDifferent
                     ? 'Defaults from operating-surgeon pick. Override if needed.'
                     : 'Auto-filled from admitting doctor\u2019s specialty in Section A.',
+                };
+              }
+              // 25 Apr 2026 — proposed_procedure_id options driven by
+              // surgical_specialty. Filter the Charge Master to packages
+              // matching the picked specialty + always append 'Other'.
+              if (f.key === 'proposed_procedure_id') {
+                const spec = (formData.surgical_specialty as string | undefined) || '';
+                const list = PACKAGES_BY_SPECIALTY.get(spec) || [];
+                return {
+                  ...f,
+                  options: [
+                    ...list.map((pkg) => ({
+                      value: pkg.code,
+                      label: `${pkg.name} (${pkg.days} day${pkg.days === 1 ? '' : 's'} · ₹${pkg.tariff_general_inr.toLocaleString('en-IN')})`,
+                    })),
+                    { value: 'other', label: 'Other — type the procedure name' },
+                  ],
+                  helpText: list.length === 0
+                    ? 'No packaged procedures on file for this specialty. Pick Other to type the name.'
+                    : `Pick from ${list.length} packaged procedure${list.length === 1 ? '' : 's'} for ${spec}, or choose Other.`,
                 };
               }
               return f;

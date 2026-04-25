@@ -433,8 +433,11 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
         { key: 'insurance_tpa_details', label: 'Insurance & TPA Details', type: 'textarea', visibleWhen: { field: 'insurance_status', operator: 'eq', value: 'insured' }, validation: { required: true }, placeholder: 'TPA name, network status, sub-limits, any known exclusions' },
         { key: 'package_name', label: 'Package Name', type: 'text', validation: { required: true }, placeholder: 'e.g. Appendicectomy with 3-night stay', width: 'half' },
         { key: 'estimated_total_cost', label: 'Estimated Total Cost (₹)', type: 'number', validation: { required: true }, placeholder: 'Total estimate in INR', width: 'half' },
-        { key: 'insurance_coverage_amount', label: 'Insurance Coverage Amount (₹)', type: 'number', visibleWhen: { field: 'insurance_status', operator: 'eq', value: 'insured' }, validation: { required: true }, placeholder: 'Covered amount from policy', width: 'half' },
-        { key: 'copay_patient_responsibility', label: 'Co-pay / Patient Responsibility (₹)', type: 'number', visibleWhen: { field: 'insurance_status', operator: 'eq', value: 'insured' }, validation: { required: true }, placeholder: 'Patient out-of-pocket amount', width: 'half' },
+        // 25 Apr 2026: gate coverage + copay on payment_mode = 'insurance' (was
+        // gated on insurance_status = 'insured'). If marketing flips an insured
+        // patient to cash/EMI, coverage/copay aren't pertinent.
+        { key: 'insurance_coverage_amount', label: 'Insurance Coverage Amount (₹)', type: 'number', visibleWhen: { field: 'payment_mode', operator: 'eq', value: 'insurance' }, validation: { required: true }, placeholder: 'Covered amount from policy', width: 'half' },
+        { key: 'copay_patient_responsibility', label: 'Co-pay / Patient Responsibility (₹)', type: 'number', visibleWhen: { field: 'payment_mode', operator: 'eq', value: 'insurance' }, validation: { required: true }, placeholder: 'Patient out-of-pocket amount', width: 'half' },
         { key: 'payment_mode', label: 'Payment Mode', type: 'select', validation: { required: true }, options: [
           { value: 'cash', label: 'Cash' },
           { value: 'insurance', label: 'Insurance' },
@@ -442,6 +445,10 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
           { value: 'emi', label: 'EMI' },
           { value: 'mixed', label: 'Mixed' },
         ], width: 'half' },
+        // 25 Apr 2026: Payment Plan Details — required for non-cash, non-insurance
+        // payment modes (PDC / EMI / Mixed). Cash is self-explanatory; insurance
+        // is covered by insurer/policy/coverage/copay fields above.
+        { key: 'payment_plan_details', label: 'Payment Plan Details', type: 'textarea', visibleWhen: { field: 'payment_mode', operator: 'in', value: ['pdc', 'emi', 'mixed'] }, validation: { required: true }, placeholder: 'Schedule, source of funds, instalment terms, who is paying, anything else CC needs to know.' },
         { key: 'deposit_required', label: 'Deposit Required (₹)', type: 'number', validation: { required: true }, placeholder: 'Amount to collect before admission', width: 'half' },
         { key: 'deposit_collected', label: 'Deposit Already Collected?', type: 'checkbox' },
         { key: 'deposit_collected_amount', label: 'Deposit Amount Collected (₹)', type: 'number', visibleWhen: { field: 'deposit_collected', operator: 'truthy' }, validation: { required: true }, placeholder: 'Actual deposit received', width: 'half' },
@@ -495,7 +502,13 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
           { value: 'Urology', label: 'Urology' },
           { value: 'Vascular Surgery', label: 'Vascular Surgery' },
         ], width: 'half' },
-        { key: 'proposed_procedure', label: 'Proposed Procedure', type: 'text', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true }, placeholder: 'What surgery is planned' },
+        // 25 Apr 2026: Charge Master integration. proposed_procedure_id is a
+        // dropdown of packaged procedures filtered by surgical_specialty (when
+        // packages exist for that specialty). proposed_procedure (text) becomes
+        // the free-text fallback — used either when no packages exist for the
+        // specialty, or when 'Other' is picked from the dropdown.
+        { key: 'proposed_procedure_id', label: 'Proposed Procedure', type: 'select', visibleWhen: { field: '_specialty_has_packages', operator: 'truthy' }, validation: { required: true }, options: [], helpText: 'Pick a packaged procedure for this specialty, or choose Other for custom.' },
+        { key: 'proposed_procedure', label: 'Proposed Procedure (custom)', type: 'text', visibleWhen: { field: '_show_free_procedure_text', operator: 'truthy' }, validation: { required: true }, placeholder: 'What surgery is planned' },
         { key: 'laterality', label: 'Laterality', type: 'select', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true }, options: [
           { value: 'left', label: 'Left' },
           { value: 'right', label: 'Right' },
