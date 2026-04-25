@@ -15,7 +15,9 @@ import {
   Search,
   Loader2,
   Undo2,
+  Stethoscope,
 } from 'lucide-react';
+import CoordinatorTasksPanel from './CoordinatorTasksPanel';
 
 // ----- Types -----
 
@@ -72,7 +74,7 @@ import { DailyBriefing } from '@/components/ai/DailyBriefing';
 import { OTItemsTab } from '@/components/ot/OTItemsTab';
 import { OTSchedulePage } from '@/components/ot/OTSchedulePage';
 
-type TaskTab = 'briefing' | 'overdue' | 'escalations' | 'ot_items';
+type TaskTab = 'briefing' | 'coordinator' | 'overdue' | 'escalations' | 'ot_items';
 
 interface TasksViewProps {
   onNavigateToPatient?: (patientThreadId: string) => void;
@@ -424,6 +426,16 @@ export function TasksView({ onNavigateToPatient, userRole = '', userId = '', ini
             Briefing
           </button>
           <button
+            onClick={() => setTab('coordinator')}
+            className={`shrink-0 whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              tab === 'coordinator'
+                ? 'bg-blue-100 text-blue-700'
+                : 'bg-gray-100 text-gray-500'
+            }`}
+          >
+            <Stethoscope size={12} /> Coordinator
+          </button>
+          <button
             onClick={() => setTab('overdue')}
             className={`shrink-0 whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
               tab === 'overdue'
@@ -466,6 +478,8 @@ export function TasksView({ onNavigateToPatient, userRole = '', userId = '', ini
       <div className="flex-1 overflow-y-auto px-4 pb-4">
         {tab === 'briefing' ? (
           <DailyBriefing />
+        ) : tab === 'coordinator' ? (
+          <CoordinatorTasksPanel />
         ) : error ? (
           <div className="text-center py-12 px-4">
             <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-3">
