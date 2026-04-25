@@ -62,6 +62,47 @@ export interface CrossFormPrefillSpec {
 // Value transforms
 // -----------------------------------------------------------------------------
 
+const surgeryPlannedToAdmissionType = (v: unknown): unknown => {
+  // F1.B transform: MH.surgery_planned (boolean) → AA.admission_type enum.
+  // true → 'surgical', false → 'medical'.
+  if (v === true) return 'surgical';
+  if (v === false) return 'medical';
+  return undefined;
+};
+
+/**
+ * Convert an MH multiselect array (e.g., ['diabetes','hypertension']) to a
+ * comma-separated, title-cased string for forms whose comorbidity field is
+ * a textarea. Maps known enum values to nicer labels.
+ */
+const COMORBIDITY_LABELS: Record<string, string> = {
+  diabetes: 'Diabetes',
+  cardiac_disease: 'Cardiac Disease',
+  renal_disease: 'Renal Disease',
+  respiratory_disease: 'Respiratory Disease',
+  hypertension: 'Hypertension',
+  thyroid: 'Thyroid',
+  obesity: 'Obesity (BMI > 35)',
+  anaemia: 'Anaemia',
+  thrombocytopenia: 'Thrombocytopenia',
+  none: 'None',
+};
+const comorbiditiesArrayToText = (v: unknown): unknown => {
+  if (!Array.isArray(v) || v.length === 0) return undefined;
+  return v.map(x => COMORBIDITY_LABELS[String(x)] || String(x)).join(', ');
+};
+
+/**
+ * F2.B transform: FC.preauth_initiated (boolean) → OTBC.insurance_preauth_status (enum).
+ * true → 'submitted' (we initiated; awaiting insurer)
+ * false → 'not_started'
+ */
+const preauthInitiatedToStatus = (v: unknown): unknown => {
+  if (v === true) return 'submitted';
+  if (v === false) return 'not_started';
+  return undefined;
+};
+
 const insuranceStatusToPaymentMode = (v: unknown): unknown => {
   if (v === 'insured') return 'insurance';
   if (v === 'uninsured') return 'cash';
@@ -138,6 +179,37 @@ const SB_SPEC: CrossFormPrefillSpec = {
   ],
 };
 
+// F1 — Admission Advice ← Marketing Handoff
+const AA_SPEC: CrossFormPrefillSpec = {
+  sources: [
+    {
+      formType: 'consolidated_marketing_handoff',
+      autoMatch: false, // AA's vocabulary differs entirely; do explicit-only.
+      overrides: [
+        // F1.B locked transforms.
+        { source: 'clinical_summary', target: 'reason_for_admission' },
+        {
+          source: ['proposed_procedure', 'clinical_summary'],
+          target: 'diagnosis',
+        },
+        { source: 'preferred_admission_date', target: 'preferred_date' },
+        {
+          source: 'known_comorbidities',
+          target: 'comorbidities',
+          transform: comorbiditiesArrayToText,
+        },
+        // MH key is current_medication; AA expects current_medications (s).
+        { source: 'current_medication', target: 'current_medications' },
+        {
+          source: 'surgery_planned',
+          target: 'admission_type',
+          transform: surgeryPlannedToAdmissionType,
+        },
+      ],
+    },
+  ],
+};
+
 // -----------------------------------------------------------------------------
 // Registry
 // -----------------------------------------------------------------------------
@@ -145,6 +217,7 @@ const SB_SPEC: CrossFormPrefillSpec = {
 export const CROSS_FORM_PREFILLS: Record<string, CrossFormPrefillSpec> = {
   financial_counseling: FC_SPEC,
   surgery_booking: SB_SPEC,
+  admission_advice: AA_SPEC,
 };
 
 // -----------------------------------------------------------------------------
