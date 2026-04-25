@@ -198,15 +198,18 @@ export async function GET(
     const [stateHistory, pacEvents, conditionCards, equipmentRequests, handoff, patient] =
       await Promise.all([
         query<StateEvent>(
+          // 25 Apr 2026 fix: case_state_events column is 'occurred_at' (per
+          // migration-surgical-cases.sql), not 'created_at'. Aliased to keep
+          // StateEvent.created_at on the JS side.
           `
           SELECT
             cse.id, cse.from_state, cse.to_state, cse.transition_reason,
             cse.actor_profile_id, p.full_name AS actor_name,
-            cse.metadata, cse.created_at
+            cse.metadata, cse.occurred_at AS created_at
           FROM case_state_events cse
           LEFT JOIN profiles p ON p.id = cse.actor_profile_id
           WHERE cse.case_id = $1
-          ORDER BY cse.created_at ASC
+          ORDER BY cse.occurred_at ASC
           `,
           [id]
         ),
@@ -248,12 +251,15 @@ export async function GET(
         ),
         c.handoff_submission_id
           ? queryOne<HandoffRow>(
+              // 25 Apr 2026 fix: form_submissions has 'created_at' not
+              // 'submitted_at', and 'submitted_by' not 'submitter_profile_id'.
+              // Aliased to keep HandoffRow shape.
               `
               SELECT
-                fs.id, fs.form_type, fs.submitted_at,
-                fs.submitter_profile_id, p.full_name AS submitter_name
+                fs.id, fs.form_type, fs.created_at AS submitted_at,
+                fs.submitted_by AS submitter_profile_id, p.full_name AS submitter_name
               FROM form_submissions fs
-              LEFT JOIN profiles p ON p.id = fs.submitter_profile_id
+              LEFT JOIN profiles p ON p.id = fs.submitted_by
               WHERE fs.id = $1
               `,
               [c.handoff_submission_id]
