@@ -18,6 +18,10 @@
 //
 // Sprint 2 Day 10 (24 April 2026). Framework endpoint — SLA thresholds are
 // conservative defaults; PRD can tune per form type in Sprint 3.
+//
+// 25 Apr 2026 fix: form_submissions has 'created_at' not 'submitted_at'; this
+// route had been 500ing every 5 min since deploy. Aliased to keep the shape.
+// Also added the metadata column via migration-form-submissions-metadata.sql.
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -77,7 +81,7 @@ export async function GET(request: NextRequest) {
     const rows = await query<FormRow>(
       `
       SELECT
-        fs.id, fs.form_type, fs.submitted_at,
+        fs.id, fs.form_type, fs.created_at AS submitted_at,
         fs.hospital_id, h.slug AS hospital_slug,
         pt.patient_name,
         fs.cc_card_message_id, fs.ot_card_message_id,
@@ -86,10 +90,10 @@ export async function GET(request: NextRequest) {
       JOIN hospitals h ON h.id = fs.hospital_id
       LEFT JOIN patient_threads pt ON pt.id = fs.patient_thread_id
       WHERE fs.form_type = ANY($1::text[])
-        AND fs.submitted_at > NOW() - $2::interval
-        AND fs.submitted_at < NOW() - INTERVAL '30 minutes'
+        AND fs.created_at > NOW() - $2::interval
+        AND fs.created_at < NOW() - INTERVAL '30 minutes'
         AND (fs.cc_card_message_id IS NOT NULL OR fs.ot_card_message_id IS NOT NULL)
-      ORDER BY fs.submitted_at ASC
+      ORDER BY fs.created_at ASC
       LIMIT 500
       `,
       [formTypes, `${Math.floor(lookbackMs / 1000)} seconds`]
