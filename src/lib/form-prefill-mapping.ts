@@ -357,6 +357,18 @@ const DR_SPEC: CrossFormPrefillSpec = {
   ],
 };
 
+// F9 — Post-Discharge Follow-up ← Discharge Readiness (one field)
+const PDF_SPEC: CrossFormPrefillSpec = {
+  sources: [
+    {
+      formType: 'discharge_readiness',
+      autoMatch: true,
+      // Auto-match catches: followup_date (same key both sides).
+      overrides: [],
+    },
+  ],
+};
+
 // -----------------------------------------------------------------------------
 // Registry
 // -----------------------------------------------------------------------------
@@ -369,6 +381,7 @@ export const CROSS_FORM_PREFILLS: Record<string, CrossFormPrefillSpec> = {
   pac_clearance: PAC_SPEC,
   surgery_posting: SP_SPEC,
   discharge_readiness: DR_SPEC,
+  post_discharge_followup: PDF_SPEC,
 };
 
 // -----------------------------------------------------------------------------
