@@ -98,8 +98,11 @@ const comorbiditiesArrayToText = (v: unknown): unknown => {
  * false → 'not_started'
  */
 const preauthInitiatedToStatus = (v: unknown): unknown => {
-  if (v === true) return 'submitted';
-  if (v === false) return 'not_started';
+  // 26 Apr 2026 audit fix (P0-1): OTBC.insurance_preauth_status enum is
+  // {not_applicable, pending, approved, approved_partial, rejected}.
+  // Earlier values 'submitted'/'not_started' did not exist on the schema.
+  if (v === true) return 'pending';
+  if (v === false) return 'not_applicable';
   return undefined;
 };
 
