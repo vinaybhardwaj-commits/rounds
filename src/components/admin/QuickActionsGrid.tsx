@@ -6,6 +6,7 @@ import {
   UserCheck, UserPlus, Upload, Shield, Calendar, Activity,
   ClipboardList, AlertTriangle, Link2, MessageSquare, Database,
   ChevronDown, ChevronUp,
+  Stethoscope, ClipboardCheck, Boxes,
 } from 'lucide-react';
 
 interface QuickActionsGridProps {
@@ -31,6 +32,11 @@ export function QuickActionsGrid({ badges = {}, userRole = 'admin' }: QuickActio
   const [expanded, setExpanded] = useState(false);
 
   const actions: ActionCard[] = [
+    // 25 Apr 2026: surface the Sprint 2 Day 7-9 work that shipped without
+    // any nav entry. Each was reachable only by typing the URL until now.
+    { label: 'Anaesthetist Queue', description: 'Cases awaiting PAC', href: '/anaesthetist-queue', icon: <Stethoscope size={16} />, iconBg: 'bg-purple-500' },
+    { label: 'OT Calendar', description: 'Week-ahead OT schedule', href: '/ot-calendar', icon: <ClipboardCheck size={16} />, iconBg: 'bg-blue-600' },
+    { label: 'Equipment Kanban', description: 'Track equipment requests', href: '/equipment-kanban', icon: <Boxes size={16} />, iconBg: 'bg-orange-500' },
     { label: 'Approvals', description: 'Review pending signups', href: '/admin/approvals', icon: <UserCheck size={16} />, iconBg: 'bg-amber-500', badge: badges.approvals },
     { label: 'Add Staff', description: 'Create staff account', href: '/admin/profiles/add', icon: <UserPlus size={16} />, iconBg: 'bg-green-500' },
     { label: 'Bulk Import', description: 'CSV import staff', href: '/admin/profiles/import', icon: <Upload size={16} />, iconBg: 'bg-even-blue' },

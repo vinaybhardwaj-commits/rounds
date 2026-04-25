@@ -409,7 +409,16 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
         >
           <div className="space-y-3 text-sm">
             {pac_events.length === 0 ? (
-              <p className="text-gray-500">No PAC events yet. Anaesthetist Queue ships Sprint 2 Day 7.</p>
+              <div className="space-y-2">
+                <p className="text-gray-500">No PAC events yet for this case.</p>
+                <a
+                  href="/anaesthetist-queue"
+                  className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:underline"
+                  title="Anaesthetist Queue lists every case awaiting PAC across the hospital"
+                >
+                  Open Anaesthetist Queue →
+                </a>
+              </div>
             ) : (
               <ul className="space-y-2">
                 {pac_events.map((pe) => (
@@ -488,9 +497,13 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
                 <span className="font-mono text-gray-700">{c.anaesthetist_id ? c.anaesthetist_id.slice(0, 8) : '—'}</span>
               </div>
             </div>
-            <p className="text-xs text-gray-500">
-              Week-Ahead OT Calendar ships Sprint 2 Day 8 — drag-drop scheduling lands there.
-            </p>
+            <a
+              href="/ot-calendar"
+              className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:underline"
+              title="Open the Week-Ahead OT Calendar to schedule or move this case"
+            >
+              Schedule on OT Calendar →
+            </a>
           </div>
         </TrackCard>
 
@@ -508,9 +521,16 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
           }
         >
           {equipment_requests.length === 0 ? (
-            <p className="text-sm text-gray-500">
-              No equipment requests yet. Equipment Kanban ships Sprint 2 Day 9.
-            </p>
+            <div className="space-y-2">
+              <p className="text-sm text-gray-500">No equipment requests yet for this case.</p>
+              <a
+                href="/equipment-kanban"
+                className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:underline"
+                title="Track equipment requests across all cases on the Equipment Kanban"
+              >
+                Open Equipment Kanban →
+              </a>
+            </div>
           ) : (
             <ul className="space-y-1 text-xs">
               {equipment_requests.map((er) => (
