@@ -132,7 +132,13 @@ function NewFormPage() {
             ? { ...(targetBody.data[0].form_data as Record<string, unknown>) }
             : null;
         if (targetData) {
-          delete (targetData as Record<string, unknown>)._is_surgical_case; // recomputed
+          // 26 Apr 2026 audit fix (P3-1): strip ALL underscore-prefixed keys
+          // (computed metadata flags). FormRenderer recomputes them on every
+          // render — leaking stale values from a previous submission could
+          // hide newly-true flags.
+          for (const k of Object.keys(targetData)) {
+            if (k.startsWith('_')) delete (targetData as Record<string, unknown>)[k];
+          }
         }
 
         // Build sourceFormDataByType from parallel fetch results.
