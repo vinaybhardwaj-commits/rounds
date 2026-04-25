@@ -199,6 +199,42 @@ export async function POST(request: NextRequest) {
             console.log(
               `[Sprint1.CaseModel] Created draft surgical_case ${caseInsert.id} from handoff ${formId}`
             );
+
+            // 25 Apr 2026: auto-create an 'Initiate PAC' task for the IP
+            // coordinator. Per V's clarification of EHRC workflow: as soon as
+            // the marketing handoff lands, the IP coordinator picks up the case
+            // and begins PAC coordination with anaesthetist + labs + clinical
+            // depts \u2014 independent of whether the patient is admitted yet.
+            // Idempotent via the tasks (case_id, source_ref) WHERE source='auto'
+            // unique partial index, so re-submitting the handoff doesn't double
+            // up the task.
+            try {
+              const ptName = (await queryOne<{ patient_name: string | null }>(
+                `SELECT patient_name FROM patient_threads WHERE id = $1`,
+                [body.patient_thread_id]
+              ))?.patient_name ?? 'patient';
+              await sqlQuery(
+                `
+                INSERT INTO tasks
+                  (hospital_id, case_id, title, description, owner_role,
+                   status, source, source_ref, metadata, created_by)
+                VALUES ($1, $2, $3, $4, 'ip_coordinator',
+                  'pending', 'auto', 'case:initiate_pac', $5::jsonb, $6)
+                ON CONFLICT (case_id, source_ref) WHERE source = 'auto' AND case_id IS NOT NULL
+                DO UPDATE SET updated_at = NOW()
+                `,
+                [
+                  hospital.id,
+                  caseInsert.id,
+                  `Initiate PAC for ${ptName}`,
+                  `Marketing handoff submitted. Begin PAC coordination with anaesthetist + labs + clinical departments. Link case to KarExpert and schedule the PAC. PAC can start before admission \u2014 no need to wait for the patient to be admitted.`,
+                  JSON.stringify({ handoff_submission_id: formId }),
+                  user.profileId,
+                ]
+              );
+            } catch (taskErr) {
+              console.error('[Sprint1.CaseModel] auto-task insert failed (non-fatal):', (taskErr as Error).message);
+            }
           }
         }
       } catch (err) {

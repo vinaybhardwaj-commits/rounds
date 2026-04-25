@@ -124,10 +124,13 @@ interface CaseDetail {
 // ---- State pill color map ----
 
 const STATE_STYLES: Record<string, { bg: string; fg: string; label: string }> = {
-  // 25 Apr 2026: relabeled from 'Draft' → 'Pending intake'. The DB column
-  // value stays 'draft' for the state machine; only the user-facing label
-  // changes so it doesn't collide with form_submissions.status='draft'.
-  draft:         { bg: 'bg-sky-50',     fg: 'text-sky-800',     label: 'Pending intake' },
+  // 25 Apr 2026 (v2): relabeled to 'Pending PAC' per V's clarification.
+  // The DB column value stays 'draft' for the state machine. At EHRC the
+  // step right after a marketing handoff is the IP coordinator picking up
+  // the case + initiating PAC — 'intake' (KE-linking) was a phantom step.
+  // An auto-task ('Initiate PAC for ...') is created on handoff submit
+  // (see /api/forms/route.ts consolidated_marketing_handoff hook).
+  draft:         { bg: 'bg-sky-50',     fg: 'text-sky-800',     label: 'Pending PAC' },
   intake:        { bg: 'bg-sky-100',     fg: 'text-sky-800',     label: 'Intake' },
   pac_scheduled: { bg: 'bg-indigo-100',  fg: 'text-indigo-800',  label: 'PAC Scheduled' },
   pac_done:      { bg: 'bg-indigo-200',  fg: 'text-indigo-900',  label: 'PAC Done' },
