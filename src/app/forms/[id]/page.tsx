@@ -228,11 +228,13 @@ export default function FormViewPage({ params }: { params: { id: string } }) {
           )}
         </div>
 
-        {/* AI Gap Analysis */}
-        <GapAnalysisCard
-          formSubmissionId={data.id}
-          existingReport={data.ai_gap_report}
-        />
+        {/* AI Gap Analysis (L13 fix 25 Apr 2026: hidden in print view) */}
+        <div className="no-print">
+          <GapAnalysisCard
+            formSubmissionId={data.id}
+            existingReport={data.ai_gap_report}
+          />
+        </div>
 
         {/* Readiness tracker */}
         {data.readiness_items.length > 0 && data.readiness_aggregate && (
