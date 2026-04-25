@@ -113,8 +113,10 @@ const SB_SPEC: CrossFormPrefillSpec = {
       formType: 'consolidated_marketing_handoff',
       autoMatch: true,
       overrides: [
-        // MH calls it surgery_urgency; SB calls it urgency.
-        { source: 'surgery_urgency', target: 'urgency' },
+        // EC1 cleanup 25 Apr 2026: removed bogus { surgery_urgency → urgency }
+        // override. SB's actual key is `surgery_urgency` (not `urgency`),
+        // so auto-match handles it natively. Leaving the comment so future
+        // readers don't re-add it.
         // Auto-matched keys (kept as documentation):
         //   surgeon_name           (Section C)
         //   proposed_procedure     (Section C, free text)
@@ -178,7 +180,12 @@ export function applySourceSpec(
     for (const [k, v] of Object.entries(sourceData)) {
       if (exclude.has(k)) continue;
       if (!targetSchemaKeys.has(k)) continue;
-      if (k.startsWith('_')) continue; // computed metadata flags
+      // 25 Apr 2026 (EC3 convention): keys starting with underscore are
+      // computed metadata flags managed by FormRenderer (e.g.,
+      // _is_surgical_case). They must NEVER be carried over via prefill —
+      // FormRenderer recomputes them on every render. Authors of new forms
+      // should follow the same _underscore convention for ANY computed flag.
+      if (k.startsWith('_')) continue;
       if (v === undefined || v === null || v === '') continue;
       out[k] = v;
     }
