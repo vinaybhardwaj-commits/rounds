@@ -210,6 +210,39 @@ const AA_SPEC: CrossFormPrefillSpec = {
   ],
 };
 
+// F2 — OT Billing Clearance ← Financial Counseling > Marketing Handoff
+const OTBC_SPEC: CrossFormPrefillSpec = {
+  sources: [
+    {
+      // Highest priority: FC has the actual cost estimate + deposits + preauth state.
+      formType: 'financial_counseling',
+      autoMatch: true,
+      // Auto-match catches: cost_breakdown
+      overrides: [
+        { source: 'estimated_cost', target: 'total_estimate' },
+        { source: 'deposit_collected_amount', target: 'deposit_received' },
+        { source: 'deposit_amount', target: 'advance_received' },
+        // F2.B locked transform: boolean → enum.
+        {
+          source: 'preauth_initiated',
+          target: 'insurance_preauth_status',
+          transform: preauthInitiatedToStatus,
+        },
+        // FC.is_package ('package' | 'non_package') maps cleanly to OTBC.package_type.
+        { source: 'is_package', target: 'package_type' },
+      ],
+    },
+    {
+      // Fallback: MH if FC didn't fill specific fields.
+      formType: 'consolidated_marketing_handoff',
+      autoMatch: true,
+      overrides: [
+        { source: 'estimated_total_cost', target: 'total_estimate' },
+      ],
+    },
+  ],
+};
+
 // -----------------------------------------------------------------------------
 // Registry
 // -----------------------------------------------------------------------------
@@ -218,6 +251,7 @@ export const CROSS_FORM_PREFILLS: Record<string, CrossFormPrefillSpec> = {
   financial_counseling: FC_SPEC,
   surgery_booking: SB_SPEC,
   admission_advice: AA_SPEC,
+  ot_billing_clearance: OTBC_SPEC,
 };
 
 // -----------------------------------------------------------------------------
