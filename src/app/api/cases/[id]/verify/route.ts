@@ -22,11 +22,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import { hasRole } from '@/lib/roles';
 import { query, queryOne } from '@/lib/db';
 
 // 25 Apr 2026 (H3 fix): same remap as /api/cases/[id]/transition — no 'rmo'
 // in enum; verification is coordination work.
-const VERIFY_ROLES = new Set(['ot_coordinator', 'ip_coordinator', 'super_admin']);
+// 25 Apr 2026: super_admin auto-passes via hasRole; keep allow-set narrow.
+const VERIFY_ROLES = new Set(['ot_coordinator', 'ip_coordinator']);
 const VERIFIABLE_FROM_STATES = new Set(['scheduled', 'confirmed']);
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -59,7 +61,7 @@ export async function POST(
       );
     }
 
-    if (!VERIFY_ROLES.has(user.role)) {
+    if (!hasRole(user.role, VERIFY_ROLES)) {
       return NextResponse.json(
         {
           success: false,

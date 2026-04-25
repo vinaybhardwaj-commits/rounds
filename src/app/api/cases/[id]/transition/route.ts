@@ -28,6 +28,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import { hasRole } from '@/lib/roles';
 import { query as sqlQuery, queryOne } from '@/lib/db';
 
 interface TransitionRule {
@@ -160,7 +161,7 @@ export async function POST(
       );
     }
 
-    if (!rule.allowed_roles.has(user.role)) {
+    if (!hasRole(user.role, rule.allowed_roles)) {
       return NextResponse.json(
         {
           success: false,

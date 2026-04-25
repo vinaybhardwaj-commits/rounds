@@ -20,6 +20,7 @@
 // ============================================
 
 import { useEffect, useState, useCallback } from 'react';
+import { hasRole } from '@/lib/roles';
 import PacPublishModal from '@/components/drawer/PacPublishModal';
 
 interface QueueCase {
@@ -34,7 +35,8 @@ interface QueueCase {
 }
 
 const QUEUE_STATES: Array<QueueCase['state']> = ['intake', 'pac_scheduled', 'pac_done'];
-const PUBLISH_ROLES = new Set(['anesthesiologist', 'super_admin']);
+// 25 Apr 2026: super_admin auto-passes via hasRole; keep allow-set narrow.
+const PUBLISH_ROLES = new Set(['anesthesiologist']);
 
 export default function AnaesthetistQueuePage() {
   const [cases, setCases] = useState<QueueCase[]>([]);
@@ -98,7 +100,7 @@ export default function AnaesthetistQueuePage() {
     load();
   }, [load]);
 
-  const canPublish = role ? PUBLISH_ROLES.has(role) : false;
+  const canPublish = role ? hasRole(role, PUBLISH_ROLES) : false;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-6">

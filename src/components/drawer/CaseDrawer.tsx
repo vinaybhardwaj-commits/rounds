@@ -34,6 +34,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import SchedulePacModal from './SchedulePacModal';
+import { hasRole, isSuperAdmin } from '@/lib/roles';
 
 // ---- Types (mirrors the /api/cases/:id response shape) ----
 
@@ -417,7 +418,7 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
                 {/* 25 Apr 2026: IP Coordinator can schedule PAC straight from
                     the case detail when state === 'draft'. Closes the loop
                     opened by the auto-task created on handoff submit. */}
-                {c.state === 'draft' && (role === 'ip_coordinator' || role === 'super_admin') && (
+                {c.state === 'draft' && hasRole(role, ['ip_coordinator']) && (
                   <button
                     type="button"
                     onClick={() => setSchedulePacOpen(true)}

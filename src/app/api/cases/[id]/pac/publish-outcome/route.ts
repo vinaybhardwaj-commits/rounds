@@ -32,9 +32,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import { hasRole } from '@/lib/roles';
 import { query, queryOne } from '@/lib/db';
 
-const PUBLISH_ALLOWED_ROLES = new Set(['anesthesiologist', 'super_admin']);
+// 25 Apr 2026: super_admin auto-passes via hasRole helper, so it's no longer
+// listed here. Keep the allow-set narrow to the role that actually owns this.
+const PUBLISH_ALLOWED_ROLES = new Set(['anesthesiologist']);
 const VALID_OUTCOMES = new Set(['fit', 'fit_conds', 'defer', 'unfit']);
 const PUBLISHABLE_FROM_STATES = new Set(['intake', 'pac_scheduled', 'pac_done']);
 
@@ -76,11 +79,11 @@ export async function POST(
       );
     }
 
-    if (!PUBLISH_ALLOWED_ROLES.has(user.role)) {
+    if (!hasRole(user.role, PUBLISH_ALLOWED_ROLES)) {
       return NextResponse.json(
         {
           success: false,
-          error: `Role ${user.role} cannot publish PAC outcomes. Required: ${[...PUBLISH_ALLOWED_ROLES].join(' or ')}.`,
+          error: `Role ${user.role} cannot publish PAC outcomes. Required: ${[...PUBLISH_ALLOWED_ROLES].join(', ')} or super_admin.`,
         },
         { status: 403 }
       );
