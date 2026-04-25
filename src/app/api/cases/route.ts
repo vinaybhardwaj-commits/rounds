@@ -43,9 +43,19 @@ interface CaseRow {
   planned_surgery_date: string | null;
   ot_room: number | null;
   surgeon_id: string | null;
+  surgeon_name: string | null;
   anaesthetist_id: string | null;
   urgency: string | null;
   state: string;
+  // 26 Apr 2026 OT-booking redesign columns:
+  planned_start_time: string | null;
+  case_serial_in_slot: number | null;
+  assist_surgeon_name: string | null;
+  anaesthetist_name: string | null;
+  anae_type: string | null;
+  equipment_status: string | null;
+  consumables_status: string | null;
+  ot_remarks: string | null;
   kx_case_id: string | null;
   kx_pac_record_id: string | null;
   created_at: string;
@@ -135,13 +145,25 @@ export async function GET(request: NextRequest) {
         sc.anaesthetist_id,
         sc.urgency,
         sc.state,
+        -- 26 Apr 2026 OT-booking redesign: surface the new columns so the
+        -- calendar can render multi-booking cells without a second fetch.
+        sc.planned_start_time,
+        sc.case_serial_in_slot,
+        sc.assist_surgeon_name,
+        sc.anaesthetist_name,
+        sc.anae_type,
+        sc.equipment_status,
+        sc.consumables_status,
+        sc.ot_remarks,
         sc.kx_case_id,
         sc.kx_pac_record_id,
         sc.created_at,
         sc.updated_at,
         sc.created_by,
-        sc.archived_at
+        sc.archived_at,
+        rd.full_name AS surgeon_name
       FROM surgical_cases sc
+      LEFT JOIN reference_doctors rd ON rd.id = sc.surgeon_id
       JOIN hospitals h ON h.id = sc.hospital_id
       LEFT JOIN patient_threads pt ON pt.id = sc.patient_thread_id
       WHERE ${whereClauses.join(' AND ')}

@@ -200,7 +200,7 @@ export default function OTPlanningPanel({ patientThreadId, patientStage }: OTPla
           <Stethoscope className="h-3 w-3" /> Anaesthetist Queue
         </Link>
         <Link
-          href="/ot-calendar"
+          href={`/ot-calendar?patient=${encodeURIComponent(patientThreadId)}`}
           className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
           title="OT scheduling calendar"
         >
