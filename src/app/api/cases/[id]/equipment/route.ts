@@ -115,6 +115,41 @@ export async function POST(
       );
     }
 
+    // 26 Apr 2026 audit fix (P1-3): cross-hospital inventory pollution.
+    // If the modal sent an inventory_item_id, verify it belongs to the same
+    // hospital as the case. Otherwise a multi-hospital user could attach
+    // EHRC inventory to an EHIN case, polluting downstream reporting.
+    if (body.inventory_item_id) {
+      if (!UUID_RE.test(body.inventory_item_id)) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid inventory_item_id' },
+          { status: 400 }
+        );
+      }
+      const item = await queryOne<{ id: string; hospital_id: string; is_active: boolean }>(
+        `SELECT id, hospital_id, is_active FROM equipment_inventory WHERE id = $1`,
+        [body.inventory_item_id]
+      );
+      if (!item) {
+        return NextResponse.json(
+          { success: false, error: 'Inventory item not found' },
+          { status: 404 }
+        );
+      }
+      if (!item.is_active) {
+        return NextResponse.json(
+          { success: false, error: 'Inventory item is inactive' },
+          { status: 400 }
+        );
+      }
+      if (item.hospital_id !== c.hospital_id) {
+        return NextResponse.json(
+          { success: false, error: 'Inventory item belongs to a different hospital than this case' },
+          { status: 400 }
+        );
+      }
+    }
+
     const row = await queryOne<{ id: string; created_at: string }>(
       `
       INSERT INTO equipment_requests
