@@ -42,7 +42,9 @@ interface OTPlanningPanelProps {
 }
 
 const STAGES_WITH_OT = new Set([
-  'admitted', 'pre_op', 'surgery', 'post_op', 'post_op_care', 'discharge',
+  // 26 Apr 2026 audit fix (P2-7 / D-D): include medical_management — a
+  // surgical patient stabilizing pre-op shouldn't lose access to OT planning.
+  'admitted', 'medical_management', 'pre_op', 'surgery', 'post_op', 'post_op_care', 'discharge',
 ]);
 
 const STATE_TONE: Record<string, string> = {

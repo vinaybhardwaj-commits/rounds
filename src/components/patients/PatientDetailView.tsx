@@ -515,7 +515,8 @@ export function PatientDetailView({
           // stage (matches OTPlanningPanel visibility rule). For OPD / pre_admission
           // patients the tab is hidden to avoid noise. The tab itself handles the
           // empty state if a surgical_case doesn't yet exist.
-          ...(['admitted', 'pre_op', 'surgery', 'post_op', 'post_op_care', 'discharge'].includes(patient.current_stage)
+          // P2-7: keep this in sync with STAGES_WITH_OT in OTPlanningPanel.tsx.
+          ...(['admitted', 'medical_management', 'pre_op', 'surgery', 'post_op', 'post_op_care', 'discharge'].includes(patient.current_stage)
             ? [{ id: 'ot' as DetailTab, label: 'OT Planning', icon: <Stethoscope size={14} /> }]
             : []),
         ]).map(tab => (
