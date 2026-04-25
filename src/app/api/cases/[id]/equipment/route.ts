@@ -27,10 +27,18 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import { hasRole } from '@/lib/roles';
 import { queryOne } from '@/lib/db';
 
-const CREATE_ROLES = new Set(['biomedical_engineer', 'ot_coordinator', 'super_admin']);
-const VALID_ITEM_TYPES = new Set(['specialty', 'rental', 'implant', 'blood', 'imaging']);
+// 25 Apr 2026: super_admin auto-passes via hasRole; keep allow-set narrow.
+const CREATE_ROLES = new Set(['biomedical_engineer', 'ot_coordinator']);
+// Expanded item_types after the equipment_inventory migration. The DB CHECK
+// was relaxed in the same migration to accept these.
+const VALID_ITEM_TYPES = new Set([
+  'specialty', 'rental', 'implant', 'blood', 'imaging',
+  'surgical_equipment', 'infrastructure', 'consumable', 'kit',
+  'instrument', 'other',
+]);
 const VALID_STATUSES = new Set(['requested', 'vendor_confirmed', 'in_transit', 'delivered', 'verified_ready']);
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -43,6 +51,9 @@ interface CreateBody {
   eta?: string;
   notes?: string;
   status?: string;
+  // 25 Apr 2026: optional FK to equipment_inventory + is_rental flag.
+  inventory_item_id?: string;
+  is_rental?: boolean;
 }
 
 export async function POST(
@@ -57,9 +68,9 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Case model disabled' }, { status: 503 });
     }
 
-    if (!CREATE_ROLES.has(user.role)) {
+    if (!hasRole(user.role, CREATE_ROLES)) {
       return NextResponse.json(
-        { success: false, error: `Role ${user.role} cannot create equipment requests. Required: ${[...CREATE_ROLES].join(' or ')}.` },
+        { success: false, error: `Role ${user.role} cannot create equipment requests. Required: ${[...CREATE_ROLES].join(', ')} or super_admin.` },
         { status: 403 }
       );
     }
@@ -107,8 +118,8 @@ export async function POST(
     const row = await queryOne<{ id: string; created_at: string }>(
       `
       INSERT INTO equipment_requests
-        (case_id, item_type, item_label, quantity, status, vendor_name, vendor_phone, eta, notes, auto_verified)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false)
+        (case_id, item_type, item_label, quantity, status, vendor_name, vendor_phone, eta, notes, auto_verified, inventory_item_id, is_rental)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, $10::UUID, $11::BOOLEAN)
       RETURNING id, created_at
       `,
       [
@@ -121,6 +132,8 @@ export async function POST(
         body.vendor_phone ?? null,
         body.eta ?? null,
         body.notes ?? null,
+        body.inventory_item_id ?? null,
+        !!body.is_rental,
       ]
     );
 

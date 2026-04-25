@@ -34,6 +34,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import SchedulePacModal from './SchedulePacModal';
+import EquipmentRequestModal from '@/components/ot/EquipmentRequestModal';
 import { hasRole, isSuperAdmin } from '@/lib/roles';
 
 // ---- Types (mirrors the /api/cases/:id response shape) ----
@@ -196,6 +197,7 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
   const [error, setError] = useState<string | null>(null);
   const [featureDisabled, setFeatureDisabled] = useState(false);
   const [schedulePacOpen, setSchedulePacOpen] = useState(false);
+  const [equipmentModalOpen, setEquipmentModalOpen] = useState(false);
 
   const defaultTrack = useMemo(() => defaultExpandedTrack(role), [role]);
   const [expandedTrack, setExpandedTrack] = useState<0 | 1 | 2 | null>(defaultTrack);
@@ -539,29 +541,55 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
           {equipment_requests.length === 0 ? (
             <div className="space-y-2">
               <p className="text-sm text-gray-500">No equipment requests yet for this case.</p>
-              <a
-                href="/equipment-kanban"
-                className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:underline"
-                title="Track equipment requests across all cases on the Equipment Kanban"
-              >
-                Open Equipment Kanban →
-              </a>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEquipmentModalOpen(true)}
+                  className="inline-flex items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                >
+                  <span aria-hidden>＋</span> Add request
+                </button>
+                <a
+                  href="/equipment-kanban"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline"
+                  title="Track equipment requests across all cases on the Equipment Kanban"
+                >
+                  Open Equipment Kanban →
+                </a>
+              </div>
             </div>
           ) : (
-            <ul className="space-y-1 text-xs">
-              {equipment_requests.map((er) => (
-                <li key={er.id} className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-gray-900">
-                    {er.item_label}
-                    {er.quantity > 1 && <span className="ml-1 text-gray-500">×{er.quantity}</span>}
-                  </span>
-                  <span className="text-gray-500">
-                    {er.status} {er.vendor_name ? `· ${er.vendor_name}` : ''}
-                    {er.auto_verified && <span className="ml-1 text-emerald-700">· auto-verified</span>}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div className="space-y-2">
+              <ul className="space-y-1 text-xs">
+                {equipment_requests.map((er) => (
+                  <li key={er.id} className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-gray-900">
+                      {er.item_label}
+                      {er.quantity > 1 && <span className="ml-1 text-gray-500">×{er.quantity}</span>}
+                    </span>
+                    <span className="text-gray-500">
+                      {er.status} {er.vendor_name ? `· ${er.vendor_name}` : ''}
+                      {er.auto_verified && <span className="ml-1 text-emerald-700">· auto-verified</span>}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setEquipmentModalOpen(true)}
+                  className="inline-flex items-center gap-1 rounded-md border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                >
+                  <span aria-hidden>＋</span> Add another
+                </button>
+                <a
+                  href="/equipment-kanban"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline"
+                >
+                  Open Equipment Kanban →
+                </a>
+              </div>
+            </div>
           )}
         </TrackCard>
 
@@ -607,6 +635,12 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
       isOpen={schedulePacOpen}
       onClose={() => setSchedulePacOpen(false)}
       onScheduled={() => { setSchedulePacOpen(false); reload(); }}
+    />
+    <EquipmentRequestModal
+      isOpen={equipmentModalOpen}
+      onClose={() => setEquipmentModalOpen(false)}
+      presetCaseId={caseId}
+      onCreated={() => { setEquipmentModalOpen(false); reload(); }}
     />
     </>
   );

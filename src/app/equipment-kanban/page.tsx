@@ -21,6 +21,7 @@
 // ============================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import EquipmentRequestModal from '@/components/ot/EquipmentRequestModal';
 
 interface EquipmentRow {
   id: string;
@@ -60,6 +61,7 @@ export default function EquipmentKanbanPage() {
   const [role, setRole] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -156,14 +158,25 @@ export default function EquipmentKanbanPage() {
             {canMutate && ' Drag cards between columns to advance status. Click a card then use ← / → keys.'}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={load}
-          disabled={loading}
-          className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-        >
-          {loading ? 'Refreshing…' : 'Refresh'}
-        </button>
+        <div className="flex items-center gap-2">
+          {canMutate && (
+            <button
+              type="button"
+              onClick={() => setModalOpen(true)}
+              className="inline-flex items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+            >
+              <span aria-hidden>＋</span> New request
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={load}
+            disabled={loading}
+            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {loading ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
       </header>
 
       {!featureEnabled && (
@@ -259,6 +272,12 @@ export default function EquipmentKanbanPage() {
           );
         })}
       </div>
+
+      <EquipmentRequestModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onCreated={() => { setModalOpen(false); load(); }}
+      />
     </main>
   );
 }
