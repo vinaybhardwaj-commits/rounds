@@ -334,6 +334,29 @@ const SP_SPEC: CrossFormPrefillSpec = {
   ],
 };
 
+// F8 — Discharge Readiness ← FC > MH (thin)
+const DR_SPEC: CrossFormPrefillSpec = {
+  sources: [
+    {
+      formType: 'financial_counseling',
+      autoMatch: false,
+      overrides: [
+        // FC's estimated cost is a starting point for the actual final bill.
+        { source: 'estimated_cost', target: 'total_charges' },
+        { source: 'deposit_collected_amount', target: 'amount_paid' },
+        { source: 'balance_plan', target: 'balance_payment_plan' },
+      ],
+    },
+    {
+      formType: 'consolidated_marketing_handoff',
+      autoMatch: false,
+      overrides: [
+        { source: 'estimated_total_cost', target: 'total_charges' },
+      ],
+    },
+  ],
+};
+
 // -----------------------------------------------------------------------------
 // Registry
 // -----------------------------------------------------------------------------
@@ -345,6 +368,7 @@ export const CROSS_FORM_PREFILLS: Record<string, CrossFormPrefillSpec> = {
   ot_billing_clearance: OTBC_SPEC,
   pac_clearance: PAC_SPEC,
   surgery_posting: SP_SPEC,
+  discharge_readiness: DR_SPEC,
 };
 
 // -----------------------------------------------------------------------------
