@@ -1,105 +1,191 @@
 // =============================================================================
 // src/lib/form-prefill-mapping.ts
 //
-// Cross-form prefill mappings. Used by /forms/new to merge fields from a
-// "source" form's most recent submission into a "target" form's initial
-// data when no prior version of the target form exists for the patient.
+// Cross-form prefill registry. Used by /forms/new to merge fields from
+// upstream forms into a target form's initial data.
 //
-// Precedence rule (set 25 Apr 2026 with V):
-//   - Latest target-form submission wins per-field.
-//   - Source-form mapping fills any field that is still blank in the target.
+// Design rules (set 25 Apr 2026 with V):
+//   1. Latest target-form submission wins per-field. Source chain only fills
+//      fields the target form has left blank.
+//   2. Source chain: each target lists upstream forms in priority order (most
+//      authoritative first). The chain is processed lowest-priority first, so
+//      higher-priority sources override on a per-field basis.
+//   3. Auto-match-by-key: any field with the SAME key in source's form_data
+//      and target's schema gets carried over automatically. No need to list
+//      common keys (surgeon_name, proposed_procedure, etc.).
+//   4. Overrides: explicit FieldMapping entries handle key renames + value
+//      transforms (e.g., insurance_status='insured' → payment_mode='insurance').
+//   5. excludeKeys: keys present in both forms but semantically different
+//      (rare).
 //
 // Currently wired:
-//   consolidated_marketing_handoff  →  financial_counseling
+//   consolidated_marketing_handoff  →  financial_counseling   (commit b4ad78f)
+//   consolidated_marketing_handoff  →  surgery_booking        (this commit)
 //
-// Add new mappings by extending CROSS_FORM_PREFILLS below.
+// Add a new mapping by extending CROSS_FORM_PREFILLS below.
 // =============================================================================
 
-/**
- * One field mapping from a source form's form_data into a target form's
- * form_data.
- *
- * `source` is the source field key (or array — first non-empty wins).
- * `target` is the destination field key.
- * `transform` (optional) lets us coerce values (e.g. insurance_status='insured'
- * → payment_mode='insurance').
- */
 export interface FieldMapping {
+  /** Source field key (or array — first non-empty wins) in source form_data. */
   source: string | string[];
+  /** Target field key in target form_data. */
   target: string;
+  /** Optional value coercion. */
   transform?: (value: unknown, sourceData: Record<string, unknown>) => unknown;
 }
+
+export interface SourceSpec {
+  /** Source form_type to pull from. */
+  formType: string;
+  /**
+   * If true (default), any field with the same key in source form_data and
+   * target form schema is carried over automatically. Disable for forms where
+   * key collisions are semantically different.
+   */
+  autoMatch?: boolean;
+  /**
+   * Explicit overrides for renames (different keys for the same concept) and
+   * value transforms (e.g., enum slug normalization). Override values take
+   * precedence over auto-matched values for the same target key.
+   */
+  overrides?: FieldMapping[];
+  /** Keys to NEVER carry over even when auto-match would pick them up. */
+  excludeKeys?: string[];
+}
+
+export interface CrossFormPrefillSpec {
+  /** Source forms in priority order (highest first). */
+  sources: SourceSpec[];
+}
+
+// -----------------------------------------------------------------------------
+// Value transforms
+// -----------------------------------------------------------------------------
 
 const insuranceStatusToPaymentMode = (v: unknown): unknown => {
   if (v === 'insured') return 'insurance';
   if (v === 'uninsured') return 'cash';
-  // 'unknown' or any other value → leave blank, let the user pick.
-  return undefined;
+  return undefined; // unknown / other → leave blank, user picks
+};
+
+// -----------------------------------------------------------------------------
+// Mapping definitions
+// -----------------------------------------------------------------------------
+
+/**
+ * Marketing Handoff → Financial Counseling.
+ * MH is the only source for FC.
+ */
+const FC_SPEC: CrossFormPrefillSpec = {
+  sources: [
+    {
+      formType: 'consolidated_marketing_handoff',
+      autoMatch: true,
+      overrides: [
+        // FC's admitting_consultant is text; MH's resolved name lives in target_opd_doctor.
+        { source: 'target_opd_doctor', target: 'admitting_consultant' },
+        // MH's preferred_admission_date → FC's admission_date.
+        { source: 'preferred_admission_date', target: 'admission_date' },
+        // FC's diagnosis_procedure: prefer MH's free-text procedure (surgical),
+        // fall back to clinical_summary (non-surgical).
+        {
+          source: ['proposed_procedure', 'clinical_summary'],
+          target: 'diagnosis_procedure',
+        },
+        // FC's payment_mode: derive from MH's insurance_status.
+        {
+          source: 'insurance_status',
+          target: 'payment_mode',
+          transform: insuranceStatusToPaymentMode,
+        },
+      ],
+    },
+  ],
 };
 
 /**
- * Mapping from `consolidated_marketing_handoff` → `financial_counseling`.
- * Field keys come from form-registry.ts; keep this in sync if those rename.
+ * Marketing Handoff → Surgery Booking.
+ * Most field keys line up (auto-match handles them); two need overrides.
  */
-export const MH_TO_FC_MAPPING: FieldMapping[] = [
-  // Admitting consultant: prefer the resolved display name (target_opd_doctor)
-  // over the picker id (admitting_doctor_id) since FC's field is free-text.
-  // FormRenderer auto-fills target_opd_doctor when a doctor is picked, so
-  // either path is covered.
-  { source: 'target_opd_doctor', target: 'admitting_consultant' },
-
-  // Admission date.
-  { source: 'preferred_admission_date', target: 'admission_date' },
-
-  // Surgery date — only present in MH when surgery_planned=true (Section C).
-  { source: 'preferred_surgery_date', target: 'surgery_date' },
-
-  // Diagnosis / procedure: prefer the explicit procedure (surgical), fall
-  // back to the clinical summary (non-surgical or surgery-not-planned cases).
-  // The free-text proposed_procedure key holds the typed value when not
-  // package-driven; clinical_summary is always populated.
-  {
-    source: ['proposed_procedure', 'clinical_summary'],
-    target: 'diagnosis_procedure',
-  },
-
-  // Payer mode. insurance_status values: insured | uninsured | unknown.
-  // Map: insured → 'insurance', uninsured → 'cash', unknown → leave blank.
-  // FC also has 'insurance_cash' / 'corporate' / 'credit' which require
-  // explicit user choice — we don't infer those.
-  {
-    source: 'insurance_status',
-    target: 'payment_mode',
-    transform: insuranceStatusToPaymentMode,
-  },
-];
-
-/**
- * Registry: target form_type → { sourceFormType, mapping }.
- */
-export const CROSS_FORM_PREFILLS: Record<
-  string,
-  { sourceFormType: string; mapping: FieldMapping[] }
-> = {
-  financial_counseling: {
-    sourceFormType: 'consolidated_marketing_handoff',
-    mapping: MH_TO_FC_MAPPING,
-  },
+const SB_SPEC: CrossFormPrefillSpec = {
+  sources: [
+    {
+      formType: 'consolidated_marketing_handoff',
+      autoMatch: true,
+      overrides: [
+        // MH calls it surgery_urgency; SB calls it urgency.
+        { source: 'surgery_urgency', target: 'urgency' },
+        // Auto-matched keys (kept as documentation):
+        //   surgeon_name           (Section C)
+        //   proposed_procedure     (Section C, free text)
+        //   laterality             (Section C)
+        //   clinical_justification (Section C)
+        //   known_comorbidities    (Section C, multiselect — values share enum)
+        //   comorbidities_controlled (Section C)
+        //   habits                 (Section C)
+        //   habits_stopped         (Section C)
+        //   current_medication     (Section C)
+        //   surgical_specialty     (Section C — same enum after the SB enum fix)
+        //   preferred_surgery_date (Section C → SB's preferred_surgery_date)
+      ],
+      excludeKeys: [
+        // MH's clinical_summary should not auto-fill SB.clinical_summary if SB
+        // ever adds one — clinical_justification is the SB equivalent. Defensive.
+      ],
+    },
+  ],
 };
 
+// -----------------------------------------------------------------------------
+// Registry
+// -----------------------------------------------------------------------------
+
+export const CROSS_FORM_PREFILLS: Record<string, CrossFormPrefillSpec> = {
+  financial_counseling: FC_SPEC,
+  surgery_booking: SB_SPEC,
+};
+
+// -----------------------------------------------------------------------------
+// Engine
+// -----------------------------------------------------------------------------
+
 /**
- * Apply a mapping to source form_data and return an object containing only the
- * target keys that resolved to a non-empty value. Caller spreads this into the
- * prefill (with target form's own values overriding).
+ * Apply a SourceSpec to a single source form's form_data. Returns an object
+ * keyed by target field, containing only fields that resolved to a non-empty
+ * value.
+ *
+ * `targetSchemaKeys` is the set of keys defined on the target form's schema,
+ * used to filter auto-matched keys (we don't want to inject keys the target
+ * form doesn't even know about, since FormRenderer would ignore them).
+ *
+ * Behavior:
+ *   1. Compute auto-match: for each key in sourceData that is also in
+ *      targetSchemaKeys (and not in excludeKeys), carry the value over.
+ *   2. Apply overrides on top — they can rename keys, combine multiple source
+ *      keys, or transform values.
  */
-export function applyCrossFormMapping(
+export function applySourceSpec(
   sourceData: Record<string, unknown> | null | undefined,
-  mapping: FieldMapping[]
+  spec: SourceSpec,
+  targetSchemaKeys: ReadonlySet<string>
 ): Record<string, unknown> {
   if (!sourceData) return {};
   const out: Record<string, unknown> = {};
+  const exclude = new Set(spec.excludeKeys || []);
 
-  for (const m of mapping) {
+  // 1. Auto-match
+  if (spec.autoMatch !== false) {
+    for (const [k, v] of Object.entries(sourceData)) {
+      if (exclude.has(k)) continue;
+      if (!targetSchemaKeys.has(k)) continue;
+      if (k.startsWith('_')) continue; // computed metadata flags
+      if (v === undefined || v === null || v === '') continue;
+      out[k] = v;
+    }
+  }
+
+  // 2. Overrides (override auto-matched values)
+  for (const m of spec.overrides || []) {
     const sourceKeys = Array.isArray(m.source) ? m.source : [m.source];
     let raw: unknown = undefined;
     for (const k of sourceKeys) {
@@ -110,11 +196,48 @@ export function applyCrossFormMapping(
       }
     }
     if (raw === undefined) continue;
-
     const transformed = m.transform ? m.transform(raw, sourceData) : raw;
     if (transformed === undefined || transformed === null || transformed === '') continue;
     out[m.target] = transformed;
   }
 
   return out;
+}
+
+/**
+ * Walk the source chain (lowest priority first → highest), with each higher
+ * priority overlaying the previous. Returns a flat object of fields to use as
+ * prefill alongside the target form's own latest submission.
+ */
+export function buildPrefillFromChain(
+  spec: CrossFormPrefillSpec,
+  sourceFormDataByType: Record<string, Record<string, unknown> | null | undefined>,
+  targetSchemaKeys: ReadonlySet<string>
+): Record<string, unknown> {
+  // Process in REVERSE priority (lowest first) so higher priorities overlay.
+  const ordered = [...spec.sources].reverse();
+  let merged: Record<string, unknown> = {};
+  for (const src of ordered) {
+    const data = sourceFormDataByType[src.formType];
+    if (!data) continue;
+    const slice = applySourceSpec(data, src, targetSchemaKeys);
+    merged = { ...merged, ...slice };
+  }
+  return merged;
+}
+
+/**
+ * Extract all field keys from a FormSchema's sections.
+ * Defensive: handles nested sections if any.
+ */
+export function extractSchemaKeys(schema: {
+  sections?: Array<{ fields?: Array<{ key: string }> }>;
+}): Set<string> {
+  const keys = new Set<string>();
+  for (const sec of schema.sections || []) {
+    for (const f of sec.fields || []) {
+      if (f.key) keys.add(f.key);
+    }
+  }
+  return keys;
 }

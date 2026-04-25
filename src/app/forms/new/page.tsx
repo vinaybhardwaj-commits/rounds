@@ -17,7 +17,7 @@ import {
   type FormSchema,
 } from '@/lib/form-registry';
 import type { FormType } from '@/types';
-import { CROSS_FORM_PREFILLS, applyCrossFormMapping } from '@/lib/form-prefill-mapping';
+import { CROSS_FORM_PREFILLS, buildPrefillFromChain, extractSchemaKeys } from '@/lib/form-prefill-mapping';
 
 type SubmitState = 'idle' | 'submitting' | 'success' | 'error';
 
@@ -111,16 +111,22 @@ function NewFormPage() {
       `/api/forms?form_type=${encodeURIComponent(formType)}&patient_thread_id=${encodeURIComponent(patientId)}&status=submitted&limit=1`
     ).then((r) => r.json()).catch(() => null);
 
+    // 25 Apr 2026 — chain-aware cross-form prefill. Each target form lists
+    // upstream sources in priority order; we fetch the latest submitted entry
+    // from each in parallel and let the engine merge by auto-match + overrides.
     const crossSpec = CROSS_FORM_PREFILLS[formType];
-    const sourceFetch = crossSpec
-      ? fetch(
-          `/api/forms?form_type=${encodeURIComponent(crossSpec.sourceFormType)}&patient_thread_id=${encodeURIComponent(patientId)}&status=submitted&limit=1`
-        ).then((r) => r.json()).catch(() => null)
-      : Promise.resolve(null);
+    const sourceFormTypes = crossSpec ? crossSpec.sources.map(s => s.formType) : [];
+    const sourceFetches = sourceFormTypes.map(ft =>
+      fetch(
+        `/api/forms?form_type=${encodeURIComponent(ft)}&patient_thread_id=${encodeURIComponent(patientId)}&status=submitted&limit=1`
+      ).then((r) => r.json()).catch(() => null)
+    );
 
-    Promise.all([targetFetch, sourceFetch])
-      .then(([targetBody, sourceBody]) => {
-        // Latest target-form data (the form being filled).
+    Promise.all([targetFetch, ...sourceFetches])
+      .then((bodies) => {
+        const targetBody = bodies[0];
+        const sourceBodies = bodies.slice(1);
+
         const targetData: Record<string, unknown> | null =
           targetBody?.success && Array.isArray(targetBody.data) && targetBody.data[0]?.form_data
             ? { ...(targetBody.data[0].form_data as Record<string, unknown>) }
@@ -129,28 +135,32 @@ function NewFormPage() {
           delete (targetData as Record<string, unknown>)._is_surgical_case; // recomputed
         }
 
-        // Mapped fields from the source form (only if a cross-form rule exists).
-        const sourceMapped: Record<string, unknown> = crossSpec
-          ? applyCrossFormMapping(
-              sourceBody?.success && Array.isArray(sourceBody.data) && sourceBody.data[0]?.form_data
-                ? (sourceBody.data[0].form_data as Record<string, unknown>)
-                : null,
-              crossSpec.mapping
-            )
-          : {};
+        // Build sourceFormDataByType from parallel fetch results.
+        let sourceMapped: Record<string, unknown> = {};
+        if (crossSpec && schema) {
+          const targetKeys = extractSchemaKeys(schema);
+          const sourceFormDataByType: Record<string, Record<string, unknown> | null> = {};
+          sourceFormTypes.forEach((ft, i) => {
+            const body = sourceBodies[i];
+            sourceFormDataByType[ft] =
+              body?.success && Array.isArray(body.data) && body.data[0]?.form_data
+                ? (body.data[0].form_data as Record<string, unknown>)
+                : null;
+          });
+          sourceMapped = buildPrefillFromChain(crossSpec, sourceFormDataByType, targetKeys);
+        }
 
         if (!targetData && Object.keys(sourceMapped).length === 0) {
           return; // nothing to prefill
         }
 
-        // Merge: source mapping fills blanks, target-form values win.
+        // Merge: source-chain fills blanks; target-form values win per-field.
         const merged: Record<string, unknown> = { ...sourceMapped };
         if (targetData) {
           for (const [k, v] of Object.entries(targetData)) {
             if (v !== undefined && v !== null && v !== '') {
               merged[k] = v;
             } else if (!(k in merged)) {
-              // keep the empty placeholder so React-controlled inputs render
               merged[k] = v;
             }
           }
@@ -158,7 +168,7 @@ function NewFormPage() {
         setPrefilledData(merged);
       })
       .finally(() => setPrefillLoaded(true));
-  }, [formType, patientId]);
+  }, [formType, patientId, schema]);
 
   // Submit handler
   const handleSubmit = useCallback(
