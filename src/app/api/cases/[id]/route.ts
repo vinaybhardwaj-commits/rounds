@@ -174,7 +174,7 @@ export async function GET(
         sc.created_at, sc.updated_at, sc.created_by, sc.archived_at,
         h.slug AS hospital_slug,
         h.name AS hospital_name,
-        h.display_name AS hospital_display_name,
+        h.name AS hospital_display_name,
         h.is_active AS hospital_is_active,
         pt.patient_name
       FROM surgical_cases sc
@@ -332,17 +332,12 @@ export async function GET(
       },
     });
   } catch (error) {
-    // 25 Apr 2026 debug: surface full PG error so we can see the actual
-    // 'column X does not exist' text in Vercel runtime logs.
-    const e = error as { message?: string; code?: string; detail?: string; routine?: string; query?: string };
+    const e = error as { message?: string; code?: string; detail?: string };
     console.error('GET /api/cases/[id] error:', JSON.stringify({
-      message: e.message,
-      code: e.code,
-      detail: e.detail,
-      routine: e.routine,
+      message: e.message, code: e.code, detail: e.detail,
     }));
     return NextResponse.json(
-      { success: false, error: 'Failed to load case', debug: e.message ?? null },
+      { success: false, error: 'Failed to load case' },
       { status: 500 }
     );
   }
