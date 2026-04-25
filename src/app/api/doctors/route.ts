@@ -52,37 +52,61 @@ export async function GET() {
     // doctor-shaped roles) + reference_doctors (external HR roster).
     // Response shape is unchanged; reference_doctors entries have
     // email=NULL and role derived from association (or 'consultant').
+    // 26 Apr 2026 audit fix (P1-2): server-side hospital tenancy gate.
+    // Doctors with NULL primary_hospital_id remain visible (legacy data /
+    // floating consultants) — UI-side filter handles patient-level scoping.
+    // 26 Apr 2026 audit fix (P1-4): dedup UNION ALL by case-insensitive
+    // full_name — when a doctor exists in BOTH profiles (app user) and
+    // reference_doctors (HR roster), prefer the profiles row (richer data:
+    // email, can sign in). The reference_doctors entry is suppressed.
     const rows = await query<DoctorRow>(
       `
-      SELECT
-        p.id,
-        p.full_name,
-        p.email,
-        p.role,
-        p.primary_hospital_id,
-        h.slug AS primary_hospital_slug,
-        NULL::text AS specialty
-      FROM profiles p
-      LEFT JOIN hospitals h ON h.id = p.primary_hospital_id
-      WHERE p.role = ANY($1::text[])
-
+      WITH
+        profiles_doctors AS (
+          SELECT
+            p.id,
+            p.full_name,
+            p.email,
+            p.role,
+            p.primary_hospital_id,
+            h.slug AS primary_hospital_slug,
+            NULL::text AS specialty
+          FROM profiles p
+          LEFT JOIN hospitals h ON h.id = p.primary_hospital_id
+          WHERE p.role = ANY($2::text[])
+            AND (
+              p.primary_hospital_id IS NULL
+              OR p.primary_hospital_id = ANY(user_accessible_hospital_ids($1::UUID))
+            )
+        ),
+        ref_doctors AS (
+          SELECT
+            rd.id,
+            rd.full_name,
+            NULL::text AS email,
+            COALESCE(rd.association, 'consultant') AS role,
+            rd.primary_hospital_id,
+            h2.slug AS primary_hospital_slug,
+            rd.specialty
+          FROM reference_doctors rd
+          LEFT JOIN hospitals h2 ON h2.id = rd.primary_hospital_id
+          WHERE rd.is_active = TRUE
+            AND (
+              rd.primary_hospital_id IS NULL
+              OR rd.primary_hospital_id = ANY(user_accessible_hospital_ids($1::UUID))
+            )
+        )
+      SELECT id, full_name, email, role, primary_hospital_id, primary_hospital_slug, specialty
+        FROM profiles_doctors
       UNION ALL
-
-      SELECT
-        rd.id,
-        rd.full_name,
-        NULL::text AS email,
-        COALESCE(rd.association, 'consultant') AS role,
-        rd.primary_hospital_id,
-        h2.slug AS primary_hospital_slug,
-        rd.specialty
-      FROM reference_doctors rd
-      LEFT JOIN hospitals h2 ON h2.id = rd.primary_hospital_id
-      WHERE rd.is_active = true
-
+      SELECT id, full_name, email, role, primary_hospital_id, primary_hospital_slug, specialty
+        FROM ref_doctors
+        WHERE LOWER(TRIM(COALESCE(full_name, ''))) NOT IN (
+          SELECT LOWER(TRIM(COALESCE(full_name, ''))) FROM profiles_doctors WHERE full_name IS NOT NULL
+        )
       ORDER BY full_name NULLS LAST
       `,
-      [DOCTOR_ROLE_PATTERNS]
+      [user.profileId, DOCTOR_ROLE_PATTERNS]
     );
 
     // 24 Apr 2026 — canonical surgical-specialty set, must stay in sync
