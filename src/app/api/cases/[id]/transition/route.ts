@@ -42,6 +42,14 @@ const TRANSITION_RULES: Record<string, TransitionRule> = {
     allowed_roles: new Set(['ip_coordinator', 'super_admin']),
     require_kx_uhid: true,
   },
+  // 25 Apr 2026: per V's clarification, EHRC's workflow is
+  // marketing handoff → IP Coordinator initiates PAC → PAC outcome.
+  // The 'intake' EMR-linking step doesn't exist as a distinct EHRC phase, so
+  // this rule lets ip_coordinator advance straight from draft to pac_scheduled
+  // with the SchedulePacModal capturing the date + notes via extra_metadata.
+  'draft→pac_scheduled': {
+    allowed_roles: new Set(['ip_coordinator', 'super_admin']),
+  },
   'intake→pac_scheduled': {
     allowed_roles: new Set(['ip_coordinator', 'super_admin']),
   },
@@ -105,6 +113,10 @@ export async function POST(
       to_state?: string;
       kx_uhid?: string;
       transition_reason?: string;
+      // 25 Apr 2026: free-form metadata persisted on case_state_events.metadata.
+      // Used by SchedulePacModal to capture pac_scheduled_at + pac_anaesthetist_id
+      // + notes when transitioning draft→pac_scheduled. Caller-validated.
+      extra_metadata?: Record<string, unknown>;
     };
 
     if (!body.to_state) {
@@ -190,9 +202,41 @@ export async function POST(
         body.to_state,
         body.transition_reason ?? ruleKey,
         user.profileId,
-        JSON.stringify({ via: 'api/cases/transition', rule: ruleKey, kx_uhid_set: !!body.kx_uhid }),
+        JSON.stringify({
+          via: 'api/cases/transition',
+          rule: ruleKey,
+          kx_uhid_set: !!body.kx_uhid,
+          ...(body.extra_metadata && typeof body.extra_metadata === 'object' ? body.extra_metadata : {}),
+        }),
       ]
     );
+
+    // 25 Apr 2026: when leaving 'draft' state, auto-close any pending case-spawn
+    // tasks (e.g. 'Initiate PAC for ...' created on handoff submit). The IP
+    // Coordinator picked up the case and acted, so the reminder is done.
+    if (c.state === 'draft') {
+      try {
+        await sqlQuery(
+          `
+          UPDATE tasks
+             SET status = 'done',
+                 completed_at = NOW(),
+                 completed_by = $1,
+                 updated_at = NOW(),
+                 metadata = COALESCE(metadata, '{}'::jsonb) ||
+                            jsonb_build_object('closed_via_transition', $2::text)
+           WHERE case_id = $3
+             AND source = 'auto'
+             AND source_ref = 'case:initiate_pac'
+             AND status = 'pending'
+          `,
+          [user.profileId, ruleKey, id]
+        );
+      } catch (taskErr) {
+        // Non-fatal \u2014 transition succeeded, task closure is housekeeping.
+        console.error('[transition] task closure failed (non-fatal):', (taskErr as Error).message);
+      }
+    }
 
     const updated = await queryOne<CaseRow>(
       `SELECT id, hospital_id, state, kx_case_id AS kx_uhid, patient_thread_id FROM surgical_cases WHERE id = $1`,

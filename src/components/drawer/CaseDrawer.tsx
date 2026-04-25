@@ -33,6 +33,7 @@
 // ============================================
 
 import { useEffect, useMemo, useState } from 'react';
+import SchedulePacModal from './SchedulePacModal';
 
 // ---- Types (mirrors the /api/cases/:id response shape) ----
 
@@ -193,6 +194,7 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [featureDisabled, setFeatureDisabled] = useState(false);
+  const [schedulePacOpen, setSchedulePacOpen] = useState(false);
 
   const defaultTrack = useMemo(() => defaultExpandedTrack(role), [role]);
   const [expandedTrack, setExpandedTrack] = useState<0 | 1 | 2 | null>(defaultTrack);
@@ -353,6 +355,7 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
   // ---- DRAWER MODE (Shape C) ----
 
   return (
+    <>
     <div className="flex h-full flex-col bg-white">
       {/* Header */}
       <header className="flex items-start justify-between gap-3 border-b border-gray-200 px-5 py-4">
@@ -409,8 +412,20 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
         >
           <div className="space-y-3 text-sm">
             {pac_events.length === 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <p className="text-gray-500">No PAC events yet for this case.</p>
+                {/* 25 Apr 2026: IP Coordinator can schedule PAC straight from
+                    the case detail when state === 'draft'. Closes the loop
+                    opened by the auto-task created on handoff submit. */}
+                {c.state === 'draft' && (role === 'ip_coordinator' || role === 'super_admin') && (
+                  <button
+                    type="button"
+                    onClick={() => setSchedulePacOpen(true)}
+                    className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+                  >
+                    Schedule PAC
+                  </button>
+                )}
                 <a
                   href="/anaesthetist-queue"
                   className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:underline"
@@ -584,6 +599,15 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
         </section>
       </div>
     </div>
+    <SchedulePacModal
+      caseId={caseId}
+      patientName={patient?.patient_name ?? null}
+      currentState={c.state}
+      isOpen={schedulePacOpen}
+      onClose={() => setSchedulePacOpen(false)}
+      onScheduled={() => { setSchedulePacOpen(false); reload(); }}
+    />
+    </>
   );
 }
 
