@@ -332,9 +332,17 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error('GET /api/cases/[id] error:', error);
+    // 25 Apr 2026 debug: surface full PG error so we can see the actual
+    // 'column X does not exist' text in Vercel runtime logs.
+    const e = error as { message?: string; code?: string; detail?: string; routine?: string; query?: string };
+    console.error('GET /api/cases/[id] error:', JSON.stringify({
+      message: e.message,
+      code: e.code,
+      detail: e.detail,
+      routine: e.routine,
+    }));
     return NextResponse.json(
-      { success: false, error: 'Failed to load case' },
+      { success: false, error: 'Failed to load case', debug: e.message ?? null },
       { status: 500 }
     );
   }
