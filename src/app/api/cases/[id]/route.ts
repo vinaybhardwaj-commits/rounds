@@ -274,8 +274,15 @@ export async function GET(
           mobile: string | null;
           created_at: string;
         }>(
+          // 25 Apr 2026 fix: patient_threads columns are 'uhid' and 'phone'
+          // (not 'kx_uhid' and 'mobile'). Aliased so the JS shape consumed by
+          // CaseDrawer stays identical.
           `
-          SELECT id, patient_name, kx_uhid, age, gender, mobile, created_at
+          SELECT id, patient_name,
+                 uhid AS kx_uhid,
+                 age, gender,
+                 phone AS mobile,
+                 created_at
           FROM patient_threads
           WHERE id = $1
           `,
