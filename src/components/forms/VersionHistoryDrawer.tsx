@@ -35,6 +35,7 @@ interface SubmissionRow {
   form_data: Record<string, unknown>;
   created_at: string;
   status: string;
+  completion_score: number | null;  // 0..1, computed at submit time
 }
 
 interface FormGroup {
@@ -252,6 +253,23 @@ export default function VersionHistoryDrawer({
                                 <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${statusClass}`}>
                                   {row.status}
                                 </span>
+                                {row.completion_score != null && (() => {
+                                  const pct = Math.round(row.completion_score * 100);
+                                  // Color: green \u2265 90, amber 50-89, red < 50.
+                                  const completionClass = pct >= 90
+                                    ? 'bg-green-100 text-green-700'
+                                    : pct >= 50
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-red-100 text-red-700';
+                                  return (
+                                    <span
+                                      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${completionClass}`}
+                                      title="How much of the form was filled at submit time"
+                                    >
+                                      {pct}% complete
+                                    </span>
+                                  );
+                                })()}
                                 {changed > 0 && (
                                   <span className="rounded bg-yellow-100 text-yellow-800 px-1.5 py-0.5 text-[10px] font-medium">
                                     {changed} field{changed === 1 ? '' : 's'} changed

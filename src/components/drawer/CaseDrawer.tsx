@@ -124,7 +124,10 @@ interface CaseDetail {
 // ---- State pill color map ----
 
 const STATE_STYLES: Record<string, { bg: string; fg: string; label: string }> = {
-  draft:         { bg: 'bg-gray-100',    fg: 'text-gray-800',    label: 'Draft' },
+  // 25 Apr 2026: relabeled from 'Draft' → 'Pending intake'. The DB column
+  // value stays 'draft' for the state machine; only the user-facing label
+  // changes so it doesn't collide with form_submissions.status='draft'.
+  draft:         { bg: 'bg-sky-50',     fg: 'text-sky-800',     label: 'Pending intake' },
   intake:        { bg: 'bg-sky-100',     fg: 'text-sky-800',     label: 'Intake' },
   pac_scheduled: { bg: 'bg-indigo-100',  fg: 'text-indigo-800',  label: 'PAC Scheduled' },
   pac_done:      { bg: 'bg-indigo-200',  fg: 'text-indigo-900',  label: 'PAC Done' },
