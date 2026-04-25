@@ -324,6 +324,10 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
           { value: 'ehin', label: 'EHIN — Indiranagar' },
         ], helpText: 'Which hospital should this patient be routed to? (Auto-fills based on admitting doctor.)', width: 'half' },
         { key: 'clinical_summary', label: 'Clinical Summary', type: 'textarea', validation: { required: true, maxLength: 2000 }, helpText: '2–3 sentence clinical context for downstream teams', placeholder: 'Brief clinical context: what the patient needs, history, current status' },
+        // 25 Apr 2026 — added so allergies flow through cross-form prefill into
+        // Admission Advice, Surgery Posting, and PAC Clearance (which all have
+        // allergies fields). Captured at intake; reviewed by clinical care later.
+        { key: 'allergies', label: 'Known Allergies', type: 'textarea', placeholder: 'Drug / food / latex allergies. Include severity + reaction type if known.', helpText: 'Carries forward to Surgery Posting, PAC Clearance, and Admission Advice.' },
         // Sprint 1 Day 4 — admitting_doctor_id is the Picker B driver. Options are
         // populated dynamically by FormRenderer from /api/doctors. When a doctor is
         // picked, FormRenderer auto-fills target_opd_doctor (display name) and
