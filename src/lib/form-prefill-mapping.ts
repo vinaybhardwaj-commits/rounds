@@ -305,7 +305,10 @@ const SP_SPEC: CrossFormPrefillSpec = {
       overrides: [
         { source: 'surgeon_name', target: 'primary_surgeon' },
         { source: 'proposed_procedure', target: 'surgery_name' },
-        { source: 'surgical_specialty', target: 'surgery_type' },
+        // 26 Apr 2026 audit fix (P0-2): removed `surgical_specialty → surgery_type` —
+        // SP.surgery_type is {elective, emergency, daycare} (urgency-shaped),
+        // not a specialty enum. Prefilling 'Orthopedics' into a 3-option select
+        // wrote an invalid value. User picks fresh on SP for surgery_type.
         { source: 'preferred_surgery_date', target: 'preferred_date' },
         { source: 'preferred_surgery_time', target: 'preferred_time' },
         // British → American spelling.
@@ -330,7 +333,7 @@ const SP_SPEC: CrossFormPrefillSpec = {
         // Same shape — MH fallback if SB not yet submitted.
         { source: 'surgeon_name', target: 'primary_surgeon' },
         { source: 'proposed_procedure', target: 'surgery_name' },
-        { source: 'surgical_specialty', target: 'surgery_type' },
+        // P0-2: surgical_specialty → surgery_type override removed (see SB block).
         { source: 'preferred_surgery_date', target: 'preferred_date' },
         { source: 'preferred_surgery_time', target: 'preferred_time' },
         { source: 'known_comorbidities', target: 'comorbidities' },
