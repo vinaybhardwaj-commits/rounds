@@ -243,6 +243,28 @@ const OTBC_SPEC: CrossFormPrefillSpec = {
   ],
 };
 
+// F3 — PAC Clearance ← Surgery Booking > Marketing Handoff
+// Most PAC fields are anaesthesia-assessment data captured fresh; the ONE
+// rename that helps is current_medication → current_medications (s).
+const PAC_SPEC: CrossFormPrefillSpec = {
+  sources: [
+    {
+      formType: 'surgery_booking',
+      autoMatch: false, // PAC has no shared keys with SB; explicit-only.
+      overrides: [
+        { source: 'current_medication', target: 'current_medications' },
+      ],
+    },
+    {
+      formType: 'consolidated_marketing_handoff',
+      autoMatch: false,
+      overrides: [
+        { source: 'current_medication', target: 'current_medications' },
+      ],
+    },
+  ],
+};
+
 // -----------------------------------------------------------------------------
 // Registry
 // -----------------------------------------------------------------------------
@@ -252,6 +274,7 @@ export const CROSS_FORM_PREFILLS: Record<string, CrossFormPrefillSpec> = {
   surgery_booking: SB_SPEC,
   admission_advice: AA_SPEC,
   ot_billing_clearance: OTBC_SPEC,
+  pac_clearance: PAC_SPEC,
 };
 
 // -----------------------------------------------------------------------------
