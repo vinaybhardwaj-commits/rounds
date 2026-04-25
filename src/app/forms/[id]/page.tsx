@@ -100,6 +100,30 @@ export default function FormViewPage({ params }: { params: { id: string } }) {
       .catch(() => {});
   }, [data]);
 
+  // 25 Apr 2026 fix: useMemo MUST be called on every render (Rules of Hooks).
+  // Previously this was below the early-returns for loading/error, so on the
+  // first render (loading=true) it wasn't called, but on subsequent renders
+  // (data loaded) it was — different hook counts → React #310. The internal
+  // null-check on prevFormData covers the no-data case while data still loads.
+  // 24 Apr 2026 (Commit D): compute the set of fields that differ from the
+  // prior version. Empty set if no prior. Changed fields get .field-changed
+  // (subtle yellow highlight on screen, stripped on print).
+  const changedFields = useMemo<Set<string>>(() => {
+    if (!data || !prevFormData) return new Set<string>();
+    const s = new Set<string>();
+    const keys = new Set([
+      ...Object.keys(data.form_data || {}),
+      ...Object.keys(prevFormData || {}),
+    ]);
+    for (const k of keys) {
+      if (k.startsWith('_')) continue; // skip computed metadata
+      if (JSON.stringify(data.form_data?.[k]) !== JSON.stringify(prevFormData?.[k])) {
+        s.add(k);
+      }
+    }
+    return s;
+  }, [data, prevFormData]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -125,26 +149,6 @@ export default function FormViewPage({ params }: { params: { id: string } }) {
   const schema: FormSchema | undefined = FORM_REGISTRY[data.form_type];
   const formLabel = FORM_TYPE_LABELS[data.form_type] || data.form_type;
   const completionPct = data.completion_score != null ? Math.round(data.completion_score * 100) : null;
-
-  // 24 Apr 2026 (Commit D) — compute the set of fields that differ from
-  // the prior version. Empty set if no prior (first submission). Changed
-  // fields get the .field-changed class which is a subtle yellow highlight
-  // on-screen and NO highlight when printing.
-  const changedFields = useMemo<Set<string>>(() => {
-    if (!prevFormData) return new Set<string>();
-    const s = new Set<string>();
-    const keys = new Set([
-      ...Object.keys(data.form_data || {}),
-      ...Object.keys(prevFormData || {}),
-    ]);
-    for (const k of keys) {
-      if (k.startsWith('_')) continue; // skip computed metadata
-      if (JSON.stringify(data.form_data?.[k]) !== JSON.stringify(prevFormData?.[k])) {
-        s.add(k);
-      }
-    }
-    return s;
-  }, [data, prevFormData]);
 
   return (
     <div className="min-h-screen bg-gray-50">
