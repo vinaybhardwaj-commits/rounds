@@ -282,6 +282,8 @@ const PAC_SPEC: CrossFormPrefillSpec = {
       autoMatch: false,
       overrides: [
         { source: 'current_medication', target: 'current_medications' },
+        // 25 Apr 2026 — MH now captures allergies; carry to PAC.
+        { source: 'allergies', target: 'allergies' },
       ],
     },
   ],
