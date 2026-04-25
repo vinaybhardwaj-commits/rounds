@@ -466,21 +466,34 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
         // Sprint 1 Day 3 — surgery_planned drives draft auto-creation (Decision: Framing B).
         // If false, Section C is hidden and no surgical_cases row is created on submit.
         { key: 'surgery_planned', label: 'Surgery planned for this patient?', type: 'checkbox', defaultValue: true, helpText: 'Uncheck if this is an intake-only handoff (no surgery yet). Hides the surgical plan below.' },
-        { key: 'surgeon_name', label: 'Surgeon Name', type: 'text', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true }, placeholder: 'Who will operate (may differ from OPD doctor)', width: 'half' },
+        // 25 Apr 2026 — common case: admitting doctor IS the operating surgeon. The
+        // two fields below (surgeon_name + surgical_specialty) auto-mirror Section A
+        // values and render read-only. Tick this checkbox only for the rare case
+        // where someone else operates; FormRenderer then exposes operating_surgeon_id
+        // as a fresh picker (surgical-specialty doctors + Other).
+        { key: 'different_operating_surgeon', label: 'Operating surgeon is different from admitting doctor', type: 'checkbox', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, helpText: 'Tick only if a different surgeon will operate. Otherwise the admitting doctor is assumed to be the operating surgeon.' },
+        { key: 'operating_surgeon_id', label: 'Operating Surgeon', type: 'select', visibleWhen: { field: 'different_operating_surgeon', operator: 'truthy' }, validation: { required: true }, options: [], helpText: 'Pick the operating surgeon, or choose Other to type manually.', width: 'half' },
+        { key: 'surgeon_name', label: 'Surgeon Name', type: 'text', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true }, placeholder: 'Who will operate', width: 'half' },
+        // 25 Apr 2026 — replaced 13 snake_case options with the 16 canonical
+        // surgical specialties so this field is the same taxonomy as Section A
+        // target_department (single source of truth, no drift).
         { key: 'surgical_specialty', label: 'Surgical Specialty', type: 'select', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true }, options: [
-          { value: 'general_surgery', label: 'General Surgery' },
-          { value: 'orthopaedics', label: 'Orthopaedics' },
-          { value: 'ent', label: 'ENT' },
-          { value: 'urology', label: 'Urology' },
-          { value: 'gynaecology', label: 'Gynaecology' },
-          { value: 'ophthalmology', label: 'Ophthalmology' },
-          { value: 'neurosurgery', label: 'Neurosurgery' },
-          { value: 'cardiothoracic', label: 'Cardiothoracic' },
-          { value: 'plastic_surgery', label: 'Plastic Surgery' },
-          { value: 'paediatric_surgery', label: 'Paediatric Surgery' },
-          { value: 'vascular_surgery', label: 'Vascular Surgery' },
-          { value: 'gastro_surgery', label: 'GI / Laparoscopic Surgery' },
-          { value: 'other', label: 'Other' },
+          { value: 'Dentistry', label: 'Dentistry' },
+          { value: 'Dermatology', label: 'Dermatology' },
+          { value: 'ENT', label: 'ENT' },
+          { value: 'General Surgery', label: 'General Surgery' },
+          { value: 'Neurosurgery', label: 'Neurosurgery' },
+          { value: 'Obstetrics & Gynecology', label: 'Obstetrics & Gynecology' },
+          { value: 'Oncology', label: 'Oncology' },
+          { value: 'Ophthalmology', label: 'Ophthalmology' },
+          { value: 'Oral & Maxillofacial Surgery', label: 'Oral & Maxillofacial Surgery' },
+          { value: 'Orthopedics', label: 'Orthopedics' },
+          { value: 'Paediatric Surgery', label: 'Paediatric Surgery' },
+          { value: 'Plastic Surgery', label: 'Plastic Surgery' },
+          { value: 'Surgical Gastroenterology', label: 'Surgical Gastroenterology' },
+          { value: 'Surgical Oncology', label: 'Surgical Oncology' },
+          { value: 'Urology', label: 'Urology' },
+          { value: 'Vascular Surgery', label: 'Vascular Surgery' },
         ], width: 'half' },
         { key: 'proposed_procedure', label: 'Proposed Procedure', type: 'text', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true }, placeholder: 'What surgery is planned' },
         { key: 'laterality', label: 'Laterality', type: 'select', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true }, options: [

@@ -294,6 +294,68 @@ export default function FormRenderer({
     });
   }, [formData.target_department, schema.formType]);
 
+  // 25 Apr 2026 — Operating-surgeon mirror.
+  // Common case (different_operating_surgeon=false): the admitting doctor is
+  // also the operating surgeon, so surgeon_name + surgical_specialty mirror
+  // Section A's target_opd_doctor + target_department. operating_surgeon_id
+  // also mirrors admitting_doctor_id so downstream consumers can tell who
+  // it actually points at. Re-runs whenever Section A picks change, so a
+  // marketing-side switch propagates automatically while different=false.
+  useEffect(() => {
+    if (schema.formType !== 'consolidated_marketing_handoff') return;
+    if (formData.different_operating_surgeon) return;
+    setFormData((prev) => {
+      const next: Record<string, unknown> = { ...prev };
+      let changed = false;
+      if (prev.operating_surgeon_id !== prev.admitting_doctor_id) {
+        next.operating_surgeon_id = prev.admitting_doctor_id;
+        changed = true;
+      }
+      if (prev.surgeon_name !== prev.target_opd_doctor) {
+        next.surgeon_name = prev.target_opd_doctor;
+        changed = true;
+      }
+      if (prev.surgical_specialty !== prev.target_department) {
+        next.surgical_specialty = prev.target_department;
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [
+    formData.different_operating_surgeon,
+    formData.admitting_doctor_id,
+    formData.target_opd_doctor,
+    formData.target_department,
+    schema.formType,
+  ]);
+
+  // 25 Apr 2026 — Picker B side-effect for operating_surgeon_id. Mirrors the
+  // admitting_doctor_id effect: when a real doctor is picked, auto-fill
+  // surgeon_name + surgical_specialty. When 'Other', clear surgeon_name so
+  // the user starts fresh in the manual-entry text box.
+  useEffect(() => {
+    if (schema.formType !== 'consolidated_marketing_handoff') return;
+    if (!formData.different_operating_surgeon) return;
+    const docId = formData.operating_surgeon_id as string | undefined;
+    if (!docId) return;
+    if (docId === 'other') {
+      setFormData((prev) => ({ ...prev, surgeon_name: '' }));
+      return;
+    }
+    const doc = doctorOptions.find((d) => d.id === docId);
+    if (!doc) return;
+    setFormData((prev) => ({
+      ...prev,
+      surgeon_name: doc.name,
+      ...(doc.specialty ? { surgical_specialty: doc.specialty } : {}),
+    }));
+  }, [
+    formData.operating_surgeon_id,
+    formData.different_operating_surgeon,
+    doctorOptions,
+    schema.formType,
+  ]);
+
   // Mark field as touched on blur
   const touchField = useCallback((key: string) => {
     setTouchedFields((prev) => new Set(prev).add(key));
@@ -446,47 +508,106 @@ export default function FormRenderer({
         // an explicit manual-entry path. target_opd_doctor (free text) is now
         // hidden when a real doctor is picked and shown only when the picker
         // is unset or 'Other' is chosen.
-        const sectionForRender = usesPickerB && section.fields.some((f) => f.key === 'admitting_doctor_id')
-          ? {
-              ...section,
-              fields: section.fields.map((f) => {
-                if (f.key === 'admitting_doctor_id') {
-                  return {
-                    ...f,
-                    options: [
-                      ...doctorOptions.map((d) => ({
-                        value: d.id,
-                        label: `${d.name}${d.primary_hospital_slug ? ` · ${d.primary_hospital_slug.toUpperCase()}` : ''}`,
-                      })),
-                      { value: 'other', label: 'Other — type manually' },
-                    ],
-                    helpText: doctorsLoading
-                      ? 'Loading doctor list…'
-                      : doctorsError
-                      ? `Couldn't load doctors: ${doctorsError}. Choose Other to type a name.`
-                      : doctorOptions.length === 0
-                      ? 'No doctors seeded yet. Choose Other to type the name.'
-                      : 'Pick a doctor, or choose Other to type manually.',
-                  };
-                }
-                if (f.key === 'target_opd_doctor') {
-                  // Hide unless picker is empty or 'Other'. 'in' operator supports
-                  // array membership; undefined and '' both count as 'not picked'.
-                  return {
-                    ...f,
-                    visibleWhen: {
-                      field: 'admitting_doctor_id',
-                      operator: 'in' as const,
-                      value: ['', 'other', undefined, null],
-                    },
-                    label: 'Admitting Doctor — Manual Entry',
-                    helpText: 'Shown because you chose Other (or haven\u2019t picked yet). Type the full name here.',
-                  };
-                }
-                return f;
-              }),
-            }
-          : section;
+        const sectionForRender = (() => {
+          // 25 Apr 2026 — extended to also rewrite Section C operating-surgeon
+          // fields. Gate kept minimal so non-handoff forms skip the .map.
+          const sectionHasPickerBField =
+            section.fields.some((f) =>
+              f.key === 'admitting_doctor_id' ||
+              f.key === 'operating_surgeon_id' ||
+              f.key === 'surgeon_name' ||
+              f.key === 'surgical_specialty'
+            );
+          if (!usesPickerB || !sectionHasPickerBField) return section;
+          return {
+            ...section,
+            fields: section.fields.map((f) => {
+              if (f.key === 'admitting_doctor_id') {
+                return {
+                  ...f,
+                  options: [
+                    ...doctorOptions.map((d) => ({
+                      value: d.id,
+                      label: `${d.name}${d.primary_hospital_slug ? ' \u00B7 ' + d.primary_hospital_slug.toUpperCase() : ''}`,
+                    })),
+                    { value: 'other', label: 'Other \u2014 type manually' },
+                  ],
+                  helpText: doctorsLoading
+                    ? 'Loading doctor list\u2026'
+                    : doctorsError
+                    ? `Couldn't load doctors: ${doctorsError}. Choose Other to type a name.`
+                    : doctorOptions.length === 0
+                    ? 'No doctors seeded yet. Choose Other to type the name.'
+                    : 'Pick a doctor, or choose Other to type manually.',
+                };
+              }
+              if (f.key === 'target_opd_doctor') {
+                // Hide unless picker is empty or 'Other'.
+                return {
+                  ...f,
+                  visibleWhen: {
+                    field: 'admitting_doctor_id',
+                    operator: 'in' as const,
+                    value: ['', 'other', undefined, null],
+                  },
+                  label: 'Admitting Doctor \u2014 Manual Entry',
+                  helpText: 'Shown because you chose Other (or haven\u2019t picked yet). Type the full name here.',
+                };
+              }
+              // 25 Apr 2026 — operating_surgeon_id picker (Section C, only
+              // shown when different_operating_surgeon is ticked). Filter to
+              // is_surgical=true; 'Other' stays as a fallback.
+              if (f.key === 'operating_surgeon_id') {
+                const surgicalDoctors = doctorOptions.filter((d) => d.is_surgical);
+                return {
+                  ...f,
+                  options: [
+                    ...surgicalDoctors.map((d) => ({
+                      value: d.id,
+                      label: `${d.name}${d.primary_hospital_slug ? ' \u00B7 ' + d.primary_hospital_slug.toUpperCase() : ''}`,
+                    })),
+                    { value: 'other', label: 'Other \u2014 type manually' },
+                  ],
+                  helpText: doctorsLoading
+                    ? 'Loading doctor list\u2026'
+                    : doctorsError
+                    ? `Couldn't load doctors: ${doctorsError}. Choose Other to type a name.`
+                    : surgicalDoctors.length === 0
+                    ? 'No surgical doctors on file. Choose Other to type the name.'
+                    : `Pick the operating surgeon (${surgicalDoctors.length} on file), or choose Other to type manually.`,
+                };
+              }
+              // 25 Apr 2026 — surgeon_name readonly logic.
+              if (f.key === 'surgeon_name') {
+                const isDifferent = !!formData.different_operating_surgeon;
+                const opSurgId = formData.operating_surgeon_id as string | undefined;
+                const isOther = !opSurgId || opSurgId === 'other';
+                const shouldBeReadonly = !isDifferent || (isDifferent && !isOther);
+                return {
+                  ...f,
+                  readonly: shouldBeReadonly,
+                  helpText: !isDifferent
+                    ? 'Auto-filled from admitting doctor in Section A.'
+                    : isOther
+                    ? 'Type the operating surgeon\u2019s full name.'
+                    : 'Auto-filled from operating-surgeon pick above.',
+                };
+              }
+              // 25 Apr 2026 — surgical_specialty readonly when not different.
+              if (f.key === 'surgical_specialty') {
+                const isDifferent = !!formData.different_operating_surgeon;
+                return {
+                  ...f,
+                  readonly: !isDifferent,
+                  helpText: isDifferent
+                    ? 'Defaults from operating-surgeon pick. Override if needed.'
+                    : 'Auto-filled from admitting doctor\u2019s specialty in Section A.',
+                };
+              }
+              return f;
+            }),
+          };
+        })();
         return (
           <SectionRenderer
             key={section.id}
@@ -739,6 +860,11 @@ function FieldRenderer({
 
   // SELECT
   if (field.type === 'select' && field.options) {
+    // 25 Apr 2026: honour readonly on selects via disabled. React's controlled
+    // value remains in formData, so the form still POSTs the right value.
+    const selectClasses = field.readonly
+      ? `${inputClasses} bg-gray-50 text-gray-700 cursor-not-allowed`
+      : inputClasses;
     return (
       <div>
         {labelEl}
@@ -747,7 +873,8 @@ function FieldRenderer({
           value={(value as string) || ''}
           onChange={(e) => onChange(e.target.value || undefined)}
           onBlur={onBlur}
-          className={inputClasses}
+          disabled={field.readonly}
+          className={selectClasses}
         >
           <option value="">— Select —</option>
           {field.options.map((opt) => (
