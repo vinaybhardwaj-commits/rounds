@@ -103,6 +103,28 @@ const preauthInitiatedToStatus = (v: unknown): unknown => {
   return undefined;
 };
 
+/**
+ * F7.B transform: parse free-text estimated duration ("2 hours", "90 min",
+ * "1h 30m") to integer minutes. Falls back to undefined if parse fails so
+ * SP.estimated_duration_min stays blank.
+ */
+const parseDurationToMinutes = (v: unknown): unknown => {
+  if (typeof v !== 'string') return undefined;
+  const s = v.trim().toLowerCase();
+  if (!s) return undefined;
+  // pure number → assume minutes
+  if (/^\d+$/.test(s)) return parseInt(s, 10);
+  let total = 0;
+  let matched = false;
+  // hours
+  const hMatch = s.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hour|hours)\b/);
+  if (hMatch) { total += Math.round(parseFloat(hMatch[1]) * 60); matched = true; }
+  // minutes
+  const mMatch = s.match(/(\d+)\s*(?:m|min|mins|minute|minutes)\b/);
+  if (mMatch) { total += parseInt(mMatch[1], 10); matched = true; }
+  return matched ? total : undefined;
+};
+
 const insuranceStatusToPaymentMode = (v: unknown): unknown => {
   if (v === 'insured') return 'insurance';
   if (v === 'uninsured') return 'cash';
@@ -265,6 +287,53 @@ const PAC_SPEC: CrossFormPrefillSpec = {
   ],
 };
 
+// F7 — Surgery Posting ← Surgery Booking > Marketing Handoff
+// SP is still active (referenced in OT Items / PAC bottom sheet / clearance
+// pipeline). Audit confirmed before wiring.
+const SP_SPEC: CrossFormPrefillSpec = {
+  sources: [
+    {
+      formType: 'surgery_booking',
+      autoMatch: true,
+      // Auto-match catches: laterality (other SB↔SP overlaps go via overrides
+      // because of the rename pattern).
+      overrides: [
+        { source: 'surgeon_name', target: 'primary_surgeon' },
+        { source: 'proposed_procedure', target: 'surgery_name' },
+        { source: 'surgical_specialty', target: 'surgery_type' },
+        { source: 'preferred_surgery_date', target: 'preferred_date' },
+        { source: 'preferred_surgery_time', target: 'preferred_time' },
+        // British → American spelling.
+        { source: 'anaesthesia_type', target: 'anesthesia_type' },
+        // F7.B: free-text "2 hours" → minutes integer.
+        {
+          source: 'estimated_duration',
+          target: 'estimated_duration_min',
+          transform: parseDurationToMinutes,
+        },
+        { source: 'known_comorbidities', target: 'comorbidities' },
+        { source: 'special_requirements', target: 'special_equipment' },
+      ],
+      excludeKeys: [
+        // ready_* status flags are bedside confirmations; never prefill.
+      ],
+    },
+    {
+      formType: 'consolidated_marketing_handoff',
+      autoMatch: true,
+      overrides: [
+        // Same shape — MH fallback if SB not yet submitted.
+        { source: 'surgeon_name', target: 'primary_surgeon' },
+        { source: 'proposed_procedure', target: 'surgery_name' },
+        { source: 'surgical_specialty', target: 'surgery_type' },
+        { source: 'preferred_surgery_date', target: 'preferred_date' },
+        { source: 'preferred_surgery_time', target: 'preferred_time' },
+        { source: 'known_comorbidities', target: 'comorbidities' },
+      ],
+    },
+  ],
+};
+
 // -----------------------------------------------------------------------------
 // Registry
 // -----------------------------------------------------------------------------
@@ -275,6 +344,7 @@ export const CROSS_FORM_PREFILLS: Record<string, CrossFormPrefillSpec> = {
   admission_advice: AA_SPEC,
   ot_billing_clearance: OTBC_SPEC,
   pac_clearance: PAC_SPEC,
+  surgery_posting: SP_SPEC,
 };
 
 // -----------------------------------------------------------------------------
