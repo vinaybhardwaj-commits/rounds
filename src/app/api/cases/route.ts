@@ -251,9 +251,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Idempotency: return existing active case if one exists.
+    // 26 Apr 2026 audit fix (P1-5): exclude terminal states (cancelled,
+    // postponed) — those are 'done' from the user's perspective, so a
+    // 'Create surgical case' button click after a cancellation should
+    // create a fresh case, not return the cancelled one.
     const existing = await queryOne<{ id: string; state: string }>(
       `SELECT id, state FROM surgical_cases
-        WHERE patient_thread_id = $1 AND archived_at IS NULL
+        WHERE patient_thread_id = $1
+          AND archived_at IS NULL
+          AND state NOT IN ('cancelled', 'postponed')
         ORDER BY created_at DESC LIMIT 1`,
       [patientThreadId]
     );
