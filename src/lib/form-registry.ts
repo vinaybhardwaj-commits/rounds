@@ -6,6 +6,7 @@
 // ============================================
 
 import type { FormType, UserRole } from '@/types';
+import { CLINICAL_SPECIALTIES, SURGICAL_SPECIALTIES } from '@/lib/clinical-specialties';
 
 // ============================================
 // SCHEMA TYPES
@@ -350,46 +351,12 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
         // 24 Apr 2026 — target_department is now a select driven by doctor mapping.
         // Auto-filled by FormRenderer from the selected doctor's specialty; editable.
         // When 'Other' doctor is picked, user picks manually. Value drives Section C visibility.
-        { key: 'target_department', label: 'Target Department / Specialty', type: 'select', validation: { required: true }, options: [
-          { value: 'Anaesthesia', label: 'Anaesthesia' },
-          { value: 'Cardiology', label: 'Cardiology' },
-          { value: 'Dentistry', label: 'Dentistry' },
-          { value: 'Dermatology', label: 'Dermatology' },
-          { value: 'ENT', label: 'ENT' },
-          { value: 'Emergency', label: 'Emergency' },
-          { value: 'Endocrinology', label: 'Endocrinology' },
-          { value: 'Gastroenterology', label: 'Gastroenterology' },
-          { value: 'General Surgery', label: 'General Surgery' },
-          { value: 'ICU', label: 'ICU' },
-          { value: 'Internal Medicine', label: 'Internal Medicine' },
-          { value: 'Medical Oncology', label: 'Medical Oncology' },
-          { value: 'Nephrology', label: 'Nephrology' },
-          { value: 'Neurology', label: 'Neurology' },
-          { value: 'Neurosurgery', label: 'Neurosurgery' },
-          { value: 'Obstetrics & Gynecology', label: 'Obstetrics & Gynecology' },
-          { value: 'Oncology', label: 'Oncology' },
-          { value: 'Ophthalmology', label: 'Ophthalmology' },
-          { value: 'Oral & Maxillofacial Surgery', label: 'Oral & Maxillofacial Surgery' },
-          { value: 'Orthopedics', label: 'Orthopedics' },
-          { value: 'Paediatric Haemato-Oncology', label: 'Paediatric Haemato-Oncology' },
-          { value: 'Paediatric Surgery', label: 'Paediatric Surgery' },
-          { value: 'Pain & Palliative Care', label: 'Pain & Palliative Care' },
-          { value: 'Pathology', label: 'Pathology' },
-          { value: 'Pediatrics', label: 'Pediatrics' },
-          { value: 'Physiatry', label: 'Physiatry' },
-          { value: 'Physiotherapy', label: 'Physiotherapy' },
-          { value: 'Plastic Surgery', label: 'Plastic Surgery' },
-          { value: 'Psychiatry', label: 'Psychiatry' },
-          { value: 'Pulmonology', label: 'Pulmonology' },
-          { value: 'Radiation Oncology', label: 'Radiation Oncology' },
-          { value: 'Radiology', label: 'Radiology' },
-          { value: 'Rheumatology', label: 'Rheumatology' },
-          { value: 'Surgical Gastroenterology', label: 'Surgical Gastroenterology' },
-          { value: 'Surgical Oncology', label: 'Surgical Oncology' },
-          { value: 'Urology', label: 'Urology' },
-          { value: 'Vascular Surgery', label: 'Vascular Surgery' },
-          { value: 'Wards', label: 'Wards' },
-        ], helpText: 'Auto-fills from selected doctor. Change if the patient is being referred to a different specialty.', width: 'half' },
+        // 25 Apr 2026 EC2 — options pull from src/lib/clinical-specialties.ts
+        // (single source of truth across MH, SB.surgical_specialty, and the
+        // Patient Overview Department picker).
+        { key: 'target_department', label: 'Target Department / Specialty', type: 'select', validation: { required: true },
+          options: CLINICAL_SPECIALTIES.map((s) => ({ value: s, label: s })),
+          helpText: 'Auto-fills from selected doctor. Change if the patient is being referred to a different specialty.', width: 'half' },
         { key: 'insurance_status', label: 'Insurance Status', type: 'select', validation: { required: true }, options: [
           { value: 'insured', label: 'Insured' },
           { value: 'uninsured', label: 'Uninsured' },
@@ -488,24 +455,9 @@ export const CONSOLIDATED_MARKETING_HANDOFF: FormSchema = {
         // 25 Apr 2026 — replaced 13 snake_case options with the 16 canonical
         // surgical specialties so this field is the same taxonomy as Section A
         // target_department (single source of truth, no drift).
-        { key: 'surgical_specialty', label: 'Surgical Specialty', type: 'select', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true }, options: [
-          { value: 'Dentistry', label: 'Dentistry' },
-          { value: 'Dermatology', label: 'Dermatology' },
-          { value: 'ENT', label: 'ENT' },
-          { value: 'General Surgery', label: 'General Surgery' },
-          { value: 'Neurosurgery', label: 'Neurosurgery' },
-          { value: 'Obstetrics & Gynecology', label: 'Obstetrics & Gynecology' },
-          { value: 'Oncology', label: 'Oncology' },
-          { value: 'Ophthalmology', label: 'Ophthalmology' },
-          { value: 'Oral & Maxillofacial Surgery', label: 'Oral & Maxillofacial Surgery' },
-          { value: 'Orthopedics', label: 'Orthopedics' },
-          { value: 'Paediatric Surgery', label: 'Paediatric Surgery' },
-          { value: 'Plastic Surgery', label: 'Plastic Surgery' },
-          { value: 'Surgical Gastroenterology', label: 'Surgical Gastroenterology' },
-          { value: 'Surgical Oncology', label: 'Surgical Oncology' },
-          { value: 'Urology', label: 'Urology' },
-          { value: 'Vascular Surgery', label: 'Vascular Surgery' },
-        ], width: 'half' },
+        { key: 'surgical_specialty', label: 'Surgical Specialty', type: 'select', visibleWhen: { field: 'surgery_planned', operator: 'truthy' }, validation: { required: true },
+          options: Array.from(SURGICAL_SPECIALTIES).sort().map((s) => ({ value: s, label: s })),
+          width: 'half' },
         // 25 Apr 2026: Charge Master integration. proposed_procedure_id is a
         // dropdown of packaged procedures filtered by surgical_specialty (when
         // packages exist for that specialty). proposed_procedure (text) becomes
@@ -2015,25 +1967,12 @@ const SURGERY_BOOKING: FormSchema = {
       description: 'Core procedure details for OT scheduling.',
       fields: [
         { key: 'surgeon_name', label: 'Surgeon Name', type: 'text', validation: { required: true }, placeholder: 'Who will operate', width: 'half' },
-        { key: 'surgical_specialty', label: 'Surgical Specialty', type: 'select', validation: { required: true }, options: [
-          { value: 'Dentistry', label: 'Dentistry' },
-          { value: 'Dermatology', label: 'Dermatology' },
-          { value: 'ENT', label: 'ENT' },
-          { value: 'General Surgery', label: 'General Surgery' },
-          { value: 'Neurosurgery', label: 'Neurosurgery' },
-          { value: 'Obstetrics & Gynecology', label: 'Obstetrics & Gynecology' },
-          { value: 'Oncology', label: 'Oncology' },
-          { value: 'Ophthalmology', label: 'Ophthalmology' },
-          { value: 'Oral & Maxillofacial Surgery', label: 'Oral & Maxillofacial Surgery' },
-          { value: 'Orthopedics', label: 'Orthopedics' },
-          { value: 'Paediatric Surgery', label: 'Paediatric Surgery' },
-          { value: 'Plastic Surgery', label: 'Plastic Surgery' },
-          { value: 'Surgical Gastroenterology', label: 'Surgical Gastroenterology' },
-          { value: 'Surgical Oncology', label: 'Surgical Oncology' },
-          { value: 'Urology', label: 'Urology' },
-          { value: 'Vascular Surgery', label: 'Vascular Surgery' },
-          { value: 'Other', label: 'Other' },
-        ], width: 'half', helpText: 'Same vocabulary as Marketing Handoff and Patient Overview — prefill flows in.' },
+        { key: 'surgical_specialty', label: 'Surgical Specialty', type: 'select', validation: { required: true },
+          options: [
+            ...Array.from(SURGICAL_SPECIALTIES).sort().map((s) => ({ value: s, label: s })),
+            { value: 'Other', label: 'Other' },
+          ],
+          width: 'half', helpText: 'Same vocabulary as Marketing Handoff and Patient Overview — prefill flows in.' },
         { key: 'proposed_procedure', label: 'Proposed Procedure', type: 'text', validation: { required: true }, placeholder: 'What surgery is planned' },
         { key: 'laterality', label: 'Laterality', type: 'select', options: [
           { value: 'left', label: 'Left' },
