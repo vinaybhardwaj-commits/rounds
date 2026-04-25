@@ -194,6 +194,7 @@ export async function updatePatientThread(
     primary_consultant_id: string | null;
     primary_consultant_name: string | null;
     department_id: string;
+    target_department: string | null;
     pac_status: string | null;
   }>
 ) {

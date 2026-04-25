@@ -27,6 +27,10 @@ export async function PATCH(
       // /api/doctors which unions profiles + reference_doctors).
       primary_consultant_name: bodyConsultantName,
       department_id,
+      // 25 Apr 2026: clinical specialty / admitting department (text).
+      // patient_threads.target_department, free-form so 'Other' values are
+      // saved as the user typed them.
+      target_department,
       bed_number,
       room_number,
     } = body;
@@ -79,6 +83,20 @@ export async function PATCH(
         primary_consultant_id: primary_consultant_id || null,
         primary_consultant_name: newConsultantName,
       });
+    }
+
+    // --- Clinical specialty / admitting department change ---
+    if (target_department !== undefined && target_department !== patient.target_department) {
+      const oldVal = (patient.target_department as string | null) || null;
+      const newVal = target_department || null;
+      changelogs.push({
+        field_name: 'target_department',
+        old_value: oldVal,
+        new_value: newVal,
+        old_display: oldVal || 'None',
+        new_display: newVal || 'None',
+      });
+      await updatePatientThread(id, { target_department: newVal });
     }
 
     // --- Department change ---

@@ -52,6 +52,44 @@ export interface SyncResult {
  * incoming payload because the existing row has none. Stage gets promoted
  * opd → pre_admission if LSQ says IPD WIN, matching the existing UPDATE path.
  */
+/**
+ * 25 Apr 2026 — Fill patient_threads.target_department from doctor_name when blank.
+ *
+ * Patient Overview's clinical Department picker reads from
+ * patient_threads.target_department. LSQ feeds carry doctor_name but no
+ * specialty, so we cross-reference reference_doctors (the 217-doctor
+ * roster) by full_name and fill target_department only if it's still NULL.
+ *
+ * Idempotent: skips if target_department is already set, doctor_name is
+ * empty, or no reference_doctors match.
+ */
+async function fillTargetDepartmentFromDoctor(patientThreadId: string): Promise<void> {
+  try {
+    await query(
+      `UPDATE patient_threads pt
+          SET target_department = sub.specialty,
+              updated_at        = NOW()
+         FROM (
+           SELECT rd.specialty
+             FROM reference_doctors rd
+             JOIN patient_threads pt2 ON pt2.id = $1
+            WHERE rd.is_active = true
+              AND pt2.doctor_name IS NOT NULL
+              AND TRIM(pt2.doctor_name) <> ''
+              AND LOWER(TRIM(rd.full_name)) = LOWER(TRIM(pt2.doctor_name))
+            LIMIT 1
+         ) sub
+        WHERE pt.id = $1
+          AND pt.target_department IS NULL
+          AND sub.specialty IS NOT NULL`,
+      [patientThreadId]
+    );
+  } catch (err) {
+    // Non-fatal — patient is created without target_department.
+    console.error('[LSQ Sync] fillTargetDepartmentFromDoctor failed:', err);
+  }
+}
+
 async function linkLsqDataToExistingThread(
   existingId: string,
   normalized: NormalizedLead,
@@ -243,6 +281,9 @@ export async function upsertLeadAsPatient(
         normalized.surgeryOrderValue ? 'cash' : null, // Default financial category
       ]
     );
+    // 25 Apr 2026 — fill target_department from doctor lookup if still null.
+    await fillTargetDepartmentFromDoctor(existing.id);
+
     return { action: 'updated', id: existing.id };
   }
 
@@ -444,6 +485,9 @@ export async function upsertLeadAsPatient(
         channelId,
         `🔗 Patient imported from LeadSquared: ${normalized.patientName}${normalized.uhid ? ` (UHID: ${normalized.uhid})` : ''}. Stage: ${normalized.roundsStage.replace(/_/g, ' ').toUpperCase()}.`
       );
+
+      // 25 Apr 2026 — fill target_department from doctor → reference_doctors.
+      await fillTargetDepartmentFromDoctor(newId);
     } catch (chErr) {
       // Channel creation failure is non-fatal — DB record is created
       console.error(`[LSQ Sync] Failed to create GetStream channel for ${newId}:`, chErr);

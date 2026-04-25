@@ -119,6 +119,32 @@ export async function POST(request: NextRequest) {
 
     const formId = result.id;
 
+    // ── 25 Apr 2026 — Mirror Marketing Handoff target_department onto patient_thread ──
+    // The Patient Overview clinical Department picker reads from
+    // patient_threads.target_department. Keeping it in sync with the latest
+    // submitted handoff means the patient's stored specialty matches what was
+    // last submitted by the marketing/intake team. Surgical + non-surgical
+    // alike. Skipped for drafts (status='draft' submissions don't count).
+    if (
+      form_type === 'consolidated_marketing_handoff' &&
+      status !== 'draft' &&
+      body.patient_thread_id &&
+      typeof form_data.target_department === 'string' &&
+      form_data.target_department.trim() !== ''
+    ) {
+      try {
+        await sqlQuery(
+          `UPDATE patient_threads
+              SET target_department = $1, updated_at = NOW()
+            WHERE id = $2`,
+          [(form_data.target_department as string).trim(), body.patient_thread_id]
+        );
+      } catch (mirrorErr) {
+        // Don't fail the form submit on this — log only.
+        console.error('[forms] target_department mirror failed:', mirrorErr);
+      }
+    }
+
     // ── Sprint 1 Day 4 — Consolidated Marketing Handoff → Draft surgical_case Hook ──
     // When a handoff submits with surgery_planned=true AND FEATURE_CASE_MODEL_ENABLED,
     // create a surgical_cases row in state='draft' + case_state_events row for audit.

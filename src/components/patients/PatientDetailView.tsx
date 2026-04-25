@@ -8,6 +8,7 @@
 // ============================================
 
 import { useState, useEffect, useCallback } from 'react';
+import { CLINICAL_SPECIALTIES, isCanonicalSpecialty } from '@/lib/clinical-specialties';
 import {
   ArrowLeft,
   ChevronRight,
@@ -114,6 +115,7 @@ interface PatientDetail {
   primary_consultant_name: string | null;
   department_id: string | null;
   department_name: string | null;
+  target_department: string | null;
   getstream_channel_id: string | null;
   admission_date: string | null;
   discharge_date: string | null;
@@ -201,6 +203,8 @@ export function PatientDetailView({
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editSaving, setEditSaving] = useState(false);
+  // 25 Apr 2026 — clinical Department 'Other' free-text input.
+  const [customDeptInput, setCustomDeptInput] = useState('');
   const [showAllForms, setShowAllForms] = useState(false);
 
   // Dropdown data for inline edit
@@ -313,18 +317,32 @@ export function PatientDetailView({
         const picked = consultants.find(c => c.id === editValue);
         body.primary_consultant_name = picked?.full_name || null;
 
-        // Auto-fill department from the doctor's specialty when the patient
-        // doesn't already have one. Match specialty → departments[].name.
-        if (picked?.specialty && !patient.department_id) {
-          const matchedDept = departments.find(
-            d => d.name.toLowerCase() === picked.specialty!.toLowerCase()
-          );
-          if (matchedDept) {
-            body.department_id = matchedDept.id;
-          }
+        // 25 Apr 2026 — Auto-fill clinical department from the doctor's
+        // specialty when the patient doesn't already have one set.
+        // - In-canon specialty → write target_department directly
+        // - Off-canon specialty → also write directly (the picker treats it
+        //   as 'Other' free-text on next render).
+        if (picked?.specialty && !patient.target_department) {
+          body.target_department = picked.specialty;
         }
       }
-      else if (field === 'department') body.department_id = editValue || null;
+      else if (field === 'department') {
+        // 25 Apr 2026: Department field now writes patient_threads.target_department
+        // (clinical specialty text). Sentinel '__other__' triggers the custom
+        // text path. Mandatory at the UX layer — empty value rejected here.
+        let resolved: string | null = null;
+        if (editValue === '__other__') {
+          resolved = (customDeptInput || '').trim() || null;
+        } else if (editValue) {
+          resolved = editValue;
+        }
+        if (!resolved) {
+          showToast('error', 'Please pick a department or type one in.');
+          setEditSaving(false);
+          return;
+        }
+        body.target_department = resolved;
+      }
       else if (field === 'bed') body.bed_number = editValue;
 
       const res = await fetch(`/api/patients/${patient.id}/fields`, {
@@ -604,37 +622,77 @@ export function PatientDetailView({
               )}
             </div>
 
-            {/* Department — inline editable */}
-            <div className="flex items-center gap-2.5 text-sm">
-              <Building2 size={14} className="text-gray-400 shrink-0" />
-              <span className="text-gray-500 shrink-0">Department:</span>
+            {/* Department — inline editable. 25 Apr 2026: clinical specialties */}
+            <div className="flex items-start gap-2.5 text-sm">
+              <Building2 size={14} className="text-gray-400 shrink-0 mt-1" />
+              <span className="text-gray-500 shrink-0 mt-1">
+                Department:<span className="text-red-500 ml-0.5" title="Required">*</span>
+              </span>
               {editingField === 'department' ? (
-                <div className="flex items-center gap-1.5 flex-1">
-                  <select
-                    value={editValue}
-                    onChange={e => setEditValue(e.target.value)}
-                    className="flex-1 px-2 py-1 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-even-blue outline-none"
-                    autoFocus
-                  >
-                    <option value="">— None —</option>
-                    {departments.map(d => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
-                  </select>
-                  <button onClick={() => saveEdit('department')} disabled={editSaving} className="p-1 text-green-600 hover:bg-green-50 rounded">
-                    <Check size={14} />
-                  </button>
-                  <button onClick={cancelEdit} className="p-1 text-gray-400 hover:bg-gray-50 rounded">
-                    <X size={14} />
-                  </button>
+                <div className="flex flex-col gap-1.5 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      value={editValue}
+                      onChange={e => {
+                        setEditValue(e.target.value);
+                        // If switching to Other, prefill the text input from
+                        // current value when it's off-canon, else clear.
+                        if (e.target.value === '__other__') {
+                          const cur = patient.target_department || '';
+                          if (cur && !isCanonicalSpecialty(cur)) {
+                            setCustomDeptInput(cur);
+                          } else {
+                            setCustomDeptInput('');
+                          }
+                        }
+                      }}
+                      className="flex-1 px-2 py-1 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-even-blue outline-none"
+                      autoFocus
+                    >
+                      <option value="">— Select —</option>
+                      {CLINICAL_SPECIALTIES.map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                      <option value="__other__">Other (custom)</option>
+                    </select>
+                    <button onClick={() => saveEdit('department')} disabled={editSaving} className="p-1 text-green-600 hover:bg-green-50 rounded">
+                      <Check size={14} />
+                    </button>
+                    <button onClick={cancelEdit} className="p-1 text-gray-400 hover:bg-gray-50 rounded">
+                      <X size={14} />
+                    </button>
+                  </div>
+                  {editValue === '__other__' && (
+                    <input
+                      type="text"
+                      value={customDeptInput}
+                      onChange={e => setCustomDeptInput(e.target.value)}
+                      placeholder="Type a department / specialty name"
+                      className="px-2 py-1 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-even-blue outline-none"
+                      autoFocus
+                    />
+                  )}
                 </div>
               ) : (
                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                  <span className="text-even-navy font-medium truncate">
-                    {patient.department_name || 'Not assigned'}
+                  <span className={`font-medium truncate ${patient.target_department ? 'text-even-navy' : 'text-red-500 italic'}`}>
+                    {patient.target_department || 'Not assigned'}
                   </span>
                   <button
-                    onClick={() => startEdit('department', patient.department_id || '')}
+                    onClick={() => {
+                      const cur = patient.target_department || '';
+                      // If current is canonical, pre-select that option;
+                      // if off-canon, switch to 'Other' with input pre-filled;
+                      // if blank, leave dropdown on '—'.
+                      if (cur && isCanonicalSpecialty(cur)) {
+                        startEdit('department', cur);
+                      } else if (cur) {
+                        setCustomDeptInput(cur);
+                        startEdit('department', '__other__');
+                      } else {
+                        startEdit('department', '');
+                      }
+                    }}
                     className="p-1 text-gray-300 hover:text-even-blue hover:bg-blue-50 rounded shrink-0"
                   >
                     <Pencil size={12} />
