@@ -137,6 +137,15 @@ export function ChannelSidebar({
   // channels for that type instead of wiping them to []. Layer 1 of the
   // error-handling refactor — supersedes the coarse 'preserve everything if
   // all-empty' guard with surgical per-type preservation.
+  // 26 Apr 2026 — hide the WhatsApp Insights chat room from everyone until V's
+  // smarter implementation is ready. The backend (/api/wa-analysis/*), the
+  // admin redesign page (/admin/wa-analysis), the upload pipeline, and any
+  // existing channels/messages stay intact — this only suppresses the entry
+  // in the user-facing channel sidebar. Flip
+  // NEXT_PUBLIC_FEATURE_WA_INSIGHTS_ENABLED=true to bring it back without
+  // touching code.
+  const WA_INSIGHTS_ENABLED = process.env.NEXT_PUBLIC_FEATURE_WA_INSIGHTS_ENABLED === 'true';
+
   const lastKnownChannelsRef = useRef<Record<string, Channel[]>>({
     department: [],
     'cross-functional': [],
@@ -193,7 +202,12 @@ export function ChannelSidebar({
         safeQuery('patient-thread', 200),
         safeQuery('direct', 30),
         safeQuery('ops-broadcast', 5),
-        safeQuery('whatsapp-analysis', 5),
+        // 26 Apr 2026 — see WA_INSIGHTS_ENABLED comment above. When OFF we
+        // return an empty success result so the rest of the merge logic
+        // doesn't have to special-case the missing index.
+        WA_INSIGHTS_ENABLED
+          ? safeQuery('whatsapp-analysis', 5)
+          : Promise.resolve({ ok: true, type: 'whatsapp-analysis', channels: [] } as const),
       ]);
 
       // Partial merge — for each type, use fresh channels if the query
@@ -282,7 +296,13 @@ export function ChannelSidebar({
           };
         });
       const orderedTypes = [
-        { type: 'whatsapp-analysis', label: 'WhatsApp Insights', icon: MessageSquare, defaultOpen: true },
+        // 26 Apr 2026 — only render the group when the feature flag is ON.
+        // When OFF, the array filter below will trivially drop the entry
+        // because waChannels is empty, but adding an explicit gate keeps
+        // intent obvious for the next reader.
+        ...(WA_INSIGHTS_ENABLED
+          ? [{ type: 'whatsapp-analysis', label: 'WhatsApp Insights', icon: MessageSquare, defaultOpen: true }]
+          : []),
         ...hospitalDeptTypes,
         // Fallback bucket for any un-suffixed department channels (shouldn't
         // happen after Sprint 2 Day 9 re-seed but keeps old channels visible).
