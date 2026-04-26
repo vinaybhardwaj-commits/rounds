@@ -26,6 +26,8 @@ import {
   ClipboardCheck, CheckCircle2, Circle, AlertCircle, MoreHorizontal,
   Clock, User as UserIcon, Hash,
 } from 'lucide-react';
+// CT.11 — telemetry hooks per PRD §CT.11.
+import { trackFeature } from '@/lib/session-tracker';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CardPayload = any;  // Stream custom data is opaque; PRD §4.5 documents shape.
@@ -116,6 +118,8 @@ export default function ChatTaskCard({ payload, viewerProfileId, viewerRole }: C
     if (busyAction) return;
     setBusyAction(newStatus);
     setError(null);
+    // CT.11 — fire 'card_clicked' telemetry on every button press (including failures).
+    trackFeature('chat_task_card_clicked', { button_clicked: newStatus, task_id: taskId });
     try {
       if (await checkOrphan()) return;
       const res = await fetch(`/api/chat-tasks/${encodeURIComponent(taskId)}/status`, {
@@ -125,6 +129,23 @@ export default function ChatTaskCard({ payload, viewerProfileId, viewerRole }: C
       });
       const body = await res.json();
       if (!res.ok || !body.success) throw new Error(body.error || `HTTP ${res.status}`);
+
+      // CT.11 — post-success telemetry, PRD-spec.
+      // 'acknowledged' is a metadata flag (status stays 'pending'); the from→to here
+      // semantically captures "user marked it as ack'd," even though the SQL row's
+      // status column doesn't move.
+      const fromStatus = (payload?.status as string) || 'pending';
+      const createdAt = payload?.created_at as string | undefined;
+      const latency_ms = createdAt ? Math.max(0, Date.now() - new Date(createdAt).getTime()) : null;
+      if (newStatus === 'acknowledged') {
+        trackFeature('chat_task_acknowledged', { task_id: taskId, latency_ms, source: 'card' });
+      }
+      trackFeature('chat_task_status_changed', {
+        task_id: taskId,
+        from_status: fromStatus,
+        to_status: newStatus,
+        source: 'card',
+      });
       // Stream's message.updated event will fan the new payload back into
       // this component automatically — no local state update needed.
     } catch (e) {
@@ -132,24 +153,32 @@ export default function ChatTaskCard({ payload, viewerProfileId, viewerRole }: C
     } finally {
       setBusyAction(null);
     }
-  }, [busyAction, checkOrphan, taskId]);
+  }, [busyAction, checkOrphan, taskId, payload]);
 
   const callCancel = useCallback(async () => {
     if (busyAction) return;
     if (!confirm('Cancel this task? This cannot be undone.')) return;
     setBusyAction('cancel');
     setError(null);
+    trackFeature('chat_task_card_clicked', { button_clicked: 'cancel', task_id: taskId });
     try {
       if (await checkOrphan()) return;
       const res = await fetch(`/api/chat-tasks/${encodeURIComponent(taskId)}`, { method: 'DELETE' });
       const body = await res.json();
       if (!res.ok || !body.success) throw new Error(body.error || `HTTP ${res.status}`);
+      const fromStatus = (payload?.status as string) || 'pending';
+      trackFeature('chat_task_status_changed', {
+        task_id: taskId,
+        from_status: fromStatus,
+        to_status: 'cancelled',
+        source: 'card',
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusyAction(null);
     }
-  }, [busyAction, checkOrphan, taskId]);
+  }, [busyAction, checkOrphan, taskId, payload]);
 
   if (hidden) return null;
 

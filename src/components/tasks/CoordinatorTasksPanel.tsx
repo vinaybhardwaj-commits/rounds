@@ -25,6 +25,8 @@ import { Loader2, ClipboardList, ExternalLink, Stethoscope, MessageSquare, Eye, 
 import SchedulePacModal from '@/components/drawer/SchedulePacModal';
 // CT.10 — viewer-id helper for chat-task assignee permission gating.
 import { useChatContext } from '@/providers/ChatProvider';
+// CT.11 — telemetry hooks per PRD §CT.11.
+import { trackFeature } from '@/lib/session-tracker';
 
 interface TaskRow {
   id: string;
@@ -131,6 +133,19 @@ export default function CoordinatorTasksPanel() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error || `HTTP ${res.status}`);
       }
+      // CT.11 — telemetry. fromStatus from prevRow (post-optimistic UI but pre-server confirm).
+      const fromStatus = prevRow.status || 'pending';
+      const createdAt = prevRow.created_at;
+      const latency_ms = createdAt ? Math.max(0, Date.now() - new Date(createdAt).getTime()) : null;
+      if (nextStatus === 'acknowledged') {
+        trackFeature('chat_task_acknowledged', { task_id: taskId, latency_ms, source: 'panel' });
+      }
+      trackFeature('chat_task_status_changed', {
+        task_id: taskId,
+        from_status: fromStatus,
+        to_status: nextStatus,
+        source: 'panel',
+      });
       // 'done' rows usually drop out of the pending list — refetch to reflect server truth.
       if (nextStatus === 'done') reload();
     } catch (err) {
