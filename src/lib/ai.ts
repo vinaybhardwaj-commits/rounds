@@ -8,7 +8,7 @@
 // Admin Intelligence Center / LLM Observatory.
 // ============================================
 
-import llm, { MODEL_PRIMARY } from './llm';
+import llm, { MODEL_PRIMARY, pingTunnel } from './llm';
 import { sql } from '@/lib/db';
 
 /**
@@ -347,6 +347,29 @@ Return ONLY this JSON:
   ];
 
   const startMs = Date.now();
+
+  // Resilience pass (26 Apr 2026 outage): pre-flight the tunnel.
+  // 5s probe → if unhealthy, log + throw immediately (saves 60s SDK timeout per failure).
+  const ping = await pingTunnel();
+  if (!ping.healthy) {
+    const latencyMs = Date.now() - startMs;
+    await logLLMCall({
+      route: '/api/ai/briefing',
+      analysisType: 'daily_briefing',
+      promptMessages: messages,
+      responseRaw: null,
+      responseParsed: null,
+      model: MODEL_PRIMARY,
+      tokensPrompt: 0,
+      tokensCompletion: 0,
+      latencyMs,
+      status: 'error',
+      errorMessage: `Tunnel pre-flight failed: ${ping.error || 'unknown'} (latency ${ping.latency_ms}ms)`,
+      sourceType: 'hospital',
+    });
+    throw new Error(`LLM tunnel unhealthy: ${ping.error || 'unknown'} — skipped daily_briefing`);
+  }
+
   let response;
   try {
     response = await llm.chat.completions.create({

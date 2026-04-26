@@ -7,6 +7,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { predictPatientOutcomes } from '@/lib/ai';
 
+
+// Resilience pass (26 Apr 2026): allow up to 120s — comfortably above the 60s SDK
+// timeout in src/lib/llm.ts so the function never gets killed mid-inference. Vercel
+// Pro caps at 300s.
+export const maxDuration = 120;
+export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest) {
   try {
     const user = await getCurrentUser();

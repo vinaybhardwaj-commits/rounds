@@ -21,9 +21,16 @@ export function LlmHealthIndicator() {
 
   const checkHealth = useCallback(async () => {
     setState('checking');
+    // Resilience pass (26 Apr 2026): cap the spinner at 15s. The /api/llm-health
+    // endpoint runs a real inference (which on a healthy tunnel takes 5-12s)
+    // but on a degraded tunnel could spin for up to the SDK timeout (now 60s).
+    // 15s = healthy cases comfortably finish; degraded cases fail fast.
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 15000);
     try {
-      const res = await fetch('/api/llm-health', { cache: 'no-store' });
+      const res = await fetch('/api/llm-health', { cache: 'no-store', signal: controller.signal });
       const data: HealthStatus = await res.json();
+      clearTimeout(t);
       setHealth(data);
       setLastChecked(new Date());
 
@@ -34,23 +41,33 @@ export function LlmHealthIndicator() {
       } else {
         setState('unhealthy');
       }
-    } catch {
-      setHealth(null);
+    } catch (err) {
+      clearTimeout(t);
+      const aborted = err instanceof DOMException && err.name === 'AbortError';
+      setHealth({
+        healthy: false,
+        latency_ms: 0,
+        model: null,
+        base_url_set: true,
+        error: aborted ? 'Health check timed out (15s)' : 'Failed to reach /api/llm-health',
+      });
       setState('unhealthy');
       setLastChecked(new Date());
     }
   }, []);
 
-  // Auto-check on mount
+  // Auto-check on mount + refresh every 60s while mounted.
   useEffect(() => {
     checkHealth();
+    const id = setInterval(checkHealth, 60000);
+    return () => clearInterval(id);
   }, [checkHealth]);
 
   const statusConfig = {
     idle: { color: 'text-gray-400', bg: 'bg-gray-50', dot: 'bg-gray-300', label: 'Not checked' },
     checking: { color: 'text-blue-500', bg: 'bg-blue-50', dot: 'bg-blue-400 animate-pulse', label: 'Checking...' },
     healthy: { color: 'text-green-600', bg: 'bg-green-50', dot: 'bg-green-500', label: 'Connected' },
-    unhealthy: { color: 'text-red-600', bg: 'bg-red-50', dot: 'bg-red-500', label: 'Unreachable' },
+    unhealthy: { color: 'text-red-600', bg: 'bg-red-50', dot: 'bg-red-500', label: 'Down' },
     'no-config': { color: 'text-amber-600', bg: 'bg-amber-50', dot: 'bg-amber-400', label: 'Not configured' },
   };
 
