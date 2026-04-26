@@ -31,6 +31,8 @@ import {
   Loader2,
   Plus,
   ListPlus,
+  Sparkles,
+  X,
 } from 'lucide-react';
 import type { Channel, MessageResponse } from 'stream-chat';
 import { useChatContext } from '@/providers/ChatProvider';
@@ -43,6 +45,8 @@ import WhatsAppAnalysisCard from '@/components/wa-analysis/WhatsAppAnalysisCard'
 import ChatTaskCard from '@/components/chat/attachments/ChatTaskCard';
 // CT.6 — chat-task creation modal.
 import CreateTaskModal from '@/components/chat/CreateTaskModal';
+// CT.9 — heuristic AI-parse detector for inline task prompt (flag-gated).
+import { parseChatTaskIntent, type ParsedChatTaskIntent } from '@/lib/chat-tasks-ai-parse-rules';
 import type { MessageType, MessagePriority, FormType, PatientStage, DischargeMilestoneStep, ClaimEventType } from '@/types';
 import { PATIENT_STAGE_LABELS, VALID_STAGE_TRANSITIONS, DISCHARGE_MILESTONE_LABELS, CLAIM_STATUS_LABELS } from '@/types';
 import { FORM_TYPE_LABELS, FORMS_BY_STAGE } from '@/lib/form-registry';
@@ -214,6 +218,10 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   // CT.7+CT.8 — preset values from /task slash, message-action, or future entry points. Cleared after modal close.
   const [chatTaskPreset, setChatTaskPreset] = useState<{ title?: string; description?: string; assigneeQuery?: string; sourceMessageId?: string } | null>(null);
+  // CT.9 — heuristic detector for inline 'make this a task?' prompt. Computed from messageText.
+  // dismissedSuggestionText holds the exact text the user dismissed — re-shows only after the
+  // text changes (so a one-shot dismiss doesn't keep popping up while user keeps typing the same thing).
+  const [dismissedSuggestionText, setDismissedSuggestionText] = useState<string | null>(null);
   const [showDeletedAccordion, setShowDeletedAccordion] = useState(false);
   const [deletedRecords, setDeletedRecords] = useState<DeletedMessageRecord[]>([]);
   // @mention autocomplete
@@ -753,6 +761,33 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
   // WhatsApp Insights derived state (super_admin only)
   const isWAChannel = channel.type === 'whatsapp-analysis';
   const isSuperAdmin = ((client?.user as Record<string, unknown>)?.rounds_role as string) === 'super_admin';
+
+  // CT.9 — AI parse: compute the heuristic suggestion from the current composer text.
+  // Flag-gated (default OFF in v1; default OFF in v1.1 too until telemetry green-lights flip).
+  // Suppressed when the user dismissed THIS exact text — they can re-trigger by editing.
+  // Also suppressed in the WA Insights channel (different message model).
+  const aiParseSuggestion: ParsedChatTaskIntent | null = React.useMemo(() => {
+    const flagOn = (process.env.NEXT_PUBLIC_FEATURE_CHAT_TASKS_AI_PARSE_ENABLED || '').trim().toLowerCase() === 'true';
+    if (!flagOn) return null;
+    if (isWAChannel) return null;
+    if (!messageText || dismissedSuggestionText === messageText.trim()) return null;
+    return parseChatTaskIntent(messageText);
+  }, [messageText, dismissedSuggestionText, isWAChannel]);
+
+  // Telemetry: fire 'shown' event when a NEW suggestion appears (not on every keystroke that keeps it visible).
+  const lastShownTextRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (aiParseSuggestion && aiParseSuggestion.fullText !== lastShownTextRef.current) {
+      lastShownTextRef.current = aiParseSuggestion.fullText;
+      trackFeature('chat_task_ai_suggest_shown', {
+        channel_type: channel.type,
+        verb: aiParseSuggestion.actionVerb,
+        has_time: !!aiParseSuggestion.timeChip,
+      });
+    } else if (!aiParseSuggestion) {
+      lastShownTextRef.current = null;
+    }
+  }, [aiParseSuggestion, channel.type]);
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
@@ -1339,6 +1374,58 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
 
       {/* Composer */}
       <div className="px-3 py-2 bg-white border-t border-gray-200">
+        {/* CT.9 — AI-parse inline suggestion. Renders above the composer when heuristic detects task intent. */}
+        {aiParseSuggestion && (
+          <div className="flex items-center gap-2 mb-2 px-2 py-1.5 bg-purple-50 border border-purple-100 rounded-lg text-xs">
+            <Sparkles size={14} className="text-purple-500 flex-shrink-0" />
+            <span className="text-purple-700 truncate flex-1">
+              Make this a task for <span className="font-medium">@{aiParseSuggestion.mentionToken}</span>
+              {aiParseSuggestion.timeChip && (
+                <> &middot; <span className="text-purple-500">{aiParseSuggestion.timeChip}</span></>
+              )}
+              ?
+            </span>
+            <button
+              onClick={() => {
+                trackFeature('chat_task_ai_suggest_yes', {
+                  channel_type: channel.type,
+                  verb: aiParseSuggestion.actionVerb,
+                  has_time: !!aiParseSuggestion.timeChip,
+                });
+                const body = aiParseSuggestion.fullText;
+                const title = body.length > 200 ? body.slice(0, 199).trimEnd() + '…' : body;
+                const assigneeQuery = aiParseSuggestion.mentionToken.toLowerCase() === 'me'
+                  ? undefined
+                  : aiParseSuggestion.mentionToken;
+                setChatTaskPreset({
+                  title: title || undefined,
+                  description: body || undefined,
+                  assigneeQuery,
+                });
+                setShowCreateTaskModal(true);
+                // Clear composer + dismiss state — this message is becoming a task, not a chat message.
+                setMessageText('');
+                setDismissedSuggestionText(null);
+              }}
+              className="px-2 py-0.5 text-xs font-medium text-purple-700 bg-white border border-purple-200 rounded hover:bg-purple-100 transition-colors flex-shrink-0"
+            >
+              Yes
+            </button>
+            <button
+              onClick={() => {
+                trackFeature('chat_task_ai_suggest_dismiss', {
+                  channel_type: channel.type,
+                  verb: aiParseSuggestion.actionVerb,
+                });
+                setDismissedSuggestionText(aiParseSuggestion.fullText);
+              }}
+              className="p-1 text-purple-400 hover:text-purple-600 hover:bg-white/60 rounded transition-colors flex-shrink-0"
+              title="Dismiss"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
         {(uploading || (isWAChannel && waUploading)) && (
           <div className="flex items-center gap-2 mb-2 px-1">
             <div className={`w-4 h-4 border-2 rounded-full animate-spin ${
