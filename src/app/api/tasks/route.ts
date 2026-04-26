@@ -42,10 +42,20 @@ interface TaskRow {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
-  // joined
+  // 26 Apr 2026 CT.2 additions (chat-tasks PRD v1.4 §6.1):
+  priority: string;
+  source_channel_id: string | null;
+  source_channel_type: string | null;
+  source_message_id: string | null;
+  posted_message_id: string | null;
+  // joined — patient_name / patient_thread_id / uhid are COALESCE'd across the
+  // direct chat-task patient link (preferred) and the case-via-patient link.
+  // Backward-compatible: existing keys (patient_name, patient_thread_id) remain
+  // populated for callers that expected them.
   hospital_slug: string | null;
   patient_name: string | null;
   patient_thread_id: string | null;
+  uhid: string | null;
   case_state: string | null;
   case_planned_procedure: string | null;
   case_planned_surgery_date: string | null;
@@ -87,16 +97,29 @@ export async function GET(request: NextRequest) {
         t.assignee_profile_id, t.owner_role, t.due_at, t.status,
         t.source, t.source_ref, t.metadata, t.created_by,
         t.completed_by, t.completed_at, t.created_at, t.updated_at,
+        -- 26 Apr 2026 CT.2 additions (chat-tasks PRD v1.4 §6.1):
+        t.priority,
+        t.source_channel_id,
+        t.source_channel_type,
+        t.source_message_id,
+        t.posted_message_id,
         h.slug AS hospital_slug,
-        pt.patient_name,
-        pt.id   AS patient_thread_id,
-        sc.state AS case_state,
-        sc.planned_procedure AS case_planned_procedure,
+        -- Patient context: chat-tasks carry a direct t.patient_thread_id link;
+        -- auto-tasks carry it indirectly via surgical_case.patient_thread_id.
+        -- COALESCE so callers see one consistent set of fields regardless of
+        -- which path the task was created through. Backward-compatible.
+        COALESCE(t.patient_thread_id, pt_via_case.id)              AS patient_thread_id,
+        COALESCE(pt_direct.patient_name, pt_via_case.patient_name) AS patient_name,
+        COALESCE(pt_direct.uhid, pt_via_case.uhid)                 AS uhid,
+        sc.state                AS case_state,
+        sc.planned_procedure    AS case_planned_procedure,
         sc.planned_surgery_date AS case_planned_surgery_date
       FROM tasks t
-      LEFT JOIN hospitals       h  ON h.id  = t.hospital_id
-      LEFT JOIN surgical_cases  sc ON sc.id = t.case_id
-      LEFT JOIN patient_threads pt ON pt.id = sc.patient_thread_id
+      LEFT JOIN hospitals       h            ON h.id            = t.hospital_id
+      LEFT JOIN surgical_cases  sc           ON sc.id           = t.case_id
+      LEFT JOIN patient_threads pt_via_case  ON pt_via_case.id  = sc.patient_thread_id
+      -- CT.2: chat-tasks attach a patient directly without a surgical_case.
+      LEFT JOIN patient_threads pt_direct    ON pt_direct.id    = t.patient_thread_id
       WHERE ${where}
       ORDER BY
         CASE t.status WHEN 'pending' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
