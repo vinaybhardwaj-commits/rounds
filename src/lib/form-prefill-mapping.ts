@@ -493,3 +493,43 @@ export function extractSchemaKeys(schema: {
   }
   return keys;
 }
+
+// ============================================================================
+// 26 Apr 2026 follow-up FU5 / P3-3
+//
+// Critical-override sanity guard. Some FieldMapping entries (e.g.,
+// target_opd_doctor → admitting_consultant) reference source keys that, if
+// renamed in form-registry.ts without a matching update here, would silently
+// stop carrying values. We list those load-bearing source keys explicitly and
+// log a warning at module load if any are missing from the source's schema.
+//
+// This is a runtime check, not a compile error — adding/removing fields in the
+// registry shouldn't fail builds — but a once-per-app-boot console.warn will
+// catch drift on the next deploy after a registry change.
+// ============================================================================
+
+const CRITICAL_OVERRIDES: Array<{ sourceFormType: string; sourceKey: string; targetFormType: string; targetKey: string }> = [
+  { sourceFormType: 'consolidated_marketing_handoff', sourceKey: 'target_opd_doctor',         targetFormType: 'financial_counseling', targetKey: 'admitting_consultant' },
+  { sourceFormType: 'consolidated_marketing_handoff', sourceKey: 'preferred_admission_date',  targetFormType: 'financial_counseling', targetKey: 'admission_date' },
+  { sourceFormType: 'consolidated_marketing_handoff', sourceKey: 'insurance_status',          targetFormType: 'financial_counseling', targetKey: 'payment_mode' },
+  { sourceFormType: 'consolidated_marketing_handoff', sourceKey: 'proposed_procedure',        targetFormType: 'admission_advice',     targetKey: 'diagnosis' },
+  { sourceFormType: 'consolidated_marketing_handoff', sourceKey: 'known_comorbidities',       targetFormType: 'admission_advice',     targetKey: 'comorbidities' },
+  { sourceFormType: 'consolidated_marketing_handoff', sourceKey: 'allergies',                 targetFormType: 'pac_clearance',        targetKey: 'allergies' },
+  { sourceFormType: 'financial_counseling',           sourceKey: 'preauth_initiated',         targetFormType: 'ot_billing_clearance', targetKey: 'insurance_preauth_status' },
+  { sourceFormType: 'surgery_booking',                sourceKey: 'estimated_duration',        targetFormType: 'surgery_posting',      targetKey: 'estimated_duration_min' },
+];
+
+export function validateCriticalOverrides(
+  schemaProvider: (formType: string) => { sections?: Array<{ fields?: Array<{ key: string }> }> } | undefined
+): string[] {
+  const warnings: string[] = [];
+  for (const c of CRITICAL_OVERRIDES) {
+    const src = schemaProvider(c.sourceFormType);
+    const tgt = schemaProvider(c.targetFormType);
+    const hasSrc = !!src && extractSchemaKeys(src as Parameters<typeof extractSchemaKeys>[0]).has(c.sourceKey);
+    const hasTgt = !!tgt && extractSchemaKeys(tgt as Parameters<typeof extractSchemaKeys>[0]).has(c.targetKey);
+    if (!hasSrc) warnings.push(`prefill drift: ${c.sourceFormType}.${c.sourceKey} (source) missing — override → ${c.targetFormType}.${c.targetKey} won't fire`);
+    if (!hasTgt) warnings.push(`prefill drift: ${c.targetFormType}.${c.targetKey} (target) missing — override from ${c.sourceFormType}.${c.sourceKey} writes a key that the target form won't render`);
+  }
+  return warnings;
+}

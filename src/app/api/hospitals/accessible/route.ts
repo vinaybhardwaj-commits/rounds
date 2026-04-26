@@ -19,8 +19,10 @@ export async function GET() {
     if (!user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
-    const rows = await query<{ id: string; slug: string; name: string }>(
-      `SELECT id, slug, name
+    // 26 Apr 2026 follow-up FU7: surface ot_room_count so the OT calendar can
+    // honour per-hospital configuration without hardcoding 3.
+    const rows = await query<{ id: string; slug: string; name: string; ot_room_count: number }>(
+      `SELECT id, slug, name, COALESCE(ot_room_count, 3) AS ot_room_count
          FROM hospitals
         WHERE id = ANY(user_accessible_hospital_ids($1::UUID))
         ORDER BY name`,

@@ -20,7 +20,7 @@
 // noise on pre_admission patients.)
 // =============================================================================
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { ExternalLink, ClipboardList, Calendar, Stethoscope, AlertCircle, Plus } from 'lucide-react';
 // 26 Apr 2026 audit fix (P2-3): client-side nav, no full reload.
 import Link from 'next/link';
@@ -28,20 +28,15 @@ import CaseDrawer from '../drawer/CaseDrawer';
 // 26 Apr 2026 V's modal-redesign bug — inline equipment-request entry point.
 import EquipmentRequestModal from '../ot/EquipmentRequestModal';
 
-interface CaseRow {
-  id: string;
-  state: string;
-  hospital_slug: string;
-  planned_procedure: string | null;
-  planned_surgery_date: string | null;
-  urgency: string | null;
-  created_at: string;
-}
-
 interface PatientOTTabProps {
   patientThreadId: string;
   patientName: string;
   patientStage: string;
+  // 26 Apr 2026 follow-up FU3 / P2-2: case fetch hoisted to PatientDetailView.
+  caseRow: { id: string; state: string; hospital_slug: string; planned_procedure: string | null; planned_surgery_date: string | null; urgency: string | null; created_at: string } | null;
+  caseLoading: boolean;
+  onCreateCase: () => Promise<{ id: string; state: string } | null>;
+  onMutated?: () => void;
 }
 
 const STATE_TONE: Record<string, string> = {
@@ -72,52 +67,30 @@ function StatePill({ state }: { state: string }) {
   );
 }
 
-export function PatientOTTab({ patientThreadId, patientName, patientStage }: PatientOTTabProps) {
-  const [caseRow, setCaseRow] = useState<CaseRow | null>(null);
-  const [checked, setChecked] = useState(false);
+export function PatientOTTab({
+  patientThreadId, patientName, patientStage, caseRow, caseLoading, onCreateCase, onMutated,
+}: PatientOTTabProps) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 26 Apr 2026 — modal opens with preset case from the patient context.
   const [equipmentModalOpen, setEquipmentModalOpen] = useState(false);
+  void patientThreadId; // kept on props for parity; parent owns the fetch now.
 
-  const load = useCallback(() => {
-    setChecked(false);
-    setError(null);
-    fetch(`/api/cases?patient_thread_id=${encodeURIComponent(patientThreadId)}&limit=1`)
-      .then((r) => r.json())
-      .then((body) => {
-        if (body?.success && Array.isArray(body.data) && body.data.length > 0) {
-          setCaseRow(body.data[0] as CaseRow);
-        } else {
-          setCaseRow(null);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setChecked(true));
-  }, [patientThreadId]);
-
-  useEffect(() => { load(); }, [load]);
-
+  // 26 Apr 2026 FU3: case is parent-fetched; create handler delegates up.
   const createCase = useCallback(async () => {
     setCreating(true);
     setError(null);
     try {
-      const res = await fetch('/api/cases', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ patient_thread_id: patientThreadId }),
-      });
-      const body = await res.json();
-      if (!res.ok || !body.success) throw new Error(body.error || `HTTP ${res.status}`);
-      load();
+      const out = await onCreateCase();
+      if (!out) throw new Error('Failed to create case');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setCreating(false);
     }
-  }, [patientThreadId, load]);
+  }, [onCreateCase]);
 
-  if (!checked) {
+  if (caseLoading) {
     return (
       <div className="p-6 text-center text-sm text-gray-500">Loading OT case…</div>
     );
@@ -237,7 +210,7 @@ export function PatientOTTab({ patientThreadId, patientName, patientStage }: Pat
         isOpen={equipmentModalOpen}
         onClose={() => setEquipmentModalOpen(false)}
         presetCaseId={caseRow.id}
-        onCreated={load}
+        onCreated={() => onMutated?.()}
       />
     </div>
   );

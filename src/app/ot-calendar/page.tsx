@@ -112,6 +112,8 @@ function OtCalendarPageInner() {
 
   const [search, setSearch] = useState('');
   const [weekStart, setWeekStart] = useState<Date>(startOfWeek(new Date()));
+  // 26 Apr 2026 FU7: hospital → ot_room_count map (defaults to 3 if not loaded).
+  const [hospitalCfg, setHospitalCfg] = useState<Record<string, number>>({});
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
   // Modal state — handles both create (case_id from picked patient) + edit (existing).
@@ -164,6 +166,19 @@ function OtCalendarPageInner() {
     fetch('/api/auth/me')
       .then((r) => (r.ok ? r.json() : null))
       .then((body) => { if (body?.success && body.data?.role) setRole(body.data.role); })
+      .catch(() => {});
+    // 26 Apr 2026 FU7: pull per-hospital ot_room_count.
+    fetch('/api/hospitals/accessible')
+      .then((r) => r.json())
+      .then((b) => {
+        if (b?.success && Array.isArray(b.data)) {
+          const map: Record<string, number> = {};
+          (b.data as Array<{ slug: string; ot_room_count: number }>).forEach((h) => {
+            map[h.slug] = h.ot_room_count || 3;
+          });
+          setHospitalCfg(map);
+        }
+      })
       .catch(() => {});
     loadCases();
   }, [loadCases]);
@@ -408,7 +423,7 @@ function OtCalendarPageInner() {
               <header className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
                 <div>
                   <h2 className="text-sm font-semibold text-gray-900">{hs.toUpperCase()}</h2>
-                  <p className="text-xs text-gray-500">3 OTs</p>
+                  <p className="text-xs text-gray-500">{hospitalCfg[hs] || 3} OTs</p>
                 </div>
                 {canSchedule && <LockListButton hospitalSlug={hs} weekStart={weekStart} />}
               </header>
@@ -427,7 +442,8 @@ function OtCalendarPageInner() {
                   );
                 })}
 
-                {[1, 2, 3].map((room) => (
+                {/* FU7: per-hospital OT count (defaults to 3 until /api/hospitals/accessible loads) */}
+                {Array.from({ length: hospitalCfg[hs] || 3 }, (_, i) => i + 1).map((room) => (
                   <RoomRow
                     key={room}
                     hospitalSlug={hs}
@@ -455,6 +471,7 @@ function OtCalendarPageInner() {
           pacStatus={modalState.patient.pacStatus}
           preFilled={modalState.preFilled}
           existingSerialsInSlot={modalState.existingSerials}
+          otRoomCount={hospitalCfg[modalState.patient.hospitalSlug || ''] || 3}
           mode={modalState.mode}
           onSaved={() => { setModalState(null); refreshAll(); }}
         />

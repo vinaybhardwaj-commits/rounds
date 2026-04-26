@@ -15,6 +15,13 @@ export type UserRole =
   | 'anesthesiologist'
   | 'ot_coordinator'
   | 'nurse'
+  // 26 Apr 2026 follow-up FU2: widen the enum so the role gates shipped in
+  // F3 actually fire when users carry these roles. Until profiles are
+  // backfilled with these values, the gates remain super_admin-only.
+  | 'charge_nurse'
+  | 'consultant'
+  | 'surgeon'
+  | 'biomedical_engineer'
   | 'billing_executive'
   | 'insurance_coordinator'
   | 'pharmacist'

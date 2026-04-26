@@ -23,20 +23,13 @@
 // Marketing-Handoff-driven, manually-created.
 // =============================================================================
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { ExternalLink, Stethoscope, ClipboardList, Calendar, AlertCircle, Plus } from 'lucide-react';
 // 26 Apr 2026 audit fix (P2-3): client-side nav, no full reload.
 import Link from 'next/link';
 import CaseDrawer from './CaseDrawer';
 // 26 Apr 2026 V's modal-redesign bug — inline equipment-request entry point.
 import EquipmentRequestModal from '../ot/EquipmentRequestModal';
-
-interface MinimalCase {
-  id: string;
-  state: string;
-  hospital_slug: string;
-  created_at: string;
-}
 
 interface OTPlanningPanelProps {
   patientThreadId: string;
@@ -78,59 +71,33 @@ function StatePill({ state }: { state: string }) {
   );
 }
 
-export default function OTPlanningPanel({ patientThreadId, patientStage }: OTPlanningPanelProps) {
-  const [caseRow, setCaseRow] = useState<MinimalCase | null>(null);
-  const [checked, setChecked] = useState(false);
+export default function OTPlanningPanel({
+  patientThreadId, patientStage, caseRow, caseLoading, onCreateCase, onMutated,
+}: OTPlanningPanelProps) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 26 Apr 2026 — modal opens with preset case from the panel context.
   const [equipmentModalOpen, setEquipmentModalOpen] = useState(false);
+  // patientThreadId is unused now that the parent fetches the case but we
+  // keep it on the props interface so the parent's API doesn't change.
+  void patientThreadId;
 
-  const load = useCallback(() => {
-    setChecked(false);
-    setError(null);
-    fetch(`/api/cases?patient_thread_id=${encodeURIComponent(patientThreadId)}&limit=1`)
-      .then((r) => r.json())
-      .then((body) => {
-        if (body?.success && Array.isArray(body.data) && body.data.length > 0) {
-          const c = body.data[0] as MinimalCase;
-          setCaseRow(c);
-        } else {
-          setCaseRow(null);
-        }
-      })
-      .catch(() => {
-        // Non-fatal — empty state will render
-      })
-      .finally(() => setChecked(true));
-  }, [patientThreadId]);
-
-  useEffect(() => { load(); }, [load]);
-
+  // 26 Apr 2026 FU3: case is parent-fetched; create handler delegates up.
   const createCase = useCallback(async () => {
     setCreating(true);
     setError(null);
     try {
-      const res = await fetch('/api/cases', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ patient_thread_id: patientThreadId }),
-      });
-      const body = await res.json();
-      if (!res.ok || !body.success) {
-        throw new Error(body.error || `HTTP ${res.status}`);
-      }
-      // Reload to pick up the new case
-      load();
+      const out = await onCreateCase();
+      if (!out) throw new Error('Failed to create case');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setCreating(false);
     }
-  }, [patientThreadId, load]);
+  }, [onCreateCase]);
 
   // Don't render at all on early stages without a case (avoids noise).
-  if (!checked) return null;
+  if (caseLoading) return null;
   if (!caseRow && !STAGES_WITH_OT.has(patientStage)) return null;
 
   // Empty state: admitted+ but no case (could happen for new patients
@@ -228,7 +195,7 @@ export default function OTPlanningPanel({ patientThreadId, patientStage }: OTPla
         isOpen={equipmentModalOpen}
         onClose={() => setEquipmentModalOpen(false)}
         presetCaseId={caseRow.id}
-        onCreated={load}
+        onCreated={() => onMutated?.()}
       />
     </div>
   );

@@ -16,6 +16,11 @@ export const VALID_ROLES: readonly UserRole[] = [
   'anesthesiologist',
   'ot_coordinator',
   'nurse',
+  // 26 Apr 2026 follow-up FU2: see UserRole comment in types/index.ts.
+  'charge_nurse',
+  'consultant',
+  'surgeon',
+  'biomedical_engineer',
   'billing_executive',
   'insurance_coordinator',
   'pharmacist',

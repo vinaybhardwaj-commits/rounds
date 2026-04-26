@@ -72,7 +72,7 @@ export async function GET() {
             p.role,
             p.primary_hospital_id,
             h.slug AS primary_hospital_slug,
-            NULL::text AS specialty
+            p.specialty -- FU6: profiles.specialty exists now (migration-profiles-specialty.sql)
           FROM profiles p
           LEFT JOIN hospitals h ON h.id = p.primary_hospital_id
           WHERE p.role = ANY($2::text[])

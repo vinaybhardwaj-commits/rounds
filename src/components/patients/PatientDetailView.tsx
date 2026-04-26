@@ -44,6 +44,8 @@ import { SurgeryPanel } from '@/components/ot/SurgeryPanel';
 import OTPlanningPanel from '@/components/drawer/OTPlanningPanel';
 import { PatientFilesTab } from './PatientFilesTab';
 import { PatientOTTab } from './PatientOTTab';
+// 26 Apr 2026 follow-up FU3 / P2-2: parent fetches once, panels share it.
+import { useSurgicalCase } from '@/lib/hooks/useSurgicalCase';
 import FCVersionHistory from '@/components/forms/FCVersionHistory';
 import PatientFormSubmissions from './PatientFormSubmissions';
 
@@ -177,6 +179,8 @@ export function PatientDetailView({
 
   // Tab state
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
+  // 26 Apr 2026 FU3: single source of truth for the patient's active surgical_case.
+  const surgicalCase = useSurgicalCase(patient?.id || null);
 
   // Discharge milestone state
   const [dischargeMilestone, setDischargeMilestone] = useState<Record<string, unknown> | null>(null);
@@ -541,6 +545,10 @@ export function PatientDetailView({
             patientThreadId={patient.id}
             patientName={patient.patient_name}
             patientStage={patient.current_stage}
+            caseRow={surgicalCase.caseRow as React.ComponentProps<typeof PatientOTTab>['caseRow']}
+            caseLoading={surgicalCase.loading}
+            onCreateCase={surgicalCase.createCase}
+            onMutated={surgicalCase.refetch}
           />
         </div>
       )}
@@ -610,10 +618,18 @@ export function PatientDetailView({
                     <option value="">— None —</option>
                     {consultants
                       .filter(c =>
-                        // Filter to patient's hospital; show entries with no
-                        // primary_hospital set as a fallback (legacy data).
+                        // 26 Apr 2026 follow-up FU4 / P2-4: tightened the
+                        // filter — only show doctors whose primary_hospital_id
+                        // matches the patient's hospital. Doctors with NULL
+                        // primary_hospital_id are now hidden from cross-hospital
+                        // pickers.
+                        //
+                        // Data hygiene to backfill the NULLs (run as super_admin):
+                        //   SELECT COUNT(*) FROM reference_doctors WHERE primary_hospital_id IS NULL;
+                        //   UPDATE reference_doctors SET primary_hospital_id = (
+                        //     SELECT id FROM hospitals WHERE slug = 'ehrc'
+                        //   ) WHERE primary_hospital_id IS NULL AND ...;
                         !patient.hospital_id ||
-                        !c.primary_hospital_id ||
                         c.primary_hospital_id === patient.hospital_id
                       )
                       .map(c => (
@@ -1103,6 +1119,10 @@ export function PatientDetailView({
           <OTPlanningPanel
             patientThreadId={patient.id}
             patientStage={patient.current_stage}
+            caseRow={surgicalCase.caseRow}
+            caseLoading={surgicalCase.loading}
+            onCreateCase={surgicalCase.createCase}
+            onMutated={surgicalCase.refetch}
           />
         )}
 
