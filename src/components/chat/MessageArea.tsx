@@ -29,6 +29,7 @@ import {
   AtSign,
   Upload,
   Loader2,
+  Plus,
 } from 'lucide-react';
 import type { Channel, MessageResponse } from 'stream-chat';
 import { useChatContext } from '@/providers/ChatProvider';
@@ -39,6 +40,8 @@ import FormCard from '@/components/forms/FormCard';
 import WhatsAppAnalysisCard from '@/components/wa-analysis/WhatsAppAnalysisCard';
 // CT.5 — chat-task card renderer.
 import ChatTaskCard from '@/components/chat/attachments/ChatTaskCard';
+// CT.6 — chat-task creation modal.
+import CreateTaskModal from '@/components/chat/CreateTaskModal';
 import type { MessageType, MessagePriority, FormType, PatientStage, DischargeMilestoneStep, ClaimEventType } from '@/types';
 import { PATIENT_STAGE_LABELS, VALID_STAGE_TRANSITIONS, DISCHARGE_MILESTONE_LABELS, CLAIM_STATUS_LABELS } from '@/types';
 import { FORM_TYPE_LABELS, FORMS_BY_STAGE } from '@/lib/form-registry';
@@ -206,6 +209,8 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const [slashQuery, setSlashQuery] = useState<string>('');
   const [deleteTarget, setDeleteTarget] = useState<DisplayMessage | null>(null);
+  // CT.6 — chat-task creation modal toggle.
+  const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   const [showDeletedAccordion, setShowDeletedAccordion] = useState(false);
   const [deletedRecords, setDeletedRecords] = useState<DeletedMessageRecord[]>([]);
   // @mention autocomplete
@@ -1249,6 +1254,31 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
         />
       )}
 
+      {/* CT.6 — Create-task modal. Mounted at component root so it overlays everything. */}
+      {channel && client?.userID && (() => {
+        const cd = (channel.data as Record<string, unknown> | undefined) || undefined;
+        const ptid = cd?.patient_thread_id as string | undefined;
+        const ptName = cd?.patient_name as string | undefined;
+        const ptUhid = cd?.uhid as string | undefined;
+        const presetPatient = ptid
+          ? { id: ptid, name: ptName ?? null, uhid: ptUhid ?? null }
+          : null;
+        return (
+          <CreateTaskModal
+            isOpen={showCreateTaskModal}
+            channelId={channel.id || ''}
+            channelType={channel.type}
+            presetPatient={presetPatient}
+            viewerProfileId={client.userID || ''}
+            onClose={() => setShowCreateTaskModal(false)}
+            onCreated={() => {
+              setShowCreateTaskModal(false);
+              trackFeature('chat_task_created', { channel_type: channel.type });
+            }}
+          />
+        );
+      })()}
+
       {/* Composer */}
       <div className="px-3 py-2 bg-white border-t border-gray-200">
         {(uploading || (isWAChannel && waUploading)) && (
@@ -1283,6 +1313,17 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
           >
             {isWAChannel ? <Upload size={18} /> : <Paperclip size={18} />}
           </button>
+          )}
+          {/* CT.6 — Open chat-task creation modal. Hidden in WA Insights channel. */}
+          {!isWAChannel && (
+            <button
+              onClick={() => setShowCreateTaskModal(true)}
+              className="p-2 text-gray-400 hover:text-even-blue hover:bg-blue-50 rounded transition-colors flex-shrink-0 flex items-center gap-1"
+              title="Create task"
+            >
+              <Plus size={18} />
+              <span className="text-xs font-medium hidden sm:inline">Task</span>
+            </button>
           )}
           <div className="flex-1 relative">
             {/* Slash command menu */}
