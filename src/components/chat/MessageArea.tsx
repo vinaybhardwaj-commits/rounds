@@ -30,6 +30,7 @@ import {
   Upload,
   Loader2,
   Plus,
+  ListPlus,
 } from 'lucide-react';
 import type { Channel, MessageResponse } from 'stream-chat';
 import { useChatContext } from '@/providers/ChatProvider';
@@ -211,8 +212,8 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
   const [deleteTarget, setDeleteTarget] = useState<DisplayMessage | null>(null);
   // CT.6 — chat-task creation modal toggle.
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
-  // CT.7 — preset values from /task slash command. Cleared after modal close.
-  const [chatTaskPreset, setChatTaskPreset] = useState<{ title?: string; assigneeQuery?: string } | null>(null);
+  // CT.7+CT.8 — preset values from /task slash, message-action, or future entry points. Cleared after modal close.
+  const [chatTaskPreset, setChatTaskPreset] = useState<{ title?: string; description?: string; assigneeQuery?: string; sourceMessageId?: string } | null>(null);
   const [showDeletedAccordion, setShowDeletedAccordion] = useState(false);
   const [deletedRecords, setDeletedRecords] = useState<DeletedMessageRecord[]>([]);
   // @mention autocomplete
@@ -1022,6 +1023,33 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
                       >
                         <MessageCircleReply size={14} className="text-gray-500" />
                       </button>
+                      {/* CT.8 — Make this a task. Inline icon, every regular message
+                          (skip chat-task cards + WA analysis cards — recursive / nonsensical). */}
+                      {!msg.chat_task_card && !msg.wa_analysis && (
+                      <button
+                        onClick={() => {
+                          const body = (msg.text || '').trim();
+                          // Parse first @mention from body. @me → no assignee seed (modal self-assigns).
+                          let assigneeQuery: string | undefined;
+                          const mm = body.match(/@([\w.-]+)/);
+                          if (mm && mm[1].toLowerCase() !== 'me') assigneeQuery = mm[1];
+                          // Title = body truncated to 200ch, with ellipsis if cut.
+                          const title = body.length > 200 ? body.slice(0, 199).trimEnd() + '…' : body;
+                          setChatTaskPreset({
+                            title: title || undefined,
+                            description: body || undefined,
+                            assigneeQuery,
+                            sourceMessageId: msg.id,
+                          });
+                          setShowCreateTaskModal(true);
+                          trackFeature('chat_task_make_task', { channel_type: channel.type, msg_len: body.length });
+                        }}
+                        className="p-1 rounded hover:bg-blue-50 transition-colors"
+                        title="Make this a task"
+                      >
+                        <ListPlus size={14} className="text-gray-500 hover:text-even-blue" />
+                      </button>
+                      )}
                       {/* Delete button — only for own messages */}
                       {isOwn && (
                         <>
@@ -1295,7 +1323,9 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
             channelType={channel.type}
             presetPatient={presetPatient}
             presetTitle={chatTaskPreset?.title}
+            presetDescription={chatTaskPreset?.description}
             presetAssigneeQuery={chatTaskPreset?.assigneeQuery}
+            presetSourceMessageId={chatTaskPreset?.sourceMessageId}
             viewerProfileId={client.userID || ''}
             onClose={() => { setShowCreateTaskModal(false); setChatTaskPreset(null); }}
             onCreated={() => {
