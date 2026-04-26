@@ -644,6 +644,78 @@ interface RoomRowProps {
   onClickEntry: (c: CaseLite) => void;
 }
 
+// 26 Apr 2026 follow-up FU-virt: high-density threshold for compact rows.
+// >5 bookings on a single OT × day cell → flip to single-line dense rows
+// inside a fixed max-height scroll container so the cell stops blowing up
+// the row's height. ≤5 bookings stay as the existing card layout.
+const HIGH_DENSITY_THRESHOLD = 5;
+
+function CardEntry({ c, canEdit, onClickEntry }: { c: CaseLite; canEdit: boolean; onClickEntry: (c: CaseLite) => void }) {
+  return (
+    <button
+      key={c.id}
+      type="button"
+      onClick={() => onClickEntry(c)}
+      disabled={!canEdit}
+      title={[c.planned_procedure, c.surgeon_name && `Surgeon: ${c.surgeon_name}`, c.anaesthetist_name && `Anaesthetist: ${c.anaesthetist_name}`].filter(Boolean).join(' · ')}
+      className={`rounded px-1 py-0.5 text-left text-[11px] transition hover:ring-1 hover:ring-blue-300 disabled:cursor-default ${
+        c.urgency === 'emergency' ? 'bg-red-100 text-red-900' :
+        c.urgency === 'urgent'    ? 'bg-orange-100 text-orange-900' :
+                                    'bg-blue-100 text-blue-900'
+      }`}
+    >
+      <div className="flex items-center gap-1">
+        {c.case_serial_in_slot != null && (
+          <span className="shrink-0 rounded bg-white/60 px-1 text-[9px] font-mono">#{c.case_serial_in_slot}</span>
+        )}
+        {c.planned_start_time && (
+          <span className="shrink-0 text-[9px] opacity-70">{c.planned_start_time}</span>
+        )}
+        {c.anae_type && (
+          <span className="shrink-0 rounded bg-white/60 px-1 text-[9px]">{c.anae_type}</span>
+        )}
+      </div>
+      <div className="truncate font-medium">{c.patient_name || '(no name)'}</div>
+      {c.planned_procedure && (
+        <div className="truncate text-[10px] opacity-80">{c.planned_procedure}</div>
+      )}
+    </button>
+  );
+}
+
+function CompactEntry({ c, canEdit, onClickEntry }: { c: CaseLite; canEdit: boolean; onClickEntry: (c: CaseLite) => void }) {
+  // Single-line dense row used when the cell is high-density. Same click
+  // target as CardEntry — opens the booking modal in edit mode.
+  return (
+    <button
+      key={c.id}
+      type="button"
+      onClick={() => onClickEntry(c)}
+      disabled={!canEdit}
+      title={[c.planned_procedure, c.surgeon_name && `Surgeon: ${c.surgeon_name}`, c.anaesthetist_name && `Anaesthetist: ${c.anaesthetist_name}`].filter(Boolean).join(' · ')}
+      className={`flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[10px] transition hover:ring-1 hover:ring-blue-300 disabled:cursor-default ${
+        c.urgency === 'emergency' ? 'bg-red-100 text-red-900' :
+        c.urgency === 'urgent'    ? 'bg-orange-100 text-orange-900' :
+                                    'bg-blue-100 text-blue-900'
+      }`}
+    >
+      {c.case_serial_in_slot != null && (
+        <span className="shrink-0 rounded bg-white/60 px-1 font-mono text-[9px]">#{c.case_serial_in_slot}</span>
+      )}
+      {c.planned_start_time && (
+        <span className="shrink-0 font-mono text-[9px] opacity-70">{c.planned_start_time}</span>
+      )}
+      <span className="shrink-0 truncate font-medium">{c.patient_name || '(no name)'}</span>
+      {c.planned_procedure && (
+        <span className="truncate text-[9px] opacity-70">· {c.planned_procedure}</span>
+      )}
+      {c.anae_type && (
+        <span className="ml-auto shrink-0 rounded bg-white/60 px-1 text-[9px]">{c.anae_type}</span>
+      )}
+    </button>
+  );
+}
+
 function RoomRow({ hospitalSlug, otRoom, days, scheduledByCell, canEdit, onClickEntry }: RoomRowProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   return (
@@ -656,49 +728,44 @@ function RoomRow({ hospitalSlug, otRoom, days, scheduledByCell, canEdit, onClick
         const cellKey = `${hospitalSlug}-${dateStr}-${otRoom}`;
         const inCell = scheduledByCell.get(hospitalSlug)?.get(dateStr)?.get(otRoom) ?? [];
         const isExpanded = !!expanded[cellKey];
+        const isHighDensity = inCell.length > HIGH_DENSITY_THRESHOLD;
         const visibleCount = isExpanded ? inCell.length : Math.min(inCell.length, 2);
         const visible = inCell.slice(0, visibleCount);
         const hiddenCount = inCell.length - visibleCount;
         return (
           <div key={cellKey} className="flex min-h-[80px] flex-col gap-1 border-r border-b border-gray-100 bg-white px-1 py-1 align-top">
             {inCell.length === 0 && <span className="text-[10px] text-gray-300">—</span>}
-            {visible.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => onClickEntry(c)}
-                disabled={!canEdit}
-                title={[c.planned_procedure, c.surgeon_name && `Surgeon: ${c.surgeon_name}`, c.anaesthetist_name && `Anaesthetist: ${c.anaesthetist_name}`].filter(Boolean).join(' · ')}
-                className={`rounded px-1 py-0.5 text-left text-[11px] transition hover:ring-1 hover:ring-blue-300 disabled:cursor-default ${
-                  c.urgency === 'emergency' ? 'bg-red-100 text-red-900' :
-                  c.urgency === 'urgent'    ? 'bg-orange-100 text-orange-900' :
-                                              'bg-blue-100 text-blue-900'
-                }`}
-              >
-                <div className="flex items-center gap-1">
-                  {c.case_serial_in_slot != null && (
-                    <span className="shrink-0 rounded bg-white/60 px-1 text-[9px] font-mono">#{c.case_serial_in_slot}</span>
-                  )}
-                  {c.planned_start_time && (
-                    <span className="shrink-0 text-[9px] opacity-70">{c.planned_start_time}</span>
-                  )}
-                  {c.anae_type && (
-                    <span className="shrink-0 rounded bg-white/60 px-1 text-[9px]">{c.anae_type}</span>
-                  )}
-                </div>
-                <div className="truncate font-medium">{c.patient_name || '(no name)'}</div>
-                {c.planned_procedure && (
-                  <div className="truncate text-[10px] opacity-80">{c.planned_procedure}</div>
-                )}
-              </button>
+
+            {/* Pre-expansion: keep the existing 2-card teaser regardless of density. */}
+            {!isExpanded && visible.map((c) => (
+              <CardEntry key={c.id} c={c} canEdit={canEdit} onClickEntry={onClickEntry} />
             ))}
+
+            {/* Expanded + low density: render all cards stacked, no scroll. */}
+            {isExpanded && !isHighDensity && visible.map((c) => (
+              <CardEntry key={c.id} c={c} canEdit={canEdit} onClickEntry={onClickEntry} />
+            ))}
+
+            {/* Expanded + high density: single-line compact rows in a fixed-height scroller. */}
+            {isExpanded && isHighDensity && (
+              <div className="flex max-h-72 flex-col gap-0.5 overflow-y-auto rounded border border-gray-200 bg-gray-50 p-1">
+                <div className="sticky top-0 z-10 -m-1 mb-0.5 flex items-center justify-between bg-gray-50/95 px-1 py-0.5 text-[9px] font-medium uppercase text-gray-500 backdrop-blur">
+                  <span>{inCell.length} bookings</span>
+                  <span className="opacity-70">scroll · click to edit</span>
+                </div>
+                {inCell.map((c) => (
+                  <CompactEntry key={c.id} c={c} canEdit={canEdit} onClickEntry={onClickEntry} />
+                ))}
+              </div>
+            )}
+
             {hiddenCount > 0 && !isExpanded && (
               <button
                 type="button"
                 onClick={() => setExpanded((e) => ({ ...e, [cellKey]: true }))}
                 className="rounded border border-gray-200 bg-gray-50 px-1 py-0.5 text-[10px] text-gray-700 hover:bg-gray-100"
               >
-                + {hiddenCount} more
+                + {hiddenCount} more{isHighDensity ? ' · dense view' : ''}
               </button>
             )}
             {isExpanded && inCell.length > 2 && (
