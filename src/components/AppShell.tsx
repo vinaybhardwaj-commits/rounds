@@ -208,6 +208,31 @@ function AppShellInner({ userId, userRole }: { userId: string; userRole: string 
     setActiveTab('chat');
   }, [pushNavState]);
 
+  // CT.10: listen for 'rounds:open-chat' custom events fired by CoordinatorTasksPanel's
+  // 'Open in chat' button (and any future caller). Same-tree event bus, no URL plumbing.
+  // Detail shape: { channelId: string, channelType: string|null, messageId: string|null }
+  // For non-patient-thread channels (department/direct/broadcast), pendingChannelId
+  // navigation may not resolve (ChatShell only handles patient-thread for that path);
+  // we still switch to the chat tab so the user lands in the right surface.
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const ce = ev as CustomEvent<{ channelId?: string; channelType?: string | null; messageId?: string | null }>;
+      const channelId = ce.detail?.channelId;
+      if (!channelId) return;
+      const channelType = ce.detail?.channelType || null;
+      // Only seed pendingChannelId for patient-thread (existing ChatShell support).
+      if (channelType === 'patient-thread') {
+        setPendingChannelId(channelId);
+      }
+      pushNavState('chat', null);
+      setActiveTab('chat');
+      // messageId-based scroll-to-message is deferred — it requires threading
+      // pendingMessageId through ChatShell to MessageArea.scrollToMessageId.
+    };
+    window.addEventListener('rounds:open-chat', handler);
+    return () => window.removeEventListener('rounds:open-chat', handler);
+  }, [pushNavState]);
+
   return (
     <div className="h-dvh flex flex-col overflow-hidden bg-even-white">
       {/* Tab content — takes full height minus tab bar */}

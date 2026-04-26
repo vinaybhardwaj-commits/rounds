@@ -21,8 +21,10 @@
 // =============================================================================
 
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, ClipboardList, ExternalLink, Stethoscope } from 'lucide-react';
+import { Loader2, ClipboardList, ExternalLink, Stethoscope, MessageSquare, Eye, Play, Check } from 'lucide-react';
 import SchedulePacModal from '@/components/drawer/SchedulePacModal';
+// CT.10 — viewer-id helper for chat-task assignee permission gating.
+import { useChatContext } from '@/providers/ChatProvider';
 
 interface TaskRow {
   id: string;
@@ -42,6 +44,15 @@ interface TaskRow {
   case_state: string | null;
   case_planned_procedure: string | null;
   case_planned_surgery_date: string | null;
+  // CT.10: chat-task fields surfaced from CT.2's GET /api/tasks extension.
+  priority: string;                       // 'low' | 'normal' | 'high' | 'urgent'
+  source_channel_id: string | null;       // Stream channel.id (without type prefix)
+  source_channel_type: string | null;     // 'patient-thread' | 'department' | 'direct' | 'broadcast'
+  source_message_id: string | null;       // the original chat message that triggered the task (CT.8 path)
+  posted_message_id: string | null;       // the chat-task-card message rendered in the channel
+  uhid: string | null;                    // patient identifier
+  assignee_profile_id: string | null;     // for ack/start/done permission gate
+  metadata: Record<string, unknown> | null;
 }
 
 function fmt(iso: string | null): string {
@@ -60,6 +71,11 @@ export default function CoordinatorTasksPanel() {
   const [pacModalCaseId, setPacModalCaseId] = useState<string | null>(null);
   const [pacModalCaseState, setPacModalCaseState] = useState<string>('draft');
   const [pacModalPatientName, setPacModalPatientName] = useState<string | null>(null);
+  // CT.10: viewer profile id (for assignee permission gate on chat-task action buttons).
+  const { client } = useChatContext();
+  const viewerProfileId = client?.userID || null;
+  // CT.10: in-flight status mutations (taskId → boolean) so we can disable buttons during PATCH.
+  const [statusBusy, setStatusBusy] = useState<Record<string, boolean>>({});
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -92,6 +108,53 @@ export default function CoordinatorTasksPanel() {
     reload();
   };
 
+  // CT.10: PATCH /api/chat-tasks/[id]/status — optimistic, rollback on error.
+  const mutateChatTaskStatus = async (taskId: string, nextStatus: 'acknowledged' | 'in_progress' | 'done') => {
+    setStatusBusy((m) => ({ ...m, [taskId]: true }));
+    // Optimistic: update local row state.
+    // 'acknowledged' is a metadata flag — status column stays 'pending' (per PRD §5.2),
+    // so we don't update the row's status string for it. We still surface the next button
+    // ('Start') by checking metadata.acknowledged_at via a refetch.
+    const prevRow = rows.find((r) => r.id === taskId);
+    if (!prevRow) return;
+    const optimisticRow = nextStatus === 'acknowledged'
+      ? { ...prevRow, metadata: { ...(prevRow.metadata || {}), acknowledged_at: new Date().toISOString() } }
+      : { ...prevRow, status: nextStatus };
+    setRows((rs) => rs.map((r) => (r.id === taskId ? optimisticRow : r)));
+    try {
+      const res = await fetch(`/api/chat-tasks/${taskId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || `HTTP ${res.status}`);
+      }
+      // 'done' rows usually drop out of the pending list — refetch to reflect server truth.
+      if (nextStatus === 'done') reload();
+    } catch (err) {
+      // Rollback.
+      setRows((rs) => rs.map((r) => (r.id === taskId ? prevRow : r)));
+      alert(`Status update failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setStatusBusy((m) => {
+        const next = { ...m };
+        delete next[taskId];
+        return next;
+      });
+    }
+  };
+
+  // CT.10: open the source channel in chat tab via custom event (same React tree).
+  // Falls back to nothing if AppShell hasn't subscribed (no-op, harmless).
+  const openInChat = (channelId: string | null, channelType: string | null, messageId: string | null) => {
+    if (!channelId) return;
+    window.dispatchEvent(new CustomEvent('rounds:open-chat', {
+      detail: { channelId, channelType, messageId },
+    }));
+  };
+
   if (loading) {
     return (
       <div className="flex items-center gap-2 py-12 text-sm text-gray-500">
@@ -118,6 +181,19 @@ export default function CoordinatorTasksPanel() {
         {rows.map((t) => {
           const isInitiatePac = t.source_ref === 'case:initiate_pac';
           const isVerifyPreop = t.source_ref === 'case:verify_preop';
+          // CT.10: chat-task detection + permission + state derivations.
+          const isChatTask = t.source === 'chat';
+          const isAssignee = !!viewerProfileId && t.assignee_profile_id === viewerProfileId;
+          const isAcked = !!(t.metadata && (t.metadata as Record<string, unknown>).acknowledged_at);
+          const busy = !!statusBusy[t.id];
+          const priority = (t.priority || 'normal').toLowerCase();
+          const priorityCfg: Record<string, { bg: string; text: string; label: string }> = {
+            urgent: { bg: 'bg-red-100', text: 'text-red-700', label: 'urgent' },
+            high:   { bg: 'bg-orange-100', text: 'text-orange-700', label: 'high' },
+            normal: { bg: 'bg-gray-100', text: 'text-gray-600', label: 'normal' },
+            low:    { bg: 'bg-slate-50', text: 'text-slate-500', label: 'low' },
+          };
+          const pCfg = priorityCfg[priority] || priorityCfg.normal;
           return (
             <li
               key={t.id}
@@ -130,6 +206,29 @@ export default function CoordinatorTasksPanel() {
                     {t.source === 'auto' && (
                       <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-purple-700">
                         auto
+                      </span>
+                    )}
+                    {/* CT.10: chat pill — distinguishes chat-tasks from auto-tasks */}
+                    {isChatTask && (
+                      <span className="inline-flex items-center gap-1 rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-indigo-700">
+                        <MessageSquare size={9} /> chat
+                      </span>
+                    )}
+                    {/* CT.10: priority chip — only meaningful for chat-tasks (auto-tasks default 'normal') */}
+                    {isChatTask && (
+                      <span className={`rounded ${pCfg.bg} px-1.5 py-0.5 text-[10px] font-medium uppercase ${pCfg.text}`}>
+                        {pCfg.label}
+                      </span>
+                    )}
+                    {/* CT.10: surface acknowledged state for chat-tasks */}
+                    {isChatTask && isAcked && t.status === 'pending' && (
+                      <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium uppercase text-emerald-700">
+                        ack'd
+                      </span>
+                    )}
+                    {isChatTask && t.status === 'in_progress' && (
+                      <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium uppercase text-amber-700">
+                        in progress
                       </span>
                     )}
                     {t.owner_role && (
@@ -146,6 +245,8 @@ export default function CoordinatorTasksPanel() {
                   {t.patient_name && (
                     <p className="mt-1 text-xs text-gray-700">
                       Patient: <span className="font-medium">{t.patient_name}</span>
+                      {/* CT.10: surface UHID for chat-tasks (auto-tasks already have case context) */}
+                      {isChatTask && t.uhid && <span className="ml-1 text-gray-500">({t.uhid})</span>}
                       {t.case_planned_procedure && <> · {t.case_planned_procedure}</>}
                       {t.case_planned_surgery_date && <> · planned {new Date(t.case_planned_surgery_date).toLocaleDateString()}</>}
                     </p>
@@ -158,6 +259,7 @@ export default function CoordinatorTasksPanel() {
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                  {/* Existing auto-task action buttons — unchanged */}
                   {isInitiatePac && t.case_id && (
                     <button
                       type="button"
@@ -175,13 +277,57 @@ export default function CoordinatorTasksPanel() {
                       <ExternalLink size={12} /> Open case
                     </a>
                   )}
-                  {!isInitiatePac && !isVerifyPreop && t.case_id && (
+                  {!isChatTask && !isInitiatePac && !isVerifyPreop && t.case_id && (
                     <a
                       href={`/case/${t.case_id}`}
                       className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
                     >
                       <ExternalLink size={12} /> Open
                     </a>
+                  )}
+
+                  {/* CT.10: chat-task action stack — Open in chat + status mutate buttons */}
+                  {isChatTask && t.source_channel_id && (
+                    <button
+                      type="button"
+                      onClick={() => openInChat(t.source_channel_id, t.source_channel_type, t.posted_message_id || t.source_message_id)}
+                      className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
+                    >
+                      <MessageSquare size={12} /> Open in chat
+                    </button>
+                  )}
+                  {isChatTask && isAssignee && t.status === 'pending' && !isAcked && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => mutateChatTaskStatus(t.id, 'acknowledged')}
+                      className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      <Eye size={12} /> Acknowledge
+                    </button>
+                  )}
+                  {/* CT.10: Start button — assignee can move pending → in_progress.
+                      'acknowledged' is a metadata flag (status stays 'pending' per PRD §5.2),
+                      so the gate is just status === 'pending'. */}
+                  {isChatTask && isAssignee && t.status === 'pending' && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => mutateChatTaskStatus(t.id, 'in_progress')}
+                      className="inline-flex items-center gap-1 rounded-md bg-amber-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                    >
+                      <Play size={12} /> Start
+                    </button>
+                  )}
+                  {isChatTask && isAssignee && t.status === 'in_progress' && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => mutateChatTaskStatus(t.id, 'done')}
+                      className="inline-flex items-center gap-1 rounded-md bg-green-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                    >
+                      <Check size={12} /> Mark done
+                    </button>
                   )}
                 </div>
               </div>
