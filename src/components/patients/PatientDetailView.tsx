@@ -763,6 +763,30 @@ export function PatientDetailView({
                     type="text"
                     value={editValue}
                     onChange={e => setEditValue(e.target.value)}
+                    onKeyDown={e => {
+                      // 26 Apr 2026 bug-fix: auto-save on Enter so the user
+                      // doesn't have to reach for the green check button.
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        saveEdit('bed', (e.target as HTMLInputElement).value);
+                      } else if (e.key === 'Escape') {
+                        cancelEdit();
+                      }
+                    }}
+                    onBlur={e => {
+                      // 26 Apr 2026 bug-fix: auto-save on blur (tab/click-away)
+                      // when the value actually changed. Skips when blur
+                      // happens because the user clicked the cancel button.
+                      const v = e.target.value;
+                      const wasChanged = v !== ((patient.bed_number as string | null) || '');
+                      // The relatedTarget check stops a blur fired by the
+                      // cancel button itself from re-saving.
+                      const goingToCancel = e.relatedTarget instanceof HTMLElement
+                        && (e.relatedTarget.getAttribute('aria-label') === 'cancel-bed-edit');
+                      if (wasChanged && !goingToCancel) {
+                        saveEdit('bed', v);
+                      }
+                    }}
                     className="flex-1 px-2 py-1 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-even-blue outline-none"
                     placeholder="e.g. 106 · First Floor"
                     autoFocus
@@ -770,7 +794,7 @@ export function PatientDetailView({
                   <button onClick={() => saveEdit('bed')} disabled={editSaving} className="p-1 text-green-600 hover:bg-green-50 rounded">
                     <Check size={14} />
                   </button>
-                  <button onClick={cancelEdit} className="p-1 text-gray-400 hover:bg-gray-50 rounded">
+                  <button onClick={cancelEdit} aria-label="cancel-bed-edit" className="p-1 text-gray-400 hover:bg-gray-50 rounded">
                     <X size={14} />
                   </button>
                 </div>
