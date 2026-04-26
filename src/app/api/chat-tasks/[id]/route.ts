@@ -320,3 +320,43 @@ export async function DELETE(
 
   return NextResponse.json({ success: true, action: 'cancelled', data: { id } });
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// GET — read one (used by the renderer's orphan-card defense, PRD §6.2)
+// ─────────────────────────────────────────────────────────────────────────
+
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const { id } = params;
+  if (!UUID_RE.test(id)) {
+    return NextResponse.json({ success: false, error: 'Invalid task id' }, { status: 400 });
+  }
+
+  const task = await queryOne<TaskRow & {
+    title: string;
+    description: string | null;
+    status: string;
+    priority: string;
+    due_at: string | null;
+    posted_message_id: string | null;
+  }>(
+    `SELECT id, title, description, status, priority, due_at,
+            assignee_profile_id, created_by, hospital_id,
+            patient_thread_id, posted_message_id, metadata
+       FROM tasks
+      WHERE id = $1
+        AND hospital_id = ANY(user_accessible_hospital_ids($2::UUID))`,
+    [id, user.profileId]
+  );
+  if (!task) {
+    return NextResponse.json({ success: false, error: 'Task not found or access denied' }, { status: 404 });
+  }
+  return NextResponse.json({ success: true, data: task });
+}

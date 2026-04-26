@@ -37,6 +37,8 @@ import { ReadReceipt, computeReadStatus } from './ReadReceipt';
 import { DeleteMessageModal } from './DeleteMessageModal';
 import FormCard from '@/components/forms/FormCard';
 import WhatsAppAnalysisCard from '@/components/wa-analysis/WhatsAppAnalysisCard';
+// CT.5 — chat-task card renderer.
+import ChatTaskCard from '@/components/chat/attachments/ChatTaskCard';
 import type { MessageType, MessagePriority, FormType, PatientStage, DischargeMilestoneStep, ClaimEventType } from '@/types';
 import { PATIENT_STAGE_LABELS, VALID_STAGE_TRANSITIONS, DISCHARGE_MILESTONE_LABELS, CLAIM_STATUS_LABELS } from '@/types';
 import { FORM_TYPE_LABELS, FORMS_BY_STAGE } from '@/lib/form-registry';
@@ -70,6 +72,8 @@ interface DisplayMessage {
   mentioned_user_ids: string[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   wa_analysis?: any; // WhatsApp analysis card payload (custom GetStream message data)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  chat_task_card?: any; // CT.5 — chat-task card payload (PRD §4.5)
   raw: MessageResponse;
 }
 
@@ -338,6 +342,7 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
         attachments,
         mentioned_user_ids: (msg.mentioned_users || []).map((u: Record<string, unknown>) => (u.id as string) || ''),
         wa_analysis: msgExtra.wa_analysis || undefined,
+        chat_task_card: msgExtra.chat_task_card || undefined, // CT.5
         raw: msg,
       };
     },
@@ -1053,6 +1058,15 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
                     {/* WhatsApp Analysis Card */}
                     {msg.wa_analysis && msg.wa_analysis.type === 'wa_analysis' && (
                       <WhatsAppAnalysisCard payload={msg.wa_analysis} />
+                    )}
+
+                    {/* CT.5 — Chat task card */}
+                    {msg.chat_task_card && msg.chat_task_card.type === 'chat-task-card' && (
+                      <ChatTaskCard
+                        payload={msg.chat_task_card}
+                        viewerProfileId={client?.userID || null}
+                        viewerRole={(client?.user as Record<string, unknown> | undefined)?.rounds_role as string || null}
+                      />
                     )}
 
                     {/* Attachments */}
