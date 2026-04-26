@@ -12,6 +12,7 @@
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withApiTelemetry } from '@/lib/api-telemetry';
 import { getCurrentUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 
@@ -25,7 +26,7 @@ interface Row {
   phone: string | null;
 }
 
-export async function GET(request: NextRequest) {
+async function GET_inner(request: NextRequest) {
   try {
     const user = await getCurrentUser();
     if (!user) {
@@ -73,3 +74,6 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+// AP.3 — telemetry-wrapped exports (auto-applied)
+export const GET = withApiTelemetry('/api/patients/searchable', GET_inner);

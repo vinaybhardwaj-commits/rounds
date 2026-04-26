@@ -22,6 +22,7 @@
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withApiTelemetry } from '@/lib/api-telemetry';
 import { getCurrentUser } from '@/lib/auth';
 import { hasRole } from '@/lib/roles';
 import { query, queryOne } from '@/lib/db';
@@ -46,7 +47,7 @@ interface TaskRow {
   metadata: Record<string, unknown> | null;
 }
 
-export async function PATCH(
+async function PATCH_inner(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
@@ -197,3 +198,6 @@ export async function PATCH(
     },
   });
 }
+
+// AP.3 — telemetry-wrapped exports (auto-applied)
+export const PATCH = withApiTelemetry('/api/chat-tasks/[id]/status', PATCH_inner);

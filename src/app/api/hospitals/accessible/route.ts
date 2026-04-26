@@ -10,10 +10,11 @@
 // =============================================================================
 
 import { NextResponse } from 'next/server';
+import { withApiTelemetry } from '@/lib/api-telemetry';
 import { getCurrentUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 
-export async function GET() {
+async function GET_inner() {
   try {
     const user = await getCurrentUser();
     if (!user) {
@@ -37,3 +38,6 @@ export async function GET() {
     );
   }
 }
+
+// AP.3 — telemetry-wrapped exports (auto-applied)
+export const GET = withApiTelemetry('/api/hospitals/accessible', GET_inner);

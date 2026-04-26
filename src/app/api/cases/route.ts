@@ -21,6 +21,7 @@
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withApiTelemetry } from '@/lib/api-telemetry';
 import { getCurrentUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 
@@ -64,7 +65,7 @@ interface CaseRow {
   archived_at: string | null;
 }
 
-export async function GET(request: NextRequest) {
+async function GET_inner(request: NextRequest) {
   try {
     const user = await getCurrentUser();
     if (!user) {
@@ -238,7 +239,7 @@ export async function GET(request: NextRequest) {
 
 import { queryOne } from '@/lib/db';
 
-export async function POST(request: NextRequest) {
+async function POST_inner(request: NextRequest) {
   try {
     const user = await getCurrentUser();
     if (!user) {
@@ -409,3 +410,7 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// AP.3 — telemetry-wrapped exports (auto-applied)
+export const GET = withApiTelemetry('/api/cases', GET_inner);
+export const POST = withApiTelemetry('/api/cases', POST_inner);

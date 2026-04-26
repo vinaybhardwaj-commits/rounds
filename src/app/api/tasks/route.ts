@@ -21,6 +21,7 @@
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withApiTelemetry } from '@/lib/api-telemetry';
 import { getCurrentUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 
@@ -61,7 +62,7 @@ interface TaskRow {
   case_planned_surgery_date: string | null;
 }
 
-export async function GET(request: NextRequest) {
+async function GET_inner(request: NextRequest) {
   try {
     const user = await getCurrentUser();
     if (!user) {
@@ -144,3 +145,6 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+// AP.3 — telemetry-wrapped exports (auto-applied)
+export const GET = withApiTelemetry('/api/tasks', GET_inner);

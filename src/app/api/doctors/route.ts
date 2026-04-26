@@ -14,6 +14,7 @@
 // ============================================
 
 import { NextResponse } from 'next/server';
+import { withApiTelemetry } from '@/lib/api-telemetry';
 import { getCurrentUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 // 26 Apr 2026 audit fix (P1-6): single source of truth for surgical specialties.
@@ -43,7 +44,7 @@ interface DoctorRow {
   specialty: string | null;
 }
 
-export async function GET() {
+async function GET_inner() {
   try {
     const user = await getCurrentUser();
     if (!user) {
@@ -135,3 +136,6 @@ export async function GET() {
     );
   }
 }
+
+// AP.3 — telemetry-wrapped exports (auto-applied)
+export const GET = withApiTelemetry('/api/doctors', GET_inner);

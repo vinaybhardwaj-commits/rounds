@@ -21,6 +21,7 @@
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withApiTelemetry } from '@/lib/api-telemetry';
 import { getCurrentUser } from '@/lib/auth';
 import { hasRole } from '@/lib/roles';
 import { query, queryOne } from '@/lib/db';
@@ -63,7 +64,7 @@ function isAuthorizedToMutate(user: { profileId: string; role: string | null }, 
 // PATCH — edit
 // ─────────────────────────────────────────────────────────────────────────
 
-export async function PATCH(
+async function PATCH_inner(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
@@ -251,7 +252,7 @@ export async function PATCH(
 // DELETE — cancel
 // ─────────────────────────────────────────────────────────────────────────
 
-export async function DELETE(
+async function DELETE_inner(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
@@ -325,7 +326,7 @@ export async function DELETE(
 // GET — read one (used by the renderer's orphan-card defense, PRD §6.2)
 // ─────────────────────────────────────────────────────────────────────────
 
-export async function GET(
+async function GET_inner(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
@@ -360,3 +361,8 @@ export async function GET(
   }
   return NextResponse.json({ success: true, data: task });
 }
+
+// AP.3 — telemetry-wrapped exports (auto-applied)
+export const DELETE = withApiTelemetry('/api/chat-tasks/[id]', DELETE_inner);
+export const GET = withApiTelemetry('/api/chat-tasks/[id]', GET_inner);
+export const PATCH = withApiTelemetry('/api/chat-tasks/[id]', PATCH_inner);

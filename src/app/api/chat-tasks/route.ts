@@ -31,6 +31,7 @@
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withApiTelemetry } from '@/lib/api-telemetry';
 import { getCurrentUser } from '@/lib/auth';
 import { query, queryOne } from '@/lib/db';
 import { getStreamServerClient } from '@/lib/getstream';
@@ -51,7 +52,7 @@ interface CreateBody {
   source_message_id?: string | null;
 }
 
-export async function POST(request: NextRequest) {
+async function POST_inner(request: NextRequest) {
   // ── 1. Auth ────────────────────────────────────────────────────────────
   const user = await getCurrentUser();
   if (!user) {
@@ -352,3 +353,6 @@ async function pingAssigneeDM(
     chat_task_card: { ...cardPayload, is_ping: true },
   });
 }
+
+// AP.3 — telemetry-wrapped exports (auto-applied)
+export const POST = withApiTelemetry('/api/chat-tasks', POST_inner);

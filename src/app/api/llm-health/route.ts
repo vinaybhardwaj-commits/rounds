@@ -4,6 +4,7 @@
 // ============================================
 
 import { NextResponse } from 'next/server';
+import { withApiTelemetry } from '@/lib/api-telemetry';
 import { getCurrentUser } from '@/lib/auth';
 import llm, { MODEL_PRIMARY } from '@/lib/llm';
 
@@ -11,7 +12,7 @@ export const dynamic = 'force-dynamic';
 // Resilience pass (26 Apr 2026): cap at 90s — SDK timeout is 60s, leave headroom.
 export const maxDuration = 90;
 
-export async function GET() {
+async function GET_inner() {
   // Require authentication — exposes internal model info
   const user = await getCurrentUser();
   if (!user) {
@@ -63,3 +64,6 @@ export async function GET() {
     });
   }
 }
+
+// AP.3 — telemetry-wrapped exports (auto-applied)
+export const GET = withApiTelemetry('/api/llm-health', GET_inner);

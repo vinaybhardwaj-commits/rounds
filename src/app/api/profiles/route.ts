@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withApiTelemetry } from '@/lib/api-telemetry';
 import { neon } from '@neondatabase/serverless';
 import { getCurrentUser } from '@/lib/auth';
 import { VALID_ROLES } from '@/lib/roles';
@@ -14,7 +15,7 @@ function sqlQuery(text: string, params: unknown[]) {
 }
 
 // GET /api/profiles — list all profiles (admin only) or search
-export async function GET(request: NextRequest) {
+async function GET_inner(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -131,7 +132,7 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/profiles — create a single profile (admin only)
-export async function POST(request: NextRequest) {
+async function POST_inner(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user || user.role !== 'super_admin') {
     return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
@@ -176,3 +177,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Failed to create profile' }, { status: 500 });
   }
 }
+
+// AP.3 — telemetry-wrapped exports (auto-applied)
+export const GET = withApiTelemetry('/api/profiles', GET_inner);
+export const POST = withApiTelemetry('/api/profiles', POST_inner);

@@ -6,12 +6,13 @@
 // ============================================
 
 import { NextResponse } from 'next/server';
+import { withApiTelemetry } from '@/lib/api-telemetry';
 import { getCurrentUser } from '@/lib/auth';
 import { neon } from '@neondatabase/serverless';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function GET_inner() {
   try {
     const user = await getCurrentUser();
     if (!user || (user.role !== 'super_admin' && user.role !== 'admin')) {
@@ -90,3 +91,6 @@ export async function GET() {
     );
   }
 }
+
+// AP.3 — telemetry-wrapped exports (auto-applied)
+export const GET = withApiTelemetry('/api/admin/health', GET_inner);

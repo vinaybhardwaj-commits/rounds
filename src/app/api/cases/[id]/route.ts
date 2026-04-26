@@ -33,6 +33,7 @@
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withApiTelemetry } from '@/lib/api-telemetry';
 import { getCurrentUser } from '@/lib/auth';
 import { queryOne, query } from '@/lib/db';
 
@@ -132,7 +133,7 @@ function formatCaseCode(hospitalSlug: string, caseCreatedAt: string, rowId: stri
   return `${hospitalSlug.toUpperCase()}-SC-${year}-${tail}`;
 }
 
-export async function GET(
+async function GET_inner(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
@@ -342,3 +343,6 @@ export async function GET(
     );
   }
 }
+
+// AP.3 — telemetry-wrapped exports (auto-applied)
+export const GET = withApiTelemetry('/api/cases/[id]', GET_inner);
