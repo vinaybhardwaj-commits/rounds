@@ -763,12 +763,15 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
   const isSuperAdmin = ((client?.user as Record<string, unknown>)?.rounds_role as string) === 'super_admin';
 
   // CT.9 — AI parse: compute the heuristic suggestion from the current composer text.
-  // Flag-gated (default OFF in v1; default OFF in v1.1 too until telemetry green-lights flip).
+  // CT.9 follow-up (V — 26 Apr 2026): default flipped from OFF → ON for EHRC.
+  // Kill-switch retained: set NEXT_PUBLIC_FEATURE_CHAT_TASKS_AI_PARSE_ENABLED='false'
+  // on Vercel + redeploy to disable. Empty/undefined env var = ON.
   // Suppressed when the user dismissed THIS exact text — they can re-trigger by editing.
   // Also suppressed in the WA Insights channel (different message model).
   const aiParseSuggestion: ParsedChatTaskIntent | null = React.useMemo(() => {
-    const flagOn = (process.env.NEXT_PUBLIC_FEATURE_CHAT_TASKS_AI_PARSE_ENABLED || '').trim().toLowerCase() === 'true';
-    if (!flagOn) return null;
+    const flagVal = (process.env.NEXT_PUBLIC_FEATURE_CHAT_TASKS_AI_PARSE_ENABLED || '').trim().toLowerCase();
+    const flagOff = flagVal === 'false';
+    if (flagOff) return null;
     if (isWAChannel) return null;
     if (!messageText || dismissedSuggestionText === messageText.trim()) return null;
     return parseChatTaskIntent(messageText);
