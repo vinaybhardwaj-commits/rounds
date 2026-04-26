@@ -55,6 +55,8 @@ export interface CreateTaskModalProps {
   presetTitle?: string;
   presetDescription?: string;
   presetSourceMessageId?: string;
+  /** Optional: pre-fill the assignee typeahead (e.g., from /task @alice). Auto-selects if exact 1 match. */
+  presetAssigneeQuery?: string;
   /** Called after successful create. Parent typically clears any source-msg state. */
   onCreated?: () => void;
 }
@@ -68,7 +70,7 @@ const PRIORITY_OPTIONS = [
 
 export default function CreateTaskModal({
   isOpen, onClose, channelId, channelType, presetPatient, viewerProfileId,
-  presetTitle, presetDescription, presetSourceMessageId, onCreated,
+  presetTitle, presetDescription, presetSourceMessageId, presetAssigneeQuery, onCreated,
 }: CreateTaskModalProps) {
   // Form state.
   const [assignee, setAssignee] = useState<ProfileHit | null>(null);
@@ -98,7 +100,7 @@ export default function CreateTaskModal({
 
   const patientLocked = presetPatient !== undefined && presetPatient !== null;
 
-  // Reset on open.
+  // Reset on open. CT.7: also seed assigneeQuery from /task @mention.
   useEffect(() => {
     if (!isOpen) return;
     setAssignee(null);
@@ -107,16 +109,18 @@ export default function CreateTaskModal({
     setDescription(presetDescription ?? '');
     setDueAt('');
     setPriority('normal');
-    setAssigneeQuery('');
+    const seededQuery = (presetAssigneeQuery ?? '').trim();
+    setAssigneeQuery(seededQuery);
     setAssigneeHits([]);
-    setAssigneeOpen(false);
+    setAssigneeOpen(seededQuery.length >= 2);
     setPatientQuery('');
     setPatientHits([]);
     setPatientOpen(false);
     setError(null);
-  }, [isOpen, presetPatient, presetTitle, presetDescription]);
+  }, [isOpen, presetPatient, presetTitle, presetDescription, presetAssigneeQuery]);
 
-  // Debounced assignee search.
+  // Debounced assignee search. CT.7: auto-select if exactly 1 hit AND
+  // the trimmed query came from /task @mention (i.e., presetAssigneeQuery is set).
   useEffect(() => {
     if (!isOpen) return;
     if (assigneeQuery.trim().length < 2) {
@@ -124,18 +128,27 @@ export default function CreateTaskModal({
       return;
     }
     setAssigneeLoading(true);
+    const trimmed = assigneeQuery.trim();
+    const fromPreset = (presetAssigneeQuery ?? '').trim().toLowerCase() === trimmed.toLowerCase();
     const t = setTimeout(() => {
-      fetch(`/api/profiles?search=${encodeURIComponent(assigneeQuery.trim())}&limit=8`)
+      fetch(`/api/profiles?search=${encodeURIComponent(trimmed)}&limit=8`)
         .then((r) => r.json())
         .then((b) => {
           const data = b?.data ?? [];
-          setAssigneeHits(Array.isArray(data) ? (data as ProfileHit[]) : []);
+          const hits: ProfileHit[] = Array.isArray(data) ? (data as ProfileHit[]) : [];
+          setAssigneeHits(hits);
+          if (fromPreset && hits.length === 1) {
+            // Auto-select the single match — UX win for /task @alice when alice is unique.
+            setAssignee(hits[0]);
+            setAssigneeQuery(hits[0].full_name ?? '');
+            setAssigneeOpen(false);
+          }
         })
         .catch(() => setAssigneeHits([]))
         .finally(() => setAssigneeLoading(false));
     }, 200);
     return () => clearTimeout(t);
-  }, [assigneeQuery, isOpen]);
+  }, [assigneeQuery, isOpen, presetAssigneeQuery]);
 
   // Debounced patient search (only when not pre-locked).
   useEffect(() => {

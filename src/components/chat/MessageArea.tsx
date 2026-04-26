@@ -211,6 +211,8 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
   const [deleteTarget, setDeleteTarget] = useState<DisplayMessage | null>(null);
   // CT.6 — chat-task creation modal toggle.
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
+  // CT.7 — preset values from /task slash command. Cleared after modal close.
+  const [chatTaskPreset, setChatTaskPreset] = useState<{ title?: string; assigneeQuery?: string } | null>(null);
   const [showDeletedAccordion, setShowDeletedAccordion] = useState(false);
   const [deletedRecords, setDeletedRecords] = useState<DeletedMessageRecord[]>([]);
   // @mention autocomplete
@@ -659,6 +661,29 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
       if (channel?.type) params.set('channel_type', channel.type);
       if (channel?.id) params.set('channel_id', channel.id);
       router.push(`/forms?${params.toString()}`);
+      return true;
+    }
+
+    // CT.7 — /task [@assignee] [title text] → opens CreateTaskModal pre-filled.
+    // Examples: "task", "task draft note", "task @alice draft note", "task @me follow up at 5pm"
+    // Only the first @mention is parsed. "@me" triggers self-assign (no preset).
+    if (query === 'task' || query.startsWith('task ')) {
+      const rest = query.slice(4).trim(); // strip "task" prefix
+      let title = rest;
+      let assigneeQuery: string | undefined;
+      const m = rest.match(/^@([\w.-]+)\s*(.*)$/);
+      if (m) {
+        const mention = m[1];
+        if (mention.toLowerCase() !== 'me') {
+          assigneeQuery = mention;
+        }
+        title = m[2].trim();
+      }
+      setShowSlashMenu(false);
+      setMessageText('');
+      setChatTaskPreset({ title: title || undefined, assigneeQuery });
+      setShowCreateTaskModal(true);
+      trackFeature('chat_task_slash_command', { has_assignee: !!assigneeQuery, has_title: !!title });
       return true;
     }
 
@@ -1269,10 +1294,13 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
             channelId={channel.id || ''}
             channelType={channel.type}
             presetPatient={presetPatient}
+            presetTitle={chatTaskPreset?.title}
+            presetAssigneeQuery={chatTaskPreset?.assigneeQuery}
             viewerProfileId={client.userID || ''}
-            onClose={() => setShowCreateTaskModal(false)}
+            onClose={() => { setShowCreateTaskModal(false); setChatTaskPreset(null); }}
             onCreated={() => {
               setShowCreateTaskModal(false);
+              setChatTaskPreset(null);
               trackFeature('chat_task_created', { channel_type: channel.type });
             }}
           />
@@ -1460,6 +1488,13 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
                     alert(`Archive error: ${err}`);
                   }
                 }}
+                onCreateTask={() => {
+                  setShowSlashMenu(false);
+                  setMessageText('');
+                  setChatTaskPreset(null);
+                  setShowCreateTaskModal(true);
+                  trackFeature('chat_task_slash_menu', { channel_type: channel.type });
+                }}
                 onClose={() => {
                   setShowSlashMenu(false);
                   setMessageText('');
@@ -1566,6 +1601,7 @@ function SlashCommandMenu({
   onDischargeAction,
   onClaimAction,
   onArchive,
+  onCreateTask,
   onClose,
 }: {
   channel: Channel;
@@ -1576,6 +1612,7 @@ function SlashCommandMenu({
   onDischargeAction: (patientId: string, action: 'start' | 'step', step?: DischargeMilestoneStep) => void;
   onClaimAction: (patientId: string, eventType: ClaimEventType | '__create', description?: string, amount?: number, portalReference?: string) => void;
   onArchive: (patientId: string) => void;
+  onCreateTask: () => void;
   onClose: () => void;
 }) {
   const channelData = channel.data as Record<string, unknown> | undefined;
@@ -1641,6 +1678,21 @@ function SlashCommandMenu({
 
   return (
     <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-80 overflow-y-auto z-20">
+      {/* CT.7 — Create task entry. Always visible, every channel. */}
+      <div className="px-3 py-2 border-b border-gray-100">
+        <p className="text-xs font-semibold text-gray-500">Tasks</p>
+      </div>
+      <div className="py-1">
+        <button
+          onClick={onCreateTask}
+          className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-blue-50 text-left transition-colors"
+        >
+          <span className="text-base shrink-0">📋</span>
+          <span className="text-sm font-medium text-even-navy">Create task</span>
+          <span className="ml-auto text-[10px] text-blue-500 font-medium">/task</span>
+        </button>
+      </div>
+
       {/* Stage Transitions */}
       {isPatientThread && nextStages.length > 0 && patientId && (
         <>
