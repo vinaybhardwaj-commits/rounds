@@ -308,18 +308,19 @@ export function PatientDetailView({
     setEditValue('');
   };
 
-  const saveEdit = async (field: string) => {
+  const saveEdit = async (field: string, valueOverride?: string) => {
+    const value = valueOverride !== undefined ? valueOverride : editValue;
     if (!patient) return;
     setEditSaving(true);
     try {
       const body: Record<string, string | null> = {};
       if (field === 'consultant') {
-        body.primary_consultant_id = editValue || null;
+        body.primary_consultant_id = value || null;
         // Resolve display name from the in-memory list. If empty (None), name
         // also becomes null. The PATCH endpoint will fall back to looking up
         // profiles → reference_doctors if name is missing, but sending it here
         // saves a roundtrip.
-        const picked = consultants.find(c => c.id === editValue);
+        const picked = consultants.find(c => c.id === value);
         body.primary_consultant_name = picked?.full_name || null;
 
         // 25 Apr 2026 — Auto-fill clinical department from the doctor's
@@ -336,10 +337,10 @@ export function PatientDetailView({
         // (clinical specialty text). Sentinel '__other__' triggers the custom
         // text path. Mandatory at the UX layer — empty value rejected here.
         let resolved: string | null = null;
-        if (editValue === '__other__') {
+        if (value === '__other__') {
           resolved = (customDeptInput || '').trim() || null;
-        } else if (editValue) {
-          resolved = editValue;
+        } else if (value) {
+          resolved = value;
         }
         if (!resolved) {
           showToast('error', 'Please pick a department or type one in.');
@@ -348,7 +349,7 @@ export function PatientDetailView({
         }
         body.target_department = resolved;
       }
-      else if (field === 'bed') body.bed_number = editValue;
+      else if (field === 'bed') body.bed_number = value;
 
       const res = await fetch(`/api/patients/${patient.id}/fields`, {
         method: 'PATCH',
@@ -611,7 +612,16 @@ export function PatientDetailView({
                 <div className="flex items-center gap-1.5 flex-1">
                   <select
                     value={editValue}
-                    onChange={e => setEditValue(e.target.value)}
+                    onChange={e => {
+                      const v = e.target.value;
+                      setEditValue(v);
+                      // 26 Apr 2026 bug-fix: auto-save on dropdown change so the
+                      // pick is persisted even if the user immediately opens the
+                      // department picker without clicking the green check. No
+                      // longer requires explicit save — picker behaves like
+                      // "choose to commit".
+                      saveEdit('consultant', v);
+                    }}
                     className="flex-1 px-2 py-1 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-even-blue outline-none"
                     autoFocus
                   >
@@ -670,17 +680,23 @@ export function PatientDetailView({
                     <select
                       value={editValue}
                       onChange={e => {
-                        setEditValue(e.target.value);
+                        const v = e.target.value;
+                        setEditValue(v);
                         // If switching to Other, prefill the text input from
                         // current value when it's off-canon, else clear.
-                        if (e.target.value === '__other__') {
+                        if (v === '__other__') {
                           const cur = patient.target_department || '';
                           if (cur && !isCanonicalSpecialty(cur)) {
                             setCustomDeptInput(cur);
                           } else {
                             setCustomDeptInput('');
                           }
+                          // Don't auto-save until user types into the
+                          // custom-name input — they still need the save click.
+                          return;
                         }
+                        // 26 Apr 2026 bug-fix: auto-save canonical pick.
+                        if (v) saveEdit('department', v);
                       }}
                       className="flex-1 px-2 py-1 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-even-blue outline-none"
                       autoFocus
