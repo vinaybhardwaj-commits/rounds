@@ -9,6 +9,7 @@
 
 export type UserRole =
   | 'super_admin'
+  | 'hospital_admin'
   | 'department_head'
   | 'staff'
   | 'ip_coordinator'
