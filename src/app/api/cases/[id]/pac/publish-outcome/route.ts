@@ -34,6 +34,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { hasRole } from '@/lib/roles';
 import { query, queryOne } from '@/lib/db';
+import { audit } from '@/lib/audit';
 
 // 25 Apr 2026: super_admin auto-passes via hasRole helper, so it's no longer
 // listed here. Keep the allow-set narrow to the role that actually owns this.
@@ -246,6 +247,26 @@ export async function POST(
         { success: false, error: 'PAC publish succeeded on DB but returned no payload' },
         { status: 500 }
       );
+    }
+
+        // GLASS.4 audit wiring — GUARANTEED mode (PAC publish is reversible but critical)
+    try {
+      await audit({
+        actorId: user.profileId,
+        actorRole: user.role,
+        hospitalId: c.hospital_id,
+        action: 'pac.publish_outcome',
+        targetType: 'surgical_case',
+        targetId: caseId,
+        summary: `PAC outcome published: ${body.outcome}`,
+        payloadBefore: { pac_outcome: c.state },
+        payloadAfter: { pac_outcome: body.outcome, pac_conditions: conditionCodes.length + customConditions.length > 0 ? 'present' : 'none' },
+        request,
+        mode: 'guaranteed',
+      });
+    } catch (auditErr) {
+      console.error('[audit:guaranteed] pac.publish_outcome:', auditErr instanceof Error ? auditErr.message : auditErr);
+      return NextResponse.json({ success: false, error: 'Audit logging failed; please retry. Mutation may need manual rollback.' }, { status: 503 });
     }
 
     return NextResponse.json({

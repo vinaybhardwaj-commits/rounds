@@ -13,6 +13,7 @@ import {
 } from '@/lib/db-v5';
 import { updatePatientChannel, sendSystemMessage } from '@/lib/getstream';
 import { postPatientActivity } from '@/lib/patient-activity';
+import { audit } from '@/lib/audit';
 
 const VALID_REMOVAL_REASONS = [
   'duplicate_entry',
@@ -102,6 +103,24 @@ export async function POST(request: NextRequest) {
       reason || null,
       reason_detail || null
     );
+
+    try {
+      await audit({
+        actorId: user.profileId,
+        actorRole: user.role,
+        hospitalId: (patient as Record<string, unknown>).hospital_id as string,
+        action: 'patient.archive',
+        targetType: 'patient_thread',
+        targetId: patient_thread_id,
+        summary: `Archived patient ${(patient as Record<string, unknown>).patient_name}`,
+        payloadAfter: { archived_at: new Date().toISOString(), archive_type, reason },
+        request,
+        mode: 'guaranteed',
+      });
+    } catch (auditErr) {
+      console.error('Audit logging failed for archive:', auditErr);
+      return NextResponse.json({ success: false, error: 'Audit logging failed; please retry. Mutation may need manual rollback.' }, { status: 503 });
+    }
 
     // Freeze the GetStream channel so no new messages can be sent
     const channelId = (patient as Record<string, unknown>).getstream_channel_id as string;

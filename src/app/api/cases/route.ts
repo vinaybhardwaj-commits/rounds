@@ -238,6 +238,7 @@ async function GET_inner(request: NextRequest) {
 // =============================================================================
 
 import { queryOne } from '@/lib/db';
+import { audit } from '@/lib/audit';
 
 async function POST_inner(request: NextRequest) {
   try {
@@ -395,6 +396,18 @@ async function POST_inner(request: NextRequest) {
        )
        SELECT id, state FROM new_case`,
       [patient.hospital_id, patientThreadId, inferredState, urgency, hydratedProcedure, user.profileId, metadataJson, surgeonId]
+
+    await audit({
+      actorId: user.profileId,
+      actorRole: user.role,
+      hospitalId: patient.hospital_id,
+      action: 'case.create',
+      targetType: 'surgical_case',
+      targetId: inserted.id,
+      summary: `Created surgical case for patient ${patientThreadId}`,
+      payloadAfter: { patient_thread_id: patientThreadId, planned_procedure: hydratedProcedure, urgency, state: inserted.state },
+      request,
+    }).catch((e) => console.error('[audit] case.create failed (fire_and_forget):', e instanceof Error ? e.message : e));
     );
 
     return NextResponse.json({

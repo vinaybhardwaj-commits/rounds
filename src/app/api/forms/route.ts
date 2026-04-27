@@ -19,6 +19,7 @@ import { sendSystemMessage } from '@/lib/getstream';
 import { postPatientActivity } from '@/lib/patient-activity';
 import { getOrCreateClaim, logClaimEvent, postClaimMessage } from '@/lib/insurance-claims';
 import { calculateMilestoneAttribution } from '@/lib/billing-metrics';
+import { audit } from '@/lib/audit';
 import type { FormType, FormStatus } from '@/types';
 import { ROOM_RENT_ELIGIBILITY_PCT } from '@/types';
 
@@ -1030,7 +1031,27 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json(
+    
+    // Fire-and-forget audit for form submission (only if not a draft)
+    if (status !== 'draft') {
+      await audit({
+        actorId: user.profileId,
+        actorRole: user.role,
+        hospitalId: body.hospital_id || null,
+        action: 'form.submit',
+        targetType: 'form_submission',
+        targetId: formId,
+        summary: `Submitted ${form_type} form (${formId})`,
+        payloadAfter: {
+          form_type,
+          form_submission_id: formId,
+          patient_thread_id: body.patient_thread_id || null,
+        },
+        request,
+      }).catch((e) => console.error('[audit] form.submit failed:', e));
+    }
+
+return NextResponse.json(
       {
         success: true,
         data: {

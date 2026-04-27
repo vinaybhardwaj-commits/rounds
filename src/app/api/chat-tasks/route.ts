@@ -36,6 +36,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { query, queryOne } from '@/lib/db';
 import { getStreamServerClient } from '@/lib/getstream';
 import { checkRateLimit } from '@/lib/chat-tasks-rate-limit';
+import { audit } from '@/lib/audit';
 
 const VALID_PRIORITIES = new Set(['low', 'normal', 'high', 'urgent']);
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
@@ -262,6 +263,20 @@ async function POST_inner(request: NextRequest) {
      WHERE id = $2`,
     [postedMessageId, inserted.id]
   );
+  // GLASS.4 audit wiring — fire_and_forget
+  await audit({
+    actorId: user.profileId,
+    actorRole: user.role,
+    hospitalId: hospitalId,
+    action: 'task.create',
+    targetType: 'task',
+    targetId: inserted.id,
+    summary: `Task created: ${title}`,
+    payloadAfter: { task_id: inserted.id, title, status: 'pending', owner_role: null },
+    request,
+  }).catch((e) => console.error('[audit] task.create failed (fire_and_forget):', e instanceof Error ? e.message : e));
+
+  
 
   // ── 7. Fire-and-forget DM ping (PRD §7.2) ─────────────────────────────
   // Wrapped in try/catch — never blocks the API response. v1 only pings

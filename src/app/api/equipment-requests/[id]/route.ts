@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { hasRole } from '@/lib/roles';
 import { query, queryOne } from '@/lib/db';
+import { audit } from '@/lib/audit';
 
 const MUTATE_ROLES = new Set(['biomedical_engineer', 'ot_coordinator']);
 const VALID_STATUSES = new Set([
@@ -118,6 +119,27 @@ export async function PATCH(
       `UPDATE equipment_requests SET ${sets.join(', ')} WHERE id = $${args.length}`,
       args
     );
+    // Fire-and-forget audit for equipment request update
+    const changedFields: Record<string, unknown> = {};
+    if (body.status !== undefined) changedFields.status = body.status;
+    if (body.vendor_name !== undefined) changedFields.vendor_name = body.vendor_name;
+    if (body.vendor_phone !== undefined) changedFields.vendor_phone = body.vendor_phone;
+    if (body.eta !== undefined) changedFields.eta = body.eta;
+    if (body.notes !== undefined) changedFields.notes = body.notes;
+    if (body.rental_description !== undefined) changedFields.rental_description = body.rental_description;
+
+    await audit({
+      actorId: user.profileId,
+      actorRole: user.role,
+      hospitalId: row.hospital_id,
+      action: 'equipment.request_update',
+      targetType: 'equipment_request',
+      targetId: id,
+      summary: `Updated equipment request ${id}: ${Object.keys(changedFields).join(', ')}`,
+      payloadBefore: { status: row.status },
+      payloadAfter: changedFields,
+      request,
+    }).catch((e) => console.error('[audit] equipment.request_update failed:', e));
 
     return NextResponse.json({ success: true, data: { id, prev_status: row.status } });
   } catch (error) {

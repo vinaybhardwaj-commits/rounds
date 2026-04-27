@@ -26,6 +26,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { hasRole } from '@/lib/roles';
 import { query, queryOne } from '@/lib/db';
 import { syncChatTaskCard } from '@/lib/chat-tasks-card-sync';
+import { audit } from '@/lib/audit';
 
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const VALID_PRIORITIES = new Set(['low', 'normal', 'high', 'urgent']);
@@ -235,6 +236,30 @@ async function PATCH_inner(
     `UPDATE tasks SET ${sets.join(', ')} WHERE id = $${args.length}`,
     args
   );
+
+    // GLASS.4 audit wiring — fire_and_forget (derive action from status change)
+  const action = (() => {
+    if (changes.status) {
+      const [_oldStatus, newStatus] = changes.status as [string, string];
+      if (newStatus === 'acknowledged') return 'task.acknowledge';
+      if (newStatus === 'in_progress' || newStatus === 'started') return 'task.start';
+      if (newStatus === 'completed') return 'task.complete';
+      if (newStatus === 'cancelled') return 'task.cancel';
+    }
+    return 'task.update';
+  })();
+  await audit({
+    actorId: user.profileId,
+    actorRole: user.role,
+    hospitalId: task.hospital_id,
+    action,
+    targetType: 'task',
+    targetId: id,
+    summary: `Task updated: ${changes.title ? 'title' : Object.keys(changes).join(', ')}`,
+    payloadBefore: Object.fromEntries(Object.entries(changes).map(([k, [v]]) => [k, v])),
+    payloadAfter: Object.fromEntries(Object.entries(changes).map(([k, [, v]]) => [k, v])),
+    request,
+  }).catch((e) => console.error('[audit] task.update failed (fire_and_forget):', e instanceof Error ? e.message : e));
 
   // Sync the Stream card (non-fatal).
   syncChatTaskCard(id).catch((e) => {

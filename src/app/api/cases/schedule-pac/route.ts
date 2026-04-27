@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { hasRole } from '@/lib/roles';
 import { query, queryOne } from '@/lib/db';
+import { audit } from '@/lib/audit';
 
 // 26 Apr 2026 follow-up F3: V added IPD coordinator + OT coordinator. The
 // IPD coordinator is the typical assigner; OT coordinator can pre-emptively
@@ -112,9 +113,19 @@ export async function POST(request: NextRequest) {
          SELECT id, state FROM new_case`,
         [patient.hospital_id, body.patient_thread_id, user.profileId, metadataJson]
       );
-      return NextResponse.json({
-        success: true,
-        action: 'created',
+      await audit({
+        actorId: user.profileId,
+        actorRole: user.role,
+        hospitalId: patient.hospital_id,
+        action: 'pac.schedule',
+        targetType: 'surgical_case',
+        targetId: created.id,
+        summary: `PAC scheduled for patient ${body.patient_thread_id}`,
+        payloadAfter: { pac_scheduled_at: new Date().toISOString(), anaesthetist_id: user.profileId },
+        request,
+      }).catch((e) => console.error('[audit] pac.schedule failed (fire_and_forget):', e instanceof Error ? e.message : e));
+      
+      
         data: created,
       });
     }
@@ -158,10 +169,19 @@ export async function POST(request: NextRequest) {
        SELECT id, state FROM transitioned`,
       [existing.id, existing.state, user.profileId, metadataJson]
     );
-
-    return NextResponse.json({
-      success: true,
-      action: 'transitioned',
+    await audit({
+      actorId: user.profileId,
+      actorRole: user.role,
+      hospitalId: patient.hospital_id,
+      action: 'pac.schedule',
+      targetType: 'surgical_case',
+      targetId: updated.id,
+      summary: `PAC rescheduled for patient ${body.patient_thread_id}`,
+      payloadAfter: { pac_scheduled_at: new Date().toISOString(), anaesthetist_id: user.profileId },
+      request,
+    }).catch((e) => console.error('[audit] pac.schedule failed (fire_and_forget):', e instanceof Error ? e.message : e));
+    
+    
       data: updated,
     });
   } catch (error) {

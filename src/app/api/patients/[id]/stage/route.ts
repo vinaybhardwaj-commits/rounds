@@ -21,6 +21,7 @@ import {
 } from '@/lib/getstream';
 import { postPatientActivity } from '@/lib/patient-activity';
 import { createDischargeMilestone, postMilestoneMessage } from '@/lib/discharge-milestones';
+import { audit } from '@/lib/audit';
 import type { PatientStage } from '@/types';
 import { PATIENT_STAGE_LABELS, VALID_STAGE_TRANSITIONS } from '@/types';
 
@@ -123,6 +124,25 @@ export async function PATCH(
     }
 
     await updatePatientThread(id, updateData as Parameters<typeof updatePatientThread>[1]);
+
+    try {
+      await audit({
+        actorId: user.profileId,
+        actorRole: user.role,
+        hospitalId: patient.hospital_id as string,
+        action: 'patient.stage_advance',
+        targetType: 'patient_thread',
+        targetId: id,
+        summary: `Transitioned patient ${(patient as Record<string, unknown>).patient_name} from ${currentStage} to ${newStage}`,
+        payloadBefore: { stage: currentStage },
+        payloadAfter: { stage: newStage },
+        request,
+        mode: 'guaranteed',
+      });
+    } catch (auditErr) {
+      console.error('Audit logging failed for stage advance:', auditErr);
+      return NextResponse.json({ success: false, error: 'Audit logging failed; please retry. Mutation may need manual rollback.' }, { status: 503 });
+    }
 
     // 25 Apr 2026 — auto-create surgical_case when patient enters admitted+/OT
     // stages. Universal coverage so no admitted patient is ever without an OT

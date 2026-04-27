@@ -16,6 +16,7 @@ import {
   postMilestoneMessage,
   getMilestoneProgress,
 } from '@/lib/discharge-milestones';
+import { audit } from '@/lib/audit';
 import type { DischargeMilestoneStep } from '@/types';
 import { DISCHARGE_MILESTONE_ORDER } from '@/types';
 
@@ -91,6 +92,24 @@ export async function POST(
 
     // Create the milestone chain
     const milestone = await createDischargeMilestone(patientThreadId, user.profileId);
+
+    try {
+      await audit({
+        actorId: user.profileId,
+        actorRole: user.role,
+        hospitalId: patient.hospital_id || null,
+        action: 'patient.discharge',
+        targetType: 'patient_thread',
+        targetId: patientThreadId,
+        summary: `Started discharge for patient ${patient.patient_name}`,
+        payloadAfter: { stage: 'discharge' },
+        request,
+        mode: 'guaranteed',
+      });
+    } catch (auditErr) {
+      console.error('Audit logging failed for discharge:', auditErr);
+      return NextResponse.json({ success: false, error: 'Audit logging failed; please retry. Mutation may need manual rollback.' }, { status: 503 });
+    }
 
     // Post system messages
     await postMilestoneMessage(

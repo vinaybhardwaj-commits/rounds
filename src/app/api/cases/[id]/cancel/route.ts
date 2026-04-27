@@ -30,6 +30,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { query, queryOne } from '@/lib/db';
+import { audit } from '@/lib/audit';
 
 const CANCEL_ROLES = new Set(['ot_coordinator', 'ip_coordinator', 'super_admin']);
 const CANCELLABLE_FROM_STATES = new Set([
@@ -243,6 +244,25 @@ async function handle(
       }),
     ]
   );
+
+  try {
+    await audit({
+      actorId: user.profileId,
+      actorRole: user.role,
+      hospitalId: c.hospital_id,
+      action: action === 'cancel' ? 'case.cancel' : 'case.postpone',
+      targetType: 'surgical_case',
+      targetId: caseId,
+      summary: `${action === 'cancel' ? 'Cancelled' : 'Postponed'} case ${caseId}`,
+      payloadBefore: { state: c.state },
+      payloadAfter: { state: newState, reason },
+      request,
+      mode: 'guaranteed',
+    });
+  } catch (auditErr) {
+    console.error(`Audit logging failed for ${action}:`, auditErr);
+    return NextResponse.json({ success: false, error: 'Audit logging failed; please retry. Mutation may need manual rollback.' }, { status: 503 });
+  }
 
   return NextResponse.json({
     success: true,

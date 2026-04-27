@@ -19,6 +19,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { query, queryOne } from '@/lib/db';
 import { hasRole } from '@/lib/roles';
+import { audit } from '@/lib/audit';
 
 const VALID_STATUSES = new Set(['requested', 'vendor_confirmed', 'in_transit', 'delivered', 'verified_ready']);
 
@@ -337,6 +338,25 @@ export async function POST(request: NextRequest) {
         rentalDescription,
       ]
     );
+
+    // Fire-and-forget audit for equipment request creation
+    await audit({
+      actorId: user.profileId,
+      actorRole: user.role,
+      hospitalId: body.hospital_id,
+      action: 'equipment.request_create',
+      targetType: 'equipment_request',
+      targetId: row?.id ?? null,
+      summary: `Created equipment request: ${label} (qty ${quantity})`,
+      payloadAfter: {
+        id: row?.id,
+        item_type: body.item_type,
+        item_label: label,
+        quantity,
+        status,
+      },
+      request,
+    }).catch((e) => console.error('[audit] equipment.request_create failed:', e));
 
     return NextResponse.json({
       success: true,

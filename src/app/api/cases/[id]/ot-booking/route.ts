@@ -31,6 +31,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { hasRole } from '@/lib/roles';
 import { query, queryOne } from '@/lib/db';
+import { audit } from '@/lib/audit';
 
 // 26 Apr 2026 follow-up F3: V widened the gate.
 // 'consultant' and 'surgeon' are not yet in UserRole enum — they remain
@@ -219,6 +220,27 @@ export async function POST(
       }
     } catch (e) {
       console.error('[ot-booking] stage advance failed:', e);
+    }
+
+
+    // GLASS.4 audit wiring — GUARANTEED mode (OT booking is reversible but critical)
+    try {
+      await audit({
+        actorId: user.profileId,
+        actorRole: user.role,
+        hospitalId: c.hospital_id,
+        action: 'case.book_ot',
+        targetType: 'surgical_case',
+        targetId: caseId,
+        summary: 'OT booking scheduled',
+        payloadBefore: { scheduled_date: c.planned_surgery_date ?? null, ot_room: c.ot_room ?? null },
+        payloadAfter: { scheduled_date: updated.planned_surgery_date, ot_room: updated.ot_room, scheduled_start_time: body.planned_start_time, scheduled_end_time: null },
+        request,
+        mode: 'guaranteed',
+      });
+    } catch (auditErr) {
+      console.error('[audit:guaranteed] case.book_ot:', auditErr instanceof Error ? auditErr.message : auditErr);
+      return NextResponse.json({ success: false, error: 'Audit logging failed; please retry. Mutation may need manual rollback.' }, { status: 503 });
     }
 
     return NextResponse.json({

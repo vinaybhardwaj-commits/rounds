@@ -28,6 +28,7 @@ import {
   logDedupAction,
 } from '@/lib/dedup';
 import { queryOne } from '@/lib/db';
+import { audit } from '@/lib/audit';
 import type { PatientStage } from '@/types';
 import { PATIENT_STAGE_LABELS } from '@/types';
 
@@ -314,8 +315,31 @@ export async function POST(request: NextRequest) {
       console.error('Failed to create GetStream channel for patient thread:', err);
     }
 
+    await audit({
+      actorId: user.profileId,
+      actorRole: user.role,
+      hospitalId: body.hospital_id || null,
+      action: 'patient.create',
+      targetType: 'patient_thread',
+      targetId: patientThreadId,
+      summary: `Created patient ${patient_name}`,
+      payloadAfter: { patient_name },
+      request,
+    });
+
     // Post dual activity (patient thread + department)
     const stageLabel = PATIENT_STAGE_LABELS[stage as PatientStage] || stage;
+    await audit({
+      actorId: user.profileId,
+      actorRole: user.role,
+      hospitalId: body.hospital_id || null,
+      action: 'patient.create',
+      targetType: 'patient_thread',
+      targetId: patientThreadId,
+      summary: `Created patient ${patient_name}`,
+      payloadAfter: { patient_name, uhid: body.uhid || null },
+      request,
+    });
     await postPatientActivity({
       type: 'patient_created',
       patientThreadId: patientThreadId,
