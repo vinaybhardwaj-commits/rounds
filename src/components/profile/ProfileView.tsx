@@ -13,6 +13,7 @@ import {
   Pencil,
   Check,
   X,
+  Grid3x3,
 } from 'lucide-react';
 import Link from 'next/link';
 import { LlmHealthIndicator } from '@/components/ai/LlmHealthIndicator';
@@ -276,6 +277,17 @@ export function ProfileView({ isAdmin = false }: ProfileViewProps) {
 
         {/* Navigation links */}
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-4">
+          {/* GLASS.8 — All Modules entry. Visible to every authenticated user
+              (Glass mode escape hatch). Per PRD §7.1 + §11 telemetry: clicking
+              fires glass.all_modules_open via the destination page's mount. */}
+          <Link
+            href="/all-modules"
+            className="flex items-center gap-3 px-4 py-3.5 border-b border-gray-100 hover:bg-gray-50 transition-colors"
+          >
+            <Grid3x3 size={18} className="text-gray-500" />
+            <span className="flex-1 text-sm font-medium text-even-navy">🔓 All Modules</span>
+            <ChevronRight size={16} className="text-gray-300" />
+          </Link>
           {isAdmin && (
             <Link
               href="/admin"

@@ -22,6 +22,7 @@ import {
   ClipboardList,
   Link2,
   GitMerge,
+  Grid3x3,
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -243,6 +244,35 @@ export function AdminSidebar({
                 </div>
               );
             })}
+
+            {/* GLASS.8 — Bottom-of-sidebar escape hatch (PRD §7.1).
+                Visible to every authenticated user (NOT super_admin gated).
+                Slack-style separator + lock-glyph label. */}
+            {!isCollapsed && (
+              <div className="pt-2 border-t border-gray-200 mt-2">
+                <Link
+                  href="/all-modules"
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group text-gray-700 hover:bg-gray-100"
+                  title="All Modules"
+                >
+                  <span className="flex-shrink-0 text-gray-500 group-hover:text-gray-700">
+                    <Grid3x3 size={iconSize} />
+                  </span>
+                  <span className="text-sm font-medium truncate flex-1">🔓 All Modules</span>
+                </Link>
+              </div>
+            )}
+            {isCollapsed && (
+              <div className="pt-2 border-t border-gray-200 mt-2">
+                <Link
+                  href="/all-modules"
+                  className="flex items-center justify-center px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                  title="All Modules"
+                >
+                  <Grid3x3 size={iconSize} />
+                </Link>
+              </div>
+            )}
           </div>
         </nav>
       </aside>
