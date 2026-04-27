@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { HealthBar } from './HealthBar';
 import { AdminSidebar } from './AdminSidebar';
+import { UndoBanner } from '../undo/UndoBanner';
 
 interface AdminShellProps {
   children: React.ReactNode;
@@ -47,6 +48,8 @@ export function AdminShell({
     <div className="h-screen bg-even-white overflow-hidden flex flex-col">
       {/* Fixed health bar at top */}
       <HealthBar health={health} />
+      {/* GLASS.9 — Undo banner (per-user 24h Undo for guaranteed-mode actions) */}
+      <UndoBanner />
 
       {/* Main container with sidebar and content */}
       <div className="flex-1 flex overflow-hidden pt-12">

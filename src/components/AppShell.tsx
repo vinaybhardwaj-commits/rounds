@@ -16,6 +16,7 @@ import { TasksView } from './tasks/TasksView';
 import { ProfileView } from './profile/ProfileView';
 import { FormsView } from './forms/FormsView';
 import { BottomTabBar, type TabId } from './layout/BottomTabBar';
+import { UndoBanner } from './undo/UndoBanner';
 import HelpWidget from './help/HelpWidget';
 
 interface AppShellProps {
@@ -235,6 +236,8 @@ function AppShellInner({ userId, userRole }: { userId: string; userRole: string 
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden bg-even-white">
+      {/* GLASS.9 — Undo banner (per-user 24h Undo for guaranteed-mode actions) */}
+      <UndoBanner />
       {/* Tab content — takes full height minus tab bar */}
       <div className="flex-1 overflow-hidden">
         {/* Patients Tab */}
