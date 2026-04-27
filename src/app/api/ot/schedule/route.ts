@@ -4,16 +4,12 @@
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { withTenancy } from '@/lib/with-tenancy';
+import { query } from '@/lib/db';
 import { getOTSchedule } from '@/lib/ot/surgery-postings';
 
-export async function GET(request: NextRequest) {
+export const GET = withTenancy('/api/ot/schedule', async (request: NextRequest, ctx) => {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
 
@@ -22,11 +18,21 @@ export async function GET(request: NextRequest) {
     }
 
     const otRoom = searchParams.get('ot_room') ? parseInt(searchParams.get('ot_room')!) : undefined;
-    const schedule = await getOTSchedule(date, otRoom);
+
+    // Fetch schedule filtered to accessible hospitals
+    const schedule = await query(
+      `SELECT sp.* FROM surgery_postings sp
+       JOIN patient_threads pt ON pt.id = sp.patient_thread_id
+       WHERE sp.scheduled_date = $1::date
+       AND pt.hospital_id = ANY($2::uuid[])
+       ${otRoom ? `AND sp.ot_room = ${otRoom}` : ''}
+       ORDER BY sp.scheduled_time ASC, sp.id`,
+      [date, ctx.accessibleHospitalIds]
+    );
 
     return NextResponse.json({ success: true, data: schedule });
   } catch (error) {
     console.error('GET /api/ot/schedule error:', error);
     return NextResponse.json({ success: false, error: 'Failed to get OT schedule' }, { status: 500 });
   }
-}
+});

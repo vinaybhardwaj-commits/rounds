@@ -4,21 +4,30 @@
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { withTenancy } from '@/lib/with-tenancy';
+import { query } from '@/lib/db';
 import { addDynamicItem } from '@/lib/ot/surgery-postings';
 import { neon } from '@neondatabase/serverless';
 
-export async function POST(request: NextRequest) {
+export const POST = withTenancy('/api/ot/readiness/add', async (request: NextRequest, ctx) => {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await request.json();
 
     if (!body.surgery_posting_id) {
       return NextResponse.json({ success: false, error: 'surgery_posting_id is required' }, { status: 400 });
+    }
+
+    // Verify posting belongs to accessible hospitals
+    const tenancyCheck = await query<{ ok: boolean }>(
+      `SELECT EXISTS (
+        SELECT 1 FROM surgery_postings sp
+        JOIN patient_threads pt ON pt.id = sp.patient_thread_id
+        WHERE sp.id = $1::uuid AND pt.hospital_id = ANY($2::uuid[])
+      ) AS ok`,
+      [body.surgery_posting_id, ctx.accessibleHospitalIds]
+    );
+    if (!tenancyCheck?.[0]?.ok) {
+      return NextResponse.json({ success: false, error: 'Posting not found' }, { status: 404 });
     }
 
     const validTypes = ['specialist_clearance', 'equipment'];
@@ -29,10 +38,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get user's display name
     const sql = neon(process.env.POSTGRES_URL!);
-    const profileRows = await sql(`SELECT full_name FROM profiles WHERE id = $1`, [user.profileId]);
-    const performedByName = profileRows[0]?.full_name || user.email;
+    const profileRows = await sql(`SELECT full_name FROM profiles WHERE id = $1`, [ctx.user.profileId]);
+    const performedByName = profileRows[0]?.full_name || ctx.user.email;
 
     const result = await addDynamicItem(
       body.surgery_posting_id,
@@ -42,7 +50,7 @@ export async function POST(request: NextRequest) {
         reason: body.reason,
         equipment: body.equipment,
       },
-      user.profileId,
+      ctx.user.profileId,
       performedByName
     );
 
@@ -52,4 +60,4 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : 'Failed to add dynamic item';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
-}
+});

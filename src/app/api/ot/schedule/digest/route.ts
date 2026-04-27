@@ -4,17 +4,14 @@
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
-import { getOTSchedule, getOTScheduleStats } from '@/lib/ot/surgery-postings';
+import { withTenancy } from '@/lib/with-tenancy';
+import { query } from '@/lib/db';
 import { sendSystemMessage } from '@/lib/getstream';
 
-export async function POST(request: NextRequest) {
+export const POST = withTenancy('/api/ot/schedule/digest', async (request: NextRequest, ctx) => {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-    if (user.role !== 'super_admin') {
+    // Cron endpoint — super_admin gated
+    if (ctx.user.role !== 'super_admin') {
       return NextResponse.json({ success: false, error: 'Forbidden: super_admin only' }, { status: 403 });
     }
 
@@ -25,19 +22,36 @@ export async function POST(request: NextRequest) {
     const istDate = new Date(now.getTime() + istOffset);
     const date = body.date || istDate.toISOString().split('T')[0];
 
-    const [schedule, stats] = await Promise.all([
-      getOTSchedule(date),
-      getOTScheduleStats(date),
-    ]);
+    // Get schedule filtered to accessible hospitals
+    const schedule = await query(
+      `SELECT sp.* FROM surgery_postings sp
+       JOIN patient_threads pt ON pt.id = sp.patient_thread_id
+       WHERE sp.scheduled_date = $1::date
+       AND pt.hospital_id = ANY($2::uuid[])
+       ORDER BY sp.scheduled_time ASC, sp.id`,
+      [date, ctx.accessibleHospitalIds]
+    );
 
-    if (stats.total === 0) {
+    const stats = await query(
+      `SELECT
+         COUNT(*) FILTER (WHERE sp.status = 'posted') as total,
+         COUNT(*) FILTER (WHERE sp.status = 'completed') as ready
+       FROM surgery_postings sp
+       JOIN patient_threads pt ON pt.id = sp.patient_thread_id
+       WHERE sp.scheduled_date = $1::date
+       AND pt.hospital_id = ANY($2::uuid[])`,
+      [date, ctx.accessibleHospitalIds]
+    );
+
+    const statsData = stats[0] as any || { total: 0, ready: 0 };
+
+    if (statsData.total === 0) {
       return NextResponse.json({ success: true, data: { message: 'No surgeries scheduled', date } });
     }
 
-    // Build digest message
     const lines = [
       `📋 OT DAILY DIGEST — ${date}`,
-      `${stats.total} surgeries | ✅ ${stats.ready} ready | 🟡 ${stats.partial} partial | 🔴 ${stats.not_ready + stats.blocked} not ready`,
+      `${statsData.total} surgeries | ✅ ${statsData.ready} ready | 🟡 ${statsData.partial} partial | 🔴 ${statsData.not_ready + statsData.blocked} not ready`,
       '',
     ];
 
@@ -54,9 +68,9 @@ export async function POST(request: NextRequest) {
       console.error('[OT] Digest system message failed:', err);
     }
 
-    return NextResponse.json({ success: true, data: { date, message: msg, stats } });
+    return NextResponse.json({ success: true, data: { date, message: msg, stats: statsData } });
   } catch (error) {
     console.error('POST /api/ot/schedule/digest error:', error);
     return NextResponse.json({ success: false, error: 'Digest failed' }, { status: 500 });
   }
-}
+});

@@ -4,16 +4,12 @@
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { withTenancy } from '@/lib/with-tenancy';
+import { query } from '@/lib/db';
 import { getOTScheduleStats } from '@/lib/ot/surgery-postings';
 
-export async function GET(request: NextRequest) {
+export const GET = withTenancy('/api/ot/schedule/stats', async (request: NextRequest, ctx) => {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
 
@@ -21,10 +17,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'date query parameter required (YYYY-MM-DD)' }, { status: 400 });
     }
 
-    const stats = await getOTScheduleStats(date);
-    return NextResponse.json({ success: true, data: stats });
+    // Get stats filtered to accessible hospitals
+    const stats = await query(
+      `SELECT
+         COUNT(*) FILTER (WHERE sp.status = 'posted') as total,
+         COUNT(*) FILTER (WHERE sp.status = 'completed') as ready
+       FROM surgery_postings sp
+       JOIN patient_threads pt ON pt.id = sp.patient_thread_id
+       WHERE sp.scheduled_date = $1::date
+       AND pt.hospital_id = ANY($2::uuid[])`,
+      [date, ctx.accessibleHospitalIds]
+    );
+
+    return NextResponse.json({ success: true, data: stats[0] || { total: 0, ready: 0 } });
   } catch (error) {
     console.error('GET /api/ot/schedule/stats error:', error);
     return NextResponse.json({ success: false, error: 'Failed to get schedule stats' }, { status: 500 });
   }
-}
+});

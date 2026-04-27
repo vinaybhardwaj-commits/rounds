@@ -4,17 +4,14 @@
 // that are still in 'posted' status
 // ============================================
 
-import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { NextRequest, NextResponse } from 'next/server';
+import { withTenancy } from '@/lib/with-tenancy';
 import { neon } from '@neondatabase/serverless';
 
-export async function POST() {
+export const POST = withTenancy('/api/ot/postings/cleanup', async (request: NextRequest, ctx) => {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-    if (user.role !== 'super_admin') {
+    // Cron endpoint — all hospitals' postings, but super_admin gated
+    if (ctx.user.role !== 'super_admin') {
       return NextResponse.json({ success: false, error: 'Forbidden: super_admin only' }, { status: 403 });
     }
 
@@ -31,8 +28,12 @@ export async function POST() {
       SET status = 'completed', updated_at = NOW()
       WHERE status = 'posted'
         AND scheduled_date < $1
+        AND patient_thread_id IN (
+          SELECT id FROM patient_threads
+          WHERE hospital_id = ANY($2::uuid[])
+        )
       RETURNING id, procedure_name, scheduled_date
-    `, [today]);
+    `, [today, ctx.accessibleHospitalIds]);
 
     return NextResponse.json({
       success: true,
@@ -45,4 +46,4 @@ export async function POST() {
     console.error('POST /api/ot/postings/cleanup error:', error);
     return NextResponse.json({ success: false, error: 'Cleanup failed' }, { status: 500 });
   }
-}
+});

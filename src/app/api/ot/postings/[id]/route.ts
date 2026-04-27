@@ -5,7 +5,8 @@
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { withTenancy } from '@/lib/with-tenancy';
+import { query } from '@/lib/db';
 import {
   getSurgeryPosting,
   updateSurgeryPosting,
@@ -14,21 +15,28 @@ import {
 } from '@/lib/ot/surgery-postings';
 
 interface RouteParams {
-  params: Promise<{ id: string }>;
+  id: string;
 }
 
-export async function GET(_request: NextRequest, { params }: RouteParams) {
+export const GET = withTenancy<RouteParams>('/api/ot/postings/[id]', async (_request, ctx) => {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { id } = await params;
-    // Validate UUID format to avoid DB errors on malformed input
+    const { id } = ctx.params;
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(id)) {
       return NextResponse.json({ success: false, error: 'Invalid posting ID format' }, { status: 400 });
+    }
+
+    // Verify tenancy — posting must belong to user's accessible hospitals
+    const tenancyCheck = await query<{ ok: boolean }>(
+      `SELECT EXISTS (
+        SELECT 1 FROM surgery_postings sp
+        JOIN patient_threads pt ON pt.id = sp.patient_thread_id
+        WHERE sp.id = $1::uuid AND pt.hospital_id = ANY($2::uuid[])
+      ) AS ok`,
+      [id, ctx.accessibleHospitalIds]
+    );
+    if (!tenancyCheck?.[0]?.ok) {
+      return NextResponse.json({ success: false, error: 'Posting not found' }, { status: 404 });
     }
 
     const result = await getSurgeryPosting(id);
@@ -41,23 +49,31 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     console.error('GET /api/ot/postings/[id] error:', error);
     return NextResponse.json({ success: false, error: 'Failed to get posting' }, { status: 500 });
   }
-}
+});
 
-export async function PATCH(request: NextRequest, { params }: RouteParams) {
+export const PATCH = withTenancy<RouteParams>('/api/ot/postings/[id]', async (request, ctx) => {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { id } = await params;
+    const { id } = ctx.params;
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(id)) {
       return NextResponse.json({ success: false, error: 'Invalid posting ID format' }, { status: 400 });
     }
+
+    // Verify tenancy before mutation
+    const tenancyCheck = await query<{ ok: boolean }>(
+      `SELECT EXISTS (
+        SELECT 1 FROM surgery_postings sp
+        JOIN patient_threads pt ON pt.id = sp.patient_thread_id
+        WHERE sp.id = $1::uuid AND pt.hospital_id = ANY($2::uuid[])
+      ) AS ok`,
+      [id, ctx.accessibleHospitalIds]
+    );
+    if (!tenancyCheck?.[0]?.ok) {
+      return NextResponse.json({ success: false, error: 'Posting not found' }, { status: 404 });
+    }
+
     const body = await request.json();
 
-    // Handle cancel/postpone as special actions
     if (body.action === 'cancel') {
       if (!body.reason) {
         return NextResponse.json({ success: false, error: 'Cancellation reason required' }, { status: 400 });
@@ -80,7 +96,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: true, data: result });
     }
 
-    // Generic update
     const result = await updateSurgeryPosting(id, body);
     if (!result) {
       return NextResponse.json({ success: false, error: 'Posting not found or no changes' }, { status: 404 });
@@ -91,20 +106,26 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     console.error('PATCH /api/ot/postings/[id] error:', error);
     return NextResponse.json({ success: false, error: 'Failed to update posting' }, { status: 500 });
   }
-}
+});
 
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export const DELETE = withTenancy<RouteParams>('/api/ot/postings/[id]', async (request, ctx) => {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    const { id } = ctx.params;
+
+    // Verify tenancy before mutation
+    const tenancyCheck = await query<{ ok: boolean }>(
+      `SELECT EXISTS (
+        SELECT 1 FROM surgery_postings sp
+        JOIN patient_threads pt ON pt.id = sp.patient_thread_id
+        WHERE sp.id = $1::uuid AND pt.hospital_id = ANY($2::uuid[])
+      ) AS ok`,
+      [id, ctx.accessibleHospitalIds]
+    );
+    if (!tenancyCheck?.[0]?.ok) {
+      return NextResponse.json({ success: false, error: 'Posting not found' }, { status: 404 });
     }
 
-    const { id } = await params;
-    const body = await request.json().catch(() => {
-      console.warn('DELETE /api/ot/postings/[id]: No valid JSON body, using default reason');
-      return {} as Record<string, unknown>;
-    });
+    const body = await request.json().catch(() => ({}));
     const reason = (typeof body.reason === 'string' && body.reason.trim()) ? body.reason.trim() : 'Cancelled via API';
 
     const result = await cancelSurgeryPosting(id, reason);
@@ -117,4 +138,4 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     console.error('DELETE /api/ot/postings/[id] error:', error);
     return NextResponse.json({ success: false, error: 'Failed to cancel posting' }, { status: 500 });
   }
-}
+});

@@ -4,25 +4,35 @@
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { withTenancy } from '@/lib/with-tenancy';
+import { query } from '@/lib/db';
 import { updateEquipmentStatus } from '@/lib/ot/surgery-postings';
 
 interface RouteParams {
-  params: Promise<{ id: string }>;
+  id: string;
 }
 
-export async function PATCH(request: NextRequest, { params }: RouteParams) {
+export const PATCH = withTenancy<RouteParams>('/api/ot/equipment/[id]', async (request, ctx) => {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { id } = await params;
+    const { id } = ctx.params;
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(id)) {
       return NextResponse.json({ success: false, error: 'Invalid equipment ID format' }, { status: 400 });
     }
+
+    // Verify tenancy before mutation
+    const tenancyCheck = await query<{ ok: boolean }>(
+      `SELECT EXISTS (
+        SELECT 1 FROM ot_equipment_items oei
+        JOIN patient_threads pt ON pt.id = oei.patient_thread_id
+        WHERE oei.id = $1::uuid AND pt.hospital_id = ANY($2::uuid[])
+      ) AS ok`,
+      [id, ctx.accessibleHospitalIds]
+    );
+    if (!tenancyCheck?.[0]?.ok) {
+      return NextResponse.json({ success: false, error: 'Equipment item not found' }, { status: 404 });
+    }
+
     const body = await request.json();
 
     if (!body.status) {
@@ -40,7 +50,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const result = await updateEquipmentStatus(id, body.status, {
       delivery_eta: body.delivery_eta,
       status_notes: body.status_notes,
-      verified_by: body.status === 'verified' ? user.profileId : undefined,
+      verified_by: body.status === 'verified' ? ctx.user.profileId : undefined,
     });
 
     if (!result) {
@@ -52,4 +62,4 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     console.error('PATCH /api/ot/equipment/[id] error:', error);
     return NextResponse.json({ success: false, error: 'Failed to update equipment' }, { status: 500 });
   }
-}
+});

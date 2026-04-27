@@ -4,16 +4,12 @@
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { withTenancy } from '@/lib/with-tenancy';
+import { query } from '@/lib/db';
 import { createSurgeryPosting, listSurgeryPostings } from '@/lib/ot/surgery-postings';
 
-export async function POST(request: NextRequest) {
+export const POST = withTenancy('/api/ot/postings', async (request: NextRequest, ctx) => {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await request.json();
 
     // Validate required fields
@@ -24,9 +20,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // If patient_thread_id provided, verify tenancy
+    if (body.patient_thread_id) {
+      const tenancyCheck = await query<{ ok: boolean }>(
+        `SELECT EXISTS (
+          SELECT 1 FROM patient_threads
+          WHERE id = $1::uuid AND hospital_id = ANY($2::uuid[])
+        ) AS ok`,
+        [body.patient_thread_id, ctx.accessibleHospitalIds]
+      );
+      if (!tenancyCheck?.[0]?.ok) {
+        return NextResponse.json({ success: false, error: 'Patient thread not found' }, { status: 404 });
+      }
+    }
+
     const result = await createSurgeryPosting({
       ...body,
-      posted_by: user.profileId,
+      posted_by: ctx.user.profileId,
     });
 
     return NextResponse.json({ success: true, data: result }, { status: 201 });
@@ -35,15 +45,10 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : 'Failed to create posting';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
-}
+});
 
-export async function GET(request: NextRequest) {
+export const GET = withTenancy('/api/ot/postings', async (request: NextRequest, ctx) => {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(request.url);
     const filters = {
       date: searchParams.get('date') || undefined,
@@ -53,10 +58,21 @@ export async function GET(request: NextRequest) {
       patient_thread_id: searchParams.get('patient_thread_id') || undefined,
     };
 
-    const postings = await listSurgeryPostings(filters);
+    // Filter postings to only those in accessible hospitals
+    const postings = await query(
+      `SELECT sp.* FROM surgery_postings sp
+       JOIN patient_threads pt ON pt.id = sp.patient_thread_id
+       WHERE pt.hospital_id = ANY($1::uuid[])
+       ${filters.date ? 'AND sp.scheduled_date = $2::date' : ''}
+       ${filters.ot_room ? `AND sp.ot_room = ${filters.ot_room}` : ''}
+       ${filters.status ? `AND sp.status = '${filters.status}'` : ''}
+       ORDER BY sp.scheduled_date DESC, sp.id`,
+      [ctx.accessibleHospitalIds]
+    );
+
     return NextResponse.json({ success: true, data: postings });
   } catch (error) {
     console.error('GET /api/ot/postings error:', error);
     return NextResponse.json({ success: false, error: 'Failed to list postings' }, { status: 500 });
   }
-}
+});
