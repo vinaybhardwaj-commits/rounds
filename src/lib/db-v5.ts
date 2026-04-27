@@ -144,12 +144,18 @@ export async function listPatientThreads(filters?: {
   const limit = filters?.limit || 50;
   const offset = filters?.offset || 0;
 
+  // 26 Apr 2026 (field-contract audit Bug #2): JOIN profiles ap to resolve
+  // pt.archived_by → archived_by_name, used by PatientsView's
+  // "Archived <date> · by <name>" line. Was silently undefined — UI's
+  // {x && <span>} guard hid it. See Daily Dash EHRC/ROUNDS-FIELD-CONTRACT-AUDIT-APR26.md §2.
   return query(
     `SELECT pt.*, d.name as department_name,
             at.bed_number, at.room_number, at.room_category,
-            COALESCE(at.financial_category, pt.financial_category) as financial_category
+            COALESCE(at.financial_category, pt.financial_category) as financial_category,
+            ap.full_name AS archived_by_name
      FROM patient_threads pt
-     LEFT JOIN profiles p ON pt.primary_consultant_id = p.id
+     LEFT JOIN profiles p  ON pt.primary_consultant_id = p.id
+     LEFT JOIN profiles ap ON pt.archived_by           = ap.id
      LEFT JOIN departments d ON pt.department_id = d.id
      LEFT JOIN admission_tracker at ON at.patient_thread_id = pt.id
      ${where}
