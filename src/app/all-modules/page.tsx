@@ -16,7 +16,7 @@
 // =============================================================================
 
 import Link from 'next/link';
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import {
   Users, Calendar, ClipboardList, ClipboardCheck, MessageSquare, Stethoscope,
   Wrench, FileText, Activity, Boxes, BarChart3, ShieldCheck, Lock,
