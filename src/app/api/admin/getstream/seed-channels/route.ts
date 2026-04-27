@@ -150,12 +150,14 @@ export async function POST() {
     ` as Record<string, unknown>[];
 
     // Fetch all active staff grouped by department (include role for super_admin detection)
+    // MH.5 — also fetch primary_hospital_id to build per-hospital broadcast membership.
     const allStaff = await sql`
-      SELECT id, department_id, role FROM profiles WHERE status = 'active'
+      SELECT id, department_id, role, primary_hospital_id FROM profiles WHERE status = 'active'
     ` as Record<string, unknown>[];
 
-    // Build department → member IDs map
+    // Build department → member IDs map + hospital → member IDs map.
     const deptMembers: Record<string, string[]> = {};
+    const hospitalMembers: Record<string, string[]> = {};
     const allStaffIds: string[] = [];
     const superAdminIds: string[] = [];
     for (const s of allStaff) {
@@ -168,6 +170,11 @@ export async function POST() {
         const did = s.department_id as string;
         if (!deptMembers[did]) deptMembers[did] = [];
         deptMembers[did].push(pid);
+      }
+      if (s.primary_hospital_id) {
+        const hid = s.primary_hospital_id as string;
+        if (!hospitalMembers[hid]) hospitalMembers[hid] = [];
+        hospitalMembers[hid].push(pid);
       }
     }
 
@@ -282,12 +289,57 @@ export async function POST() {
 
     results.push(`[broadcast] ${broadcastResult} (${allStaffIds.length} staff)`);
 
+    // 6. MH.5 — per-hospital broadcast channels (broadcast-{slug}, type=ops-broadcast).
+    // One channel per is_active hospital. Membership = staff with primary_hospital_id
+    // matching + super_admins (always cross-hospital). EHIN is_active=false → skipped.
+    // ChannelSidebar splits ops-broadcast channels by data.hospital_slug into
+    // per-hospital "Broadcast" rows (parallels the dept pattern from Sprint 2 Day 9).
+    const activeHospitals = await sql`
+      SELECT id, slug, name FROM hospitals WHERE is_active = TRUE ORDER BY slug
+    ` as Record<string, unknown>[];
+    let perHospitalBroadcastCount = 0;
+    for (const h of activeHospitals) {
+      const hid = h.id as string;
+      const slug = h.slug as string;
+      const name = h.name as string;
+      const channelId = `broadcast-${slug}`;
+      const result = await ensureChannelWithMember(
+        client,
+        'ops-broadcast',
+        channelId,
+        {
+          name: `${slug.toUpperCase()} Broadcast`,
+          description: `${name} hospital-wide announcements (read-only)`,
+          hospital_id: hid,
+          hospital_slug: slug,
+        },
+        callerUserId
+      );
+      const hospitalStaff = hospitalMembers[hid] || [];
+      const memberSet = new Set([...hospitalStaff, ...superAdminIds]);
+      const memberIds = Array.from(memberSet);
+      if (memberIds.length > 0) {
+        try {
+          const channel = client.channel('ops-broadcast', channelId);
+          for (let i = 0; i < memberIds.length; i += 100) {
+            const batch = memberIds.slice(i, i + 100);
+            await channel.addMembers(batch);
+          }
+        } catch {
+          // Non-fatal — members may already exist
+        }
+      }
+      results.push(`[broadcast-per-hospital] ${result} [${channelId}] (${hospitalStaff.length} staff + ${superAdminIds.length} admins)`);
+      perHospitalBroadcastCount += 1;
+    }
+
     return NextResponse.json({
       success: true,
       data: {
         department_channels: departments.length,
         cross_functional_channels: CROSS_FUNCTIONAL_CHANNELS.length,
-        broadcast_channels: 1,
+        broadcast_channels: 1 + perHospitalBroadcastCount,
+        per_hospital_broadcasts: perHospitalBroadcastCount,
         log: results,
       },
       message: `Seeded ${results.length} channels`,

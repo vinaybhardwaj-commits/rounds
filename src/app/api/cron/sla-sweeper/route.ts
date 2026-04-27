@@ -39,7 +39,12 @@ const SLA_MINUTES_BY_FORM: Record<string, number> = {
 };
 
 const CENTRAL_BROADCAST_ID = 'central-broadcast';
-const HOSPITAL_BROADCAST_ID = 'hospital-broadcast';
+const HOSPITAL_BROADCAST_ID = 'hospital-broadcast'; // legacy single-channel — kept for back-compat fallback
+// MH.5 — per-hospital broadcast channels (created via seed-channels endpoint).
+// Channel id pattern: `broadcast-{slug}` (type ops-broadcast). EHIN is_active=false,
+// so broadcast-ehin doesn't exist — the routing falls back to central-broadcast on miss.
+const PER_HOSPITAL_BROADCAST_TYPE = 'ops-broadcast';
+const perHospitalBroadcastChannelId = (slug: string) => `broadcast-${slug}`;
 
 interface FormRow {
   id: string;
@@ -139,19 +144,42 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Post digest per hospital to the central-broadcast channel. Sprint 3 can
-    // route to a dedicated `ops-broadcast-ehrc` per-hospital channel once those
-    // are seeded (PRD §8.3). For now, central-broadcast is the single sink.
+    // MH.5 — Post digest to each hospital's per-hospital broadcast channel
+    // (broadcast-{slug}, type ops-broadcast). Falls back to central-broadcast on
+    // GetStream miss (e.g. EHIN where is_active=false → channel doesn't exist).
+    // Per-channel try/catch so one hospital's GetStream hiccup doesn't lose
+    // breaches for the others — DB metadata.sla_breach_posted_at is already
+    // stamped before this loop.
+    const channelPosted: Record<string, string> = {};
     if (toPost.size > 0) {
-      try {
-        const client = getStreamServerClient();
-        const channel = client.channel('cross-functional', CENTRAL_BROADCAST_ID);
-        for (const [slug, lines] of toPost.entries()) {
-          const text = `🚨 *SLA breach digest — ${slug.toUpperCase()}*\n\n${lines.join('\n')}`;
+      const client = getStreamServerClient();
+      for (const [slug, lines] of toPost.entries()) {
+        const text = `🚨 *SLA breach digest — ${slug.toUpperCase()}*\n\n${lines.join('\n')}`;
+        const perHospitalId = perHospitalBroadcastChannelId(slug);
+        let postedTo: string | null = null;
+        try {
+          const channel = client.channel(PER_HOSPITAL_BROADCAST_TYPE, perHospitalId);
           await channel.sendMessage({ text, user_id: 'rounds-system' });
+          postedTo = perHospitalId;
+        } catch (perHospitalErr) {
+          // Fallback to central-broadcast — covers EHIN (is_active=false → no
+          // broadcast-ehin channel) plus any transient per-hospital errors.
+          console.warn(
+            `[sla-sweeper] per-hospital post to ${perHospitalId} failed, falling back to ${CENTRAL_BROADCAST_ID}:`,
+            (perHospitalErr as Error).message
+          );
+          try {
+            const fallback = client.channel('cross-functional', CENTRAL_BROADCAST_ID);
+            await fallback.sendMessage({ text, user_id: 'rounds-system' });
+            postedTo = CENTRAL_BROADCAST_ID;
+          } catch (fallbackErr) {
+            console.error(
+              `[sla-sweeper] both per-hospital and central post failed for ${slug} (breaches recorded in DB):`,
+              (fallbackErr as Error).message
+            );
+          }
         }
-      } catch (e) {
-        console.error('[sla-sweeper] Stream post failed (breaches recorded in DB):', (e as Error).message);
+        if (postedTo) channelPosted[slug] = postedTo;
       }
     }
 
@@ -160,8 +188,8 @@ export async function GET(request: NextRequest) {
       checked: rows.length,
       breach_count: breached.length,
       breached,
-      channel_posted: toPost.size > 0 ? CENTRAL_BROADCAST_ID : null,
-      unused_hospital_broadcast_id: HOSPITAL_BROADCAST_ID, // referenced for Sprint 3 hospital-scoped routing
+      channel_posted: channelPosted, // MH.5 — per-hospital map (slug → channel id used)
+      legacy_hospital_broadcast_id: HOSPITAL_BROADCAST_ID, // unused; kept for back-compat awareness
     });
   } catch (error) {
     console.error('GET /api/cron/sla-sweeper error:', error);

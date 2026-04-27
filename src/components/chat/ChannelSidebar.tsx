@@ -260,7 +260,19 @@ export function ChannelSidebar({
       }
       if (cfChannels.length > 0) groups['cross-functional'] = cfChannels;
       if (directChannels.length > 0) groups['direct'] = directChannels;
-      if (broadcastChannels.length > 0) groups['ops-broadcast'] = broadcastChannels;
+      // MH.5 — split ops-broadcast channels by data.hospital_slug into
+      // per-hospital "broadcast:{slug}" buckets (same pattern as departments
+      // from Sprint 2 Day 9). Channels without a hospital_slug (legacy
+      // 'hospital-broadcast') stay in the generic 'ops-broadcast' bucket.
+      if (broadcastChannels.length > 0) {
+        for (const ch of broadcastChannels) {
+          const chData = ch.data as Record<string, unknown> | undefined;
+          const slug = (chData?.hospital_slug as string) || '_unassigned';
+          const key = slug === '_unassigned' ? 'ops-broadcast' : `broadcast:${slug}`;
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(ch);
+        }
+      }
       if (waChannels.length > 0) groups['whatsapp-analysis'] = waChannels;
 
       // Split patient threads into active vs archived
@@ -295,6 +307,20 @@ export function ChannelSidebar({
             defaultOpen: true,
           };
         });
+      // MH.5 — same shape for per-hospital broadcasts. Defaults closed since
+      // broadcasts are read-only ops announcements, not active workflows.
+      const hospitalBroadcastTypes = Object.keys(groups)
+        .filter((k) => k.startsWith('broadcast:'))
+        .sort()
+        .map((k) => {
+          const slug = k.slice('broadcast:'.length);
+          return {
+            type: k,
+            label: `${slug.toUpperCase()} · Broadcast`,
+            icon: Megaphone,
+            defaultOpen: false,
+          };
+        });
       const orderedTypes = [
         // 26 Apr 2026 — only render the group when the feature flag is ON.
         // When OFF, the array filter below will trivially drop the entry
@@ -310,7 +336,11 @@ export function ChannelSidebar({
         { type: 'direct', label: 'Direct Messages', icon: MessageCircle, defaultOpen: true },
         { type: 'cross-functional', label: 'Cross-Functional', icon: Users, defaultOpen: true },
         { type: 'patient-thread', label: 'Patient Threads', icon: Activity, defaultOpen: true },
-        { type: 'ops-broadcast', label: 'Broadcast', icon: Megaphone, defaultOpen: false },
+        // MH.5 — per-hospital broadcasts (one row per accessible hospital).
+        // Falls back to the generic 'ops-broadcast' bucket below for the
+        // legacy un-suffixed 'hospital-broadcast' channel until that's retired.
+        ...hospitalBroadcastTypes,
+        { type: 'ops-broadcast', label: 'Broadcast (legacy)', icon: Megaphone, defaultOpen: false },
       ];
 
       const result: ChannelGroup[] = orderedTypes
