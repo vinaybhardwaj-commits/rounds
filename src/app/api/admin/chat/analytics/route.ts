@@ -7,15 +7,20 @@
 import { NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { getCurrentUser } from '@/lib/auth';
+import { getAdminHospitalScope, isAdminRole } from '@/lib/admin-hospital-scope';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
     const user = await getCurrentUser();
-    if (!user || user.role !== 'super_admin') {
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    if (!isAdminRole(user.role)) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
+    const scope = await getAdminHospitalScope(user.role, user.primary_hospital_id ?? '');
 
     const sql = neon(process.env.POSTGRES_URL!);
 

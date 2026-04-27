@@ -31,6 +31,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { query } from '@/lib/db';
+import { getAdminHospitalScope, isAdminRole } from '@/lib/admin-hospital-scope';
 
 interface PerHospital {
   slug: string;
@@ -50,6 +51,10 @@ export async function GET(request: NextRequest) {
   try {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    if (!isAdminRole(user.role)) {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+    const scope = await getAdminHospitalScope(user.role, user.primary_hospital_id ?? '');
 
     if (process.env.FEATURE_CASE_MODEL_ENABLED !== 'true') {
       return NextResponse.json({

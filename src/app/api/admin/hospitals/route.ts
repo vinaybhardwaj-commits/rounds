@@ -20,6 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { query } from '@/lib/db';
+import { getAdminHospitalScope, isAdminRole } from '@/lib/admin-hospital-scope';
 
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -40,9 +41,10 @@ export async function GET() {
   try {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    if (user.role !== 'super_admin') {
-      return NextResponse.json({ success: false, error: 'super_admin required' }, { status: 403 });
+    if (!isAdminRole(user.role)) {
+      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
+    const scope = await getAdminHospitalScope(user.role, user.primary_hospital_id ?? '');
 
     const rows = await query<HospitalDetail>(
       `
@@ -57,10 +59,9 @@ export async function GET() {
         ) AS active_case_count,
         h.created_at
       FROM hospitals h
+      WHERE h.id = ANY($1::uuid[])
       ORDER BY h.is_active DESC, h.slug ASC
-      `,
-      []
-    );
+      `, [scope.hospitalIds]);
 
     return NextResponse.json({ success: true, data: rows, count: rows.length });
   } catch (error) {

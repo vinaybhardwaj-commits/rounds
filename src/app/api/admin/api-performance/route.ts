@@ -39,6 +39,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { hasRole } from '@/lib/roles';
 import { withApiTelemetry } from '@/lib/api-telemetry';
+import { getAdminHospitalScope, isAdminRole } from '@/lib/admin-hospital-scope';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,6 +51,7 @@ async function GET_inner(request: NextRequest): Promise<NextResponse> {
   if (!hasRole(user.role, ['super_admin'])) {
     return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
   }
+  // Note: api-performance stays super_admin-only (Q9), no hospital scope applied
 
   // Window param — clamp to [1, 168] hours.
   const hoursParam = parseInt(request.nextUrl.searchParams.get('hours') || '24', 10);
