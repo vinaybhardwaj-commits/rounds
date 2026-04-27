@@ -23,7 +23,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { query, queryOne } from '@/lib/db';
 
-const LOCK_ROLES = new Set(['ot_coordinator', 'super_admin']);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 interface HospitalRow {
@@ -127,12 +126,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Case model disabled' }, { status: 503 });
     }
 
-    if (!LOCK_ROLES.has(user.role)) {
-      return NextResponse.json(
-        { success: false, error: `Role ${user.role} cannot lock OT list. Required: ${[...LOCK_ROLES].join(' or ')}.` },
-        { status: 403 }
-      );
-    }
 
     const body = (await request.json()) as LockBody;
     if (!body.hospital_slug || typeof body.hospital_slug !== 'string') {

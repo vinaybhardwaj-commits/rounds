@@ -32,7 +32,6 @@ import { getCurrentUser } from '@/lib/auth';
 import { query, queryOne } from '@/lib/db';
 import { audit } from '@/lib/audit';
 
-const CANCEL_ROLES = new Set(['ot_coordinator', 'ip_coordinator', 'super_admin']);
 const CANCELLABLE_FROM_STATES = new Set([
   'draft', 'intake', 'pac_scheduled', 'pac_done',
   'fit', 'fit_conds', 'defer', 'unfit',
@@ -133,12 +132,6 @@ async function handle(
     return NextResponse.json({ success: false, error: 'Case model disabled' }, { status: 503 });
   }
 
-  if (!CANCEL_ROLES.has(user.role)) {
-    return NextResponse.json(
-      { success: false, error: `Role ${user.role} cannot ${action} cases. Required: ${[...CANCEL_ROLES].join(' or ')}.` },
-      { status: 403 }
-    );
-  }
 
   if (!UUID_RE.test(caseId)) {
     return NextResponse.json({ success: false, error: 'Invalid case id' }, { status: 400 });

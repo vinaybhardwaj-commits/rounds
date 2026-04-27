@@ -26,7 +26,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { query, queryOne } from '@/lib/db';
 
-const MUTATE_ROLES = new Set(['biomedical_engineer', 'ot_coordinator', 'super_admin']);
 const VALID_STATUSES = new Set(['requested', 'vendor_confirmed', 'in_transit', 'delivered', 'verified_ready']);
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -46,12 +45,6 @@ async function guard(
 ) {
   if (!UUID_RE.test(caseId) || !UUID_RE.test(reqId)) {
     return { error: 'Invalid id', status: 400 as const };
-  }
-  if (!MUTATE_ROLES.has(role)) {
-    return {
-      error: `Role ${role} cannot mutate equipment. Required: ${[...MUTATE_ROLES].join(' or ')}.`,
-      status: 403 as const,
-    };
   }
   const row = await queryOne<{ id: string; status: string; case_id: string }>(
     `

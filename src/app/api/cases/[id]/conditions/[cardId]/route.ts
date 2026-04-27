@@ -30,7 +30,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { query, queryOne } from '@/lib/db';
 
-const WAIVE_ROLES = new Set(['ip_coordinator', 'super_admin']);
 const VALID_STATUSES = new Set(['done', 'waived']);
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -85,12 +84,6 @@ export async function PATCH(
         return NextResponse.json(
           { success: false, error: 'note is required when waiving a condition' },
           { status: 400 }
-        );
-      }
-      if (!WAIVE_ROLES.has(user.role)) {
-        return NextResponse.json(
-          { success: false, error: `Role ${user.role} cannot waive conditions. Required: ${[...WAIVE_ROLES].join(' or ')}.` },
-          { status: 403 }
         );
       }
     }

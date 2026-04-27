@@ -28,7 +28,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { query, queryOne } from '@/lib/db';
 
-const SCHEDULE_ROLES = new Set(['ot_coordinator', 'super_admin']);
 const SCHEDULABLE_FROM_STATES = new Set(['fit', 'fit_conds', 'optimizing', 'scheduled']);
 
 interface CaseRow {
@@ -71,12 +70,6 @@ export async function POST(
       );
     }
 
-    if (!SCHEDULE_ROLES.has(user.role)) {
-      return NextResponse.json(
-        { success: false, error: `Role ${user.role} cannot schedule cases. Required: ${[...SCHEDULE_ROLES].join(' or ')}.` },
-        { status: 403 }
-      );
-    }
 
     const { id: caseId } = params;
     if (!UUID_RE.test(caseId)) {
