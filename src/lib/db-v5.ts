@@ -49,6 +49,11 @@ export interface CreatePatientThreadInput {
   referral_details?: string | null;
   is_existing_member?: boolean | null;
   member_type?: string | null;
+  // MH.4b — multi-hospital v2: explicit hospital tenancy at create time.
+  // Was silently NULL prior to MH.4b — patient_threads slipped through
+  // user_accessible_hospital_ids() filtering. Caller must now pass either
+  // the picker-resolved hospital_id or the user's primary_hospital_id.
+  hospital_id?: string | null;
 }
 
 export async function createPatientThread(input: CreatePatientThreadInput) {
@@ -59,12 +64,14 @@ export async function createPatientThread(input: CreatePatientThreadInput) {
       planned_procedure, department_id, admission_date, planned_surgery_date, created_by,
       phone, whatsapp_number, email, age, gender, city,
       source_type, source_detail, chief_complaint, insurance_status,
-      target_department, referral_details, is_existing_member, member_type
+      target_department, referral_details, is_existing_member, member_type,
+      hospital_id
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
       $15,$16,$17,$18,$19,$20,
       $21,$22,$23,$24,
-      $25,$26,$27,$28
+      $25,$26,$27,$28,
+      $29
     )
     RETURNING id`,
     [
@@ -96,6 +103,7 @@ export async function createPatientThread(input: CreatePatientThreadInput) {
       input.referral_details ?? null,
       input.is_existing_member ?? false,
       input.member_type ?? null,
+      input.hospital_id ?? null,
     ]
   );
   return rows[0];

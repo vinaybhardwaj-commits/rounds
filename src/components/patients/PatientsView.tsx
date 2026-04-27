@@ -21,6 +21,7 @@ import type { PatientStage, FormType } from '@/types';
 import { PATIENT_STAGE_LABELS, PATIENT_STAGE_COLORS } from '@/types';
 import { FORMS_BY_STAGE, FORM_TYPE_LABELS } from '@/lib/form-registry';
 import { OTActionBanner } from '@/components/ot/OTActionBanner';
+import { HospitalPicker } from '@/components/HospitalPicker';
 import { trackFeature } from '@/lib/session-tracker';
 
 type CreateTab = 'single' | 'upload';
@@ -163,6 +164,10 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
   const [fInsuranceStatus, setFInsuranceStatus] = useState('');
   const [fIsExistingMember, setFIsExistingMember] = useState(false);
   const [fMemberType, setFMemberType] = useState('');
+  // MH.4b — hospital tenancy at create time. Auto-fills for hospital-bound users
+  // (HospitalPicker handles that internally) and is required for multi-hospital
+  // users. Resolved value is sent in the POST body as hospital_id.
+  const [fHospitalId, setFHospitalId] = useState<string | null>(null);
   // Dedup live-check state
   type DedupCheckData = {
     action: 'link' | 'flag' | 'create';
@@ -413,6 +418,7 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
     setFSource('manual'); setFSourceDetail('');
     setFChiefComplaint(''); setFTargetDepartment(''); setFInsuranceStatus('');
     setFIsExistingMember(false); setFMemberType('');
+    setFHospitalId(null);
     setDedupCheck(null);
   };
 
@@ -441,6 +447,9 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
         insurance_status: fInsuranceStatus || null,
         is_existing_member: fIsExistingMember,
         member_type: fIsExistingMember ? (fMemberType || null) : null,
+        // MH.4b — explicit hospital tenancy. Server falls back to user's primary
+        // if missing, so hospital-bound users still create cleanly.
+        hospital_id: fHospitalId,
       };
       const res = await fetch('/api/patients', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -828,6 +837,18 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
             <div className="flex-1 overflow-y-auto">
               {createTab === 'single' && (
                 <div className="px-5 py-4 space-y-4">
+                  {/* MH.4b — Hospital tenancy. Auto-fills for hospital-bound users
+                      (read-only with lock icon) and is required for multi-hospital
+                      users (mandatory pick, no default per Q3). Server validates
+                      against user_accessible_hospital_ids() on submit. */}
+                  <HospitalPicker
+                    value={fHospitalId}
+                    onChange={setFHospitalId}
+                    name="hospital_id"
+                    required
+                    label="Hospital"
+                  />
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Patient Name *</label>
                     <input type="text" value={fName} onChange={e => setFName(e.target.value)}

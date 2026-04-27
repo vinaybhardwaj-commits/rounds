@@ -179,6 +179,26 @@ export default function FormRenderer({
   const [doctorsLoading, setDoctorsLoading] = useState(false);
   const [doctorsError, setDoctorsError] = useState<string | null>(null);
 
+  // MH.4b — accessible hospitals for the current user. Used to filter
+  // target_hospital select options to the user's accessible set (server is
+  // still source of truth — this is just a UI filter).
+  const [accessibleHospitals, setAccessibleHospitals] = useState<
+    Array<{ id: string; slug: string; name: string; short_name: string | null }>
+  >([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/hospitals/accessible')
+      .then((r) => r.json())
+      .then((body) => {
+        if (cancelled) return;
+        if (body?.success && Array.isArray(body.data)) {
+          setAccessibleHospitals(body.data);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     if (!usesPickerB) return;
     let cancelled = false;
@@ -588,20 +608,44 @@ export default function FormRenderer({
         // an explicit manual-entry path. target_opd_doctor (free text) is now
         // hidden when a real doctor is picked and shown only when the picker
         // is unset or 'Other' is chosen.
+        // MH.4b — apply target_hospital filtering FIRST, independently of
+        // Picker B logic. This narrows the hardcoded ehrc/ehbr/ehin schema
+        // options down to the user's accessible hospitals + drops inactive ones.
+        const sectionWithHospitalFilter: FormSection = (() => {
+          const hasTargetHospital = section.fields.some((f) => f.key === 'target_hospital');
+          if (!hasTargetHospital || accessibleHospitals.length === 0) return section;
+          return {
+            ...section,
+            fields: section.fields.map((f) => {
+              if (f.key !== 'target_hospital') return f;
+              return {
+                ...f,
+                options: accessibleHospitals.map((h) => ({
+                  value: h.slug,
+                  label: `${h.short_name || h.slug.toUpperCase()} — ${h.name}`,
+                })),
+                helpText: accessibleHospitals.length === 1
+                  ? 'Auto-routed to your hospital.'
+                  : `Pick which hospital to route to (${accessibleHospitals.length} accessible).`,
+              };
+            }),
+          };
+        })();
+
         const sectionForRender = (() => {
           // 25 Apr 2026 — extended to also rewrite Section C operating-surgeon
           // fields. Gate kept minimal so non-handoff forms skip the .map.
           const sectionHasPickerBField =
-            section.fields.some((f) =>
+            sectionWithHospitalFilter.fields.some((f) =>
               f.key === 'admitting_doctor_id' ||
               f.key === 'operating_surgeon_id' ||
               f.key === 'surgeon_name' ||
               f.key === 'surgical_specialty'
             );
-          if (!usesPickerB || !sectionHasPickerBField) return section;
+          if (!usesPickerB || !sectionHasPickerBField) return sectionWithHospitalFilter;
           return {
-            ...section,
-            fields: section.fields.map((f) => {
+            ...sectionWithHospitalFilter,
+            fields: sectionWithHospitalFilter.fields.map((f) => {
               if (f.key === 'admitting_doctor_id') {
                 return {
                   ...f,

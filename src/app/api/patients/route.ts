@@ -186,12 +186,48 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // MH.4b — multi-hospital v2: resolve + validate hospital_id BEFORE create.
+    // Resolution order:
+    //   1. body.hospital_id (HospitalPicker on the create form; required for
+    //      multi-hospital users via UI; auto-filled for hospital-bound users)
+    //   2. user.primary_hospital_id (back-compat for callers that don't pass
+    //      hospital_id yet — e.g. LSQ sync, legacy admin imports)
+    // Validation: the resolved hospital_id MUST be in the caller's accessible
+    // set. Cross-hospital create attempts return 403 (caller is authenticated
+    // but trying to create outside their tenancy — not a 404 because the
+    // hospital itself isn't a hidden resource). Server is the source of truth;
+    // UI is a hint.
+    let createHospitalId: string | null = body.hospital_id ?? null;
+    if (!createHospitalId) {
+      const meRow = await queryOne<{ primary_hospital_id: string | null }>(
+        `SELECT primary_hospital_id::text AS primary_hospital_id FROM profiles WHERE id = $1::uuid`,
+        [user.profileId]
+      );
+      createHospitalId = meRow?.primary_hospital_id ?? null;
+    }
+    if (createHospitalId) {
+      const okRow = await queryOne<{ ok: boolean }>(
+        `SELECT $1::uuid = ANY(user_accessible_hospital_ids($2::uuid)) AS ok`,
+        [createHospitalId, user.profileId]
+      );
+      if (!okRow?.ok) {
+        return NextResponse.json(
+          { success: false, error: 'hospital_id is not accessible to this user', field: 'hospital_id' },
+          { status: 403 }
+        );
+      }
+    }
+    // If neither body.hospital_id nor user.primary_hospital_id resolved, we
+    // fall through to NULL — the LSQ sync path historically did this and we
+    // don't want to break those imports. Going forward MH.7 will tighten this.
+
     // 1. Create DB record (Layer 2 and Layer 3 both land here)
     const result = await createPatientThread({
       ...body,
       source_type,
       source_detail,
       created_by: user.profileId,
+      hospital_id: createHospitalId,
     });
 
     const patientThreadId = result.id;
