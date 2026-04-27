@@ -28,7 +28,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { hasRole } from '@/lib/roles';
 import { query as sqlQuery, queryOne } from '@/lib/db';
 
 interface TransitionRule {
@@ -161,15 +160,6 @@ export async function POST(
       );
     }
 
-    if (!hasRole(user.role, rule.allowed_roles)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Role ${user.role} cannot perform ${ruleKey}. Required: ${[...rule.allowed_roles].join(' or ')}.`,
-        },
-        { status: 403 }
-      );
-    }
 
     if (rule.require_kx_uhid && (!body.kx_uhid || !body.kx_uhid.trim())) {
       return NextResponse.json(

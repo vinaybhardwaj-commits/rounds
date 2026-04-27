@@ -29,22 +29,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { hasRole } from '@/lib/roles';
 import { query, queryOne } from '@/lib/db';
 import { audit } from '@/lib/audit';
 
 // 26 Apr 2026 follow-up F3: V widened the gate.
 // 'consultant' and 'surgeon' are not yet in UserRole enum — they remain
 // here as a forward-compatibility marker for when those roles are added.
-const BOOK_ROLES = new Set([
-  'ot_coordinator',
-  'anesthesiologist',
-  'ip_coordinator',
-  'nurse',
-  'charge_nurse',  // not yet in UserRole enum — see comment above
-  'consultant',    // not yet in UserRole enum
-  'surgeon',       // not yet in UserRole enum
-]);
 
 const VALID_ANAE = new Set(['GA', 'SA', 'LA', 'Block', 'Other']);
 const VALID_EQUIP = new Set(['Ready', 'CSSD', 'Outside', 'Other']);
@@ -86,12 +76,6 @@ export async function POST(
     }
     if (process.env.FEATURE_CASE_MODEL_ENABLED !== 'true') {
       return NextResponse.json({ success: false, error: 'Case model disabled' }, { status: 503 });
-    }
-    if (!hasRole(user.role, BOOK_ROLES)) {
-      return NextResponse.json(
-        { success: false, error: `Role ${user.role} cannot book OT slots. Required: ${[...BOOK_ROLES].join(', ')} or super_admin.` },
-        { status: 403 }
-      );
     }
 
     const { id: caseId } = params;

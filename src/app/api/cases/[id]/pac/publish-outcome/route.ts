@@ -32,13 +32,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { hasRole } from '@/lib/roles';
 import { query, queryOne } from '@/lib/db';
 import { audit } from '@/lib/audit';
 
-// 25 Apr 2026: super_admin auto-passes via hasRole helper, so it's no longer
+// 27 Apr 2026 (GLASS.5): clinical role gate removed — every authenticated user
 // listed here. Keep the allow-set narrow to the role that actually owns this.
-const PUBLISH_ALLOWED_ROLES = new Set(['anesthesiologist']);
 const VALID_OUTCOMES = new Set(['fit', 'fit_conds', 'defer', 'unfit']);
 const PUBLISHABLE_FROM_STATES = new Set(['intake', 'pac_scheduled', 'pac_done']);
 
@@ -80,15 +78,6 @@ export async function POST(
       );
     }
 
-    if (!hasRole(user.role, PUBLISH_ALLOWED_ROLES)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Role ${user.role} cannot publish PAC outcomes. Required: ${[...PUBLISH_ALLOWED_ROLES].join(', ')} or super_admin.`,
-        },
-        { status: 403 }
-      );
-    }
 
     const { id: caseId } = params;
     if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(caseId)) {

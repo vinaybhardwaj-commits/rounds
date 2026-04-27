@@ -13,19 +13,17 @@
 //     chaining; same pattern as POST /api/cases per audit fix P1-1).
 //
 // Tenancy: case + patient must be in caller's accessible hospitals.
-// Role gate: anesthesiologist + super_admin (auto-pass via hasRole).
+// 27 Apr 2026 (GLASS.5): clinical role gate removed — any authenticated user can schedule a case for PAC. Audit logged via audit() in GLASS.4.
 // =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { hasRole } from '@/lib/roles';
 import { query, queryOne } from '@/lib/db';
 import { audit } from '@/lib/audit';
 
 // 26 Apr 2026 follow-up F3: V added IPD coordinator + OT coordinator. The
 // IPD coordinator is the typical assigner; OT coordinator can pre-emptively
 // queue cases for the day's PAC list. Anaesthetist still owns the path.
-const SCHEDULE_ROLES = new Set(['anesthesiologist', 'ip_coordinator', 'ot_coordinator']);
 
 // Case states from which scheduling for PAC is allowed.
 const SCHEDULABLE_FROM = new Set(['draft', 'intake']);
@@ -55,12 +53,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Case model disabled' }, { status: 503 });
     }
 
-    if (!hasRole(user.role, SCHEDULE_ROLES)) {
-      return NextResponse.json(
-        { success: false, error: `Role ${user.role} cannot schedule a case for PAC. Required: anesthesiologist or super_admin.` },
-        { status: 403 }
-      );
-    }
 
     const body = (await request.json()) as Body;
     if (!body.patient_thread_id || !UUID_RE.test(body.patient_thread_id)) {

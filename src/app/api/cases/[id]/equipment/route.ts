@@ -27,23 +27,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { hasRole } from '@/lib/roles';
 import { queryOne } from '@/lib/db';
 
-// 25 Apr 2026: super_admin auto-passes via hasRole; keep allow-set narrow.
+// 27 Apr 2026 (GLASS.5): clinical role gate removed — any authenticated user.
 // 26 Apr 2026 follow-up F3: V added nurses, anaesthetists, consultants and
 // surgeons to the create gate. 'charge_nurse', 'consultant', 'surgeon' are
 // not yet in UserRole enum — they remain here as a forward-compatibility
 // marker.
-const CREATE_ROLES = new Set([
-  'biomedical_engineer', // legacy — not yet in UserRole enum
-  'ot_coordinator',
-  'nurse',
-  'charge_nurse', // not yet in UserRole enum
-  'anesthesiologist',
-  'consultant',   // not yet in UserRole enum
-  'surgeon',      // not yet in UserRole enum
-]);
 // Expanded item_types after the equipment_inventory migration. The DB CHECK
 // was relaxed in the same migration to accept these.
 const VALID_ITEM_TYPES = new Set([
@@ -80,12 +70,6 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Case model disabled' }, { status: 503 });
     }
 
-    if (!hasRole(user.role, CREATE_ROLES)) {
-      return NextResponse.json(
-        { success: false, error: `Role ${user.role} cannot create equipment requests. Required: ${[...CREATE_ROLES].join(', ')} or super_admin.` },
-        { status: 403 }
-      );
-    }
 
     const { id: caseId } = params;  // keep internal var name for clarity — the URL param is `id`
     if (!UUID_RE.test(caseId)) {

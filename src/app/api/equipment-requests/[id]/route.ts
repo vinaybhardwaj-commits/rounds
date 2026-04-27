@@ -14,11 +14,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { hasRole } from '@/lib/roles';
 import { query, queryOne } from '@/lib/db';
 import { audit } from '@/lib/audit';
 
-const MUTATE_ROLES = new Set(['biomedical_engineer', 'ot_coordinator']);
 const VALID_STATUSES = new Set([
   'requested', 'vendor_confirmed', 'in_transit', 'delivered', 'verified_ready',
 ]);
@@ -44,12 +42,6 @@ export async function PATCH(
     }
     if (process.env.FEATURE_CASE_MODEL_ENABLED !== 'true') {
       return NextResponse.json({ success: false, error: 'Case model disabled' }, { status: 503 });
-    }
-    if (!hasRole(user.role, MUTATE_ROLES)) {
-      return NextResponse.json(
-        { success: false, error: `Role ${user.role} cannot mutate equipment requests.` },
-        { status: 403 }
-      );
     }
 
     const { id } = params;
