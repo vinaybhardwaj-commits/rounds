@@ -23,6 +23,7 @@ import {
   Link2,
   GitMerge,
   Grid3x3,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -72,6 +73,13 @@ const navItems: NavItem[] = [
     label: 'Database Explorer',
     href: '/admin/database',
     icon: <Database size={iconSize} />,
+    requiresRole: 'super_admin',
+  },
+  {
+    group: 'SYSTEM',
+    label: 'Audit Log',
+    href: '/admin/audit-log',
+    icon: <ShieldCheck size={iconSize} />,
     requiresRole: 'super_admin',
   },
 
