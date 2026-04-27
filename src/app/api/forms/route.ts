@@ -20,6 +20,7 @@ import { postPatientActivity } from '@/lib/patient-activity';
 import { getOrCreateClaim, logClaimEvent, postClaimMessage } from '@/lib/insurance-claims';
 import { calculateMilestoneAttribution } from '@/lib/billing-metrics';
 import { audit } from '@/lib/audit';
+import { validateDoctorHospitalAffiliation } from '@/lib/validate-doctor-hospital';
 import type { FormType, FormStatus } from '@/types';
 import { ROOM_RENT_ELIGIBILITY_PCT } from '@/types';
 
@@ -1051,6 +1052,52 @@ export async function POST(request: NextRequest) {
       }).catch((e) => console.error('[audit] form.submit failed:', e));
     }
 
+    // MH.7a — soft validation: if this is a marketing handoff with both an
+    // admitting_doctor_id and target_hospital, check the affiliation. Mismatch
+    // never blocks (per V's Q3) — appended to response.warnings + audited.
+    const warnings: Array<{ code: string; message: string }> = [];
+    if (
+      form_type === 'consolidated_marketing_handoff' &&
+      status !== 'draft' &&
+      form_data.admitting_doctor_id &&
+      form_data.target_hospital
+    ) {
+      try {
+        const targetSlug = String(form_data.target_hospital).toLowerCase();
+        const targetHospital = await queryOne<{ id: string }>(
+          `SELECT id FROM hospitals WHERE slug = $1 LIMIT 1`,
+          [targetSlug]
+        );
+        if (targetHospital?.id) {
+          const v = await validateDoctorHospitalAffiliation(
+            String(form_data.admitting_doctor_id),
+            targetHospital.id
+          );
+          if (v.severity === 'warn' && v.message) {
+            warnings.push({ code: 'doctor_hospital_mismatch', message: v.message });
+            audit({
+              actorId: user.profileId,
+              actorRole: user.role,
+              hospitalId: targetHospital.id,
+              action: 'form.doctor_hospital_mismatch',
+              targetType: 'form_submission',
+              targetId: formId,
+              summary: v.message,
+              payloadAfter: {
+                form_submission_id: formId,
+                doctor_id: form_data.admitting_doctor_id,
+                target_hospital_id: targetHospital.id,
+                target_hospital_slug: targetSlug,
+              },
+              request,
+            }).catch((e) => console.error('[audit] form.doctor_hospital_mismatch failed:', e));
+          }
+        }
+      } catch (e) {
+        console.warn('[forms] doctor-hospital validation skipped due to error:', (e as Error).message);
+      }
+    }
+
 return NextResponse.json(
       {
         success: true,
@@ -1058,6 +1105,7 @@ return NextResponse.json(
           id: formId,
           readiness_items_created: readinessItemsCreated,
         },
+        warnings: warnings.length > 0 ? warnings : undefined,
         message: status === 'draft'
           ? 'Draft saved'
           : `Form submitted with ${readinessItemsCreated} readiness item${readinessItemsCreated !== 1 ? 's' : ''}`,
