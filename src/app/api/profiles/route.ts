@@ -33,10 +33,17 @@ async function GET_inner(request: NextRequest) {
   const offset = (page - 1) * limit;
 
   try {
+    // MH.6 — JOIN hospitals to surface primary_hospital_slug + short_name on
+    // each profile row (used by /admin/users HospitalChip render).
     let queryText = `
-      SELECT p.*, d.name as department_name
+      SELECT p.*,
+             d.name       as department_name,
+             h.slug       as primary_hospital_slug,
+             h.short_name as primary_hospital_short_name,
+             h.name       as primary_hospital_name
       FROM profiles p
       LEFT JOIN departments d ON p.department_id = d.id
+      LEFT JOIN hospitals   h ON h.id = p.primary_hospital_id
       WHERE 1=1
     `;
     const params: (string | number)[] = [];

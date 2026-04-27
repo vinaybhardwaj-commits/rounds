@@ -160,12 +160,16 @@ export async function listPatientThreads(filters?: {
     `SELECT pt.*, d.name as department_name,
             at.bed_number, at.room_number, at.room_category,
             COALESCE(at.financial_category, pt.financial_category) as financial_category,
-            ap.full_name AS archived_by_name
+            ap.full_name AS archived_by_name,
+            h.slug       AS hospital_slug,
+            h.short_name AS hospital_short_name,
+            h.name       AS hospital_name
      FROM patient_threads pt
      LEFT JOIN profiles p  ON pt.primary_consultant_id = p.id
      LEFT JOIN profiles ap ON pt.archived_by           = ap.id
      LEFT JOIN departments d ON pt.department_id = d.id
      LEFT JOIN admission_tracker at ON at.patient_thread_id = pt.id
+     LEFT JOIN hospitals h ON h.id = pt.hospital_id
      ${where}
      ORDER BY pt.updated_at DESC
      LIMIT $${paramIndex++} OFFSET $${paramIndex++}`,
@@ -359,10 +363,14 @@ export async function listFormSubmissions(filters?: {
             p.full_name        AS submitted_by_name,
             pt.patient_name    AS patient_name,
             pt.uhid            AS uhid,
-            pt.current_stage   AS patient_stage
+            pt.current_stage   AS patient_stage,
+            h.slug             AS hospital_slug,
+            h.short_name       AS hospital_short_name,
+            h.name             AS hospital_name
      FROM form_submissions fs
      LEFT JOIN profiles         p  ON fs.submitted_by      = p.id
      LEFT JOIN patient_threads  pt ON fs.patient_thread_id = pt.id
+     LEFT JOIN hospitals        h  ON h.id                  = fs.hospital_id
      ${where}
      ORDER BY fs.created_at DESC
      LIMIT $${paramIndex++} OFFSET $${paramIndex++}`,

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Users, Search, RefreshCw, Shield, Clock, Ban, CheckCircle, Pencil } from 'lucide-react';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 import { ProfileEditModal } from '@/components/admin/ProfileEditModal';
+import { HospitalChip, ScopeChip } from '@/components/HospitalChip';
 
 interface UserProfile {
   id: string;
@@ -17,6 +18,11 @@ interface UserProfile {
   created_at: string;
   last_login_at: string | null;
   last_seen_at: string | null;
+  // MH.6 — surfaced via /api/profiles JOIN hospitals + p.role_scope already in p.*
+  primary_hospital_slug?: string | null;
+  primary_hospital_short_name?: string | null;
+  primary_hospital_name?: string | null;
+  role_scope?: string | null;
 }
 
 const STATUS_BADGE: Record<string, { bg: string; text: string; icon: React.ReactNode }> = {
@@ -152,6 +158,7 @@ export default function UsersPage() {
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Role</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Department</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Hospital · Scope</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Last Login</th>
                 </tr>
               </thead>
@@ -187,6 +194,20 @@ export default function UsersPage() {
                       </td>
                       <td className="px-4 py-3 text-gray-600">
                         {user.department_name || '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {user.primary_hospital_slug ? (
+                            <HospitalChip
+                              hospitalSlug={user.primary_hospital_slug}
+                              hospitalShortName={user.primary_hospital_short_name}
+                              hospitalName={user.primary_hospital_name}
+                            />
+                          ) : (
+                            <span className="text-[10px] text-gray-400">—</span>
+                          )}
+                          {user.role_scope && <ScopeChip roleScope={user.role_scope} />}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-gray-400 text-xs">
                         {formatDate(user.last_login_at)}

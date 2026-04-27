@@ -22,6 +22,7 @@ import { PATIENT_STAGE_LABELS, PATIENT_STAGE_COLORS } from '@/types';
 import { FORMS_BY_STAGE, FORM_TYPE_LABELS } from '@/lib/form-registry';
 import { OTActionBanner } from '@/components/ot/OTActionBanner';
 import { HospitalPicker } from '@/components/HospitalPicker';
+import { HospitalChip } from '@/components/HospitalChip';
 import { trackFeature } from '@/lib/session-tracker';
 
 type CreateTab = 'single' | 'upload';
@@ -51,6 +52,10 @@ interface PatientThread {
   archive_reason?: string | null;
   archive_reason_detail?: string | null;
   archived_by_name?: string | null;
+  // MH.6 — surfaced via listPatientThreads JOIN hospitals
+  hospital_slug?: string | null;
+  hospital_short_name?: string | null;
+  hospital_name?: string | null;
 }
 
 interface PatientsViewProps {
@@ -527,6 +532,15 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
                   title={`Imported from LeadSquared${patient.lsq_last_synced_at ? ` · Last synced: ${new Date(patient.lsq_last_synced_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}`}>
                   LSQ
                 </span>
+              )}
+              {/* MH.6 — hospital chip; auto-disambiguates rows for multi-hospital users */}
+              {patient.hospital_slug && (
+                <HospitalChip
+                  hospitalSlug={patient.hospital_slug}
+                  hospitalShortName={patient.hospital_short_name}
+                  hospitalName={patient.hospital_name}
+                  className="shrink-0"
+                />
               )}
             </div>
             <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1.5 flex-wrap">

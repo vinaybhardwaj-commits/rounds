@@ -11,10 +11,11 @@ import Link from 'next/link';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, ChevronRight, ArrowLeft, CheckCircle, AlertCircle,
-  ClipboardList, Users, FileText, X,
+  ClipboardList, Users, User, FileText, X,
   PenLine,
 } from 'lucide-react';
 import FormRenderer from '@/components/forms/FormRenderer';
+import { HospitalChip } from '@/components/HospitalChip';
 import {
   FORM_REGISTRY,
   FORM_TYPE_LABELS,
@@ -46,6 +47,10 @@ interface RecentSubmission {
   uhid?: string | null;
   patient_stage?: string | null;
   created_at: string;
+  // MH.6 — surfaced via listFormSubmissions JOIN hospitals
+  hospital_slug?: string | null;
+  hospital_short_name?: string | null;
+  hospital_name?: string | null;
   // Version chain — populated by the POST handler's version-linking pass
   // (src/app/api/forms/route.ts ~line 274-315).
   version_number?: number | null;
@@ -387,6 +392,15 @@ export function FormsView() {
                             <User size={10} className="text-gray-400 shrink-0" />
                             <span className="font-medium">{s.patient_name}</span>
                             {s.uhid && <span className="text-gray-400">· {s.uhid}</span>}
+                            {/* MH.6 — hospital chip; auto-disambiguates rows for multi-hospital users */}
+                            {s.hospital_slug && (
+                              <HospitalChip
+                                hospitalSlug={s.hospital_slug}
+                                hospitalShortName={s.hospital_short_name}
+                                hospitalName={s.hospital_name}
+                                className="shrink-0"
+                              />
+                            )}
                           </div>
                         ) : (
                           <div className="text-[11px] text-gray-400 italic mt-0.5">No patient linked</div>

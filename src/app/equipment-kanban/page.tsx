@@ -22,6 +22,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import EquipmentRequestModal from '@/components/ot/EquipmentRequestModal';
+import { HospitalChip } from '@/components/HospitalChip';
 // 27 Apr 2026 (GLASS.7): clinical role gate flattened — any authenticated user can mutate.
 
 interface EquipmentRow {
@@ -252,9 +253,7 @@ export default function EquipmentKanbanPage() {
                           ? (r.patient_name || '(no patient)')
                           : <span className="italic text-gray-500">No case linked</span>}{' '}
                         ·{' '}
-                        <span className="inline-flex items-center rounded bg-gray-100 px-1 py-0 text-[10px]">
-                          {r.hospital_slug.toUpperCase()}
-                        </span>
+                        <HospitalChip hospitalSlug={r.hospital_slug} />
                         {r.is_rental && (
                           <span className="ml-1 inline-flex items-center rounded bg-amber-100 px-1 py-0 text-[10px] text-amber-900">RENTAL</span>
                         )}
