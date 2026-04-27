@@ -20,9 +20,15 @@ export async function GET() {
       SELECT p.id, p.email, p.full_name, p.display_name, p.avatar_url,
              p.role, p.account_type, p.department_id, p.designation,
              p.phone, p.status, p.is_active, p.created_at, p.last_login_at,
-             d.name as department_name, d.slug as department_slug
+             p.primary_hospital_id::text AS primary_hospital_id,
+             p.role_scope,
+             d.name as department_name, d.slug as department_slug,
+             h.slug       as primary_hospital_slug,
+             h.short_name as primary_hospital_short_name,
+             h.name       as primary_hospital_name
       FROM profiles p
       LEFT JOIN departments d ON p.department_id = d.id
+      LEFT JOIN hospitals   h ON h.id = p.primary_hospital_id
       WHERE p.id = ${user.profileId}
     `;
 

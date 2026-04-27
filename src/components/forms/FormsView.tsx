@@ -115,6 +115,9 @@ export function FormsView() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [createdFormId, setCreatedFormId] = useState('');
+  // MH.7b — server-side warnings (e.g. doctor_hospital_mismatch). Captured from
+  // /api/forms POST response.warnings array; rendered in the success view.
+  const [submitWarnings, setSubmitWarnings] = useState<Array<{ code: string; message: string }>>([]);
 
   // Recent submissions
   const [recentSubmissions, setRecentSubmissions] = useState<RecentSubmission[]>([]);
@@ -174,6 +177,7 @@ export function FormsView() {
       if (!selectedFormType || !selectedPatient) return;
       setIsSubmitting(true);
       setSubmitError('');
+      setSubmitWarnings([]);
 
       try {
         const res = await fetch('/api/forms', {
@@ -199,6 +203,10 @@ export function FormsView() {
         }
 
         setCreatedFormId(data.data.id);
+        // MH.7b — capture server-side warnings (soft-warn validation, etc.)
+        if (Array.isArray(data.warnings)) {
+          setSubmitWarnings(data.warnings);
+        }
         setView('success');
       } catch (err) {
         setSubmitError(err instanceof Error ? err.message : 'Something went wrong');
@@ -245,6 +253,7 @@ export function FormsView() {
     setSelectedPatient(null);
     setSubmitError('');
     setCreatedFormId('');
+    setSubmitWarnings([]);
     // Refresh recent submissions
     fetch('/api/forms?limit=10')
       .then(r => {
@@ -607,6 +616,30 @@ export function FormsView() {
           <p className="mt-2 text-sm text-gray-600">
             {formLabel} for <strong>{selectedPatient?.patient_name}</strong> has been submitted successfully.
           </p>
+          {/* MH.7b — server-side warnings banner (e.g. doctor_hospital_mismatch).
+              Submission already succeeded; this is a soft-warn for follow-up review. */}
+          {submitWarnings.length > 0 && (
+            <div className="mt-4 rounded-md bg-amber-50 border border-amber-200 p-3 text-left">
+              <div className="flex items-start gap-2">
+                <AlertCircle size={14} className="text-amber-600 mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold text-amber-800">
+                    {submitWarnings.length === 1 ? 'Warning' : `${submitWarnings.length} warnings`}
+                  </div>
+                  <ul className="mt-1 space-y-1">
+                    {submitWarnings.map((w, i) => (
+                      <li key={i} className="text-[11px] text-amber-700">
+                        {w.message}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="text-[10px] text-amber-600 mt-1.5">
+                    Logged for review — your submission was accepted.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           <p className="mt-1 text-xs text-gray-400">
             The submission has been posted to the patient&apos;s chat and your department chat.
           </p>

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { LlmHealthIndicator } from '@/components/ai/LlmHealthIndicator';
+import { HospitalChip, ScopeChip } from '@/components/HospitalChip';
 
 interface ProfileData {
   profileId: string;
@@ -27,6 +28,19 @@ interface ProfileData {
   department_name?: string;
   designation?: string;
   phone?: string;
+  // MH.7b — hospital access (added to /api/auth/me response)
+  primary_hospital_id?: string | null;
+  primary_hospital_slug?: string | null;
+  primary_hospital_short_name?: string | null;
+  primary_hospital_name?: string | null;
+  role_scope?: 'hospital_bound' | 'multi_hospital' | 'central' | string | null;
+}
+
+interface AccessibleHospital {
+  id: string;
+  slug: string;
+  name: string;
+  short_name: string | null;
 }
 
 interface ProfileViewProps {
@@ -53,6 +67,8 @@ const ROLE_LABELS: Record<string, string> = {
 
 export function ProfileView({ isAdmin = false }: ProfileViewProps) {
   const [profile, setProfile] = useState<ProfileData | null>(null);
+  // MH.7b — accessible hospitals for Hospital Access section.
+  const [accessibleHospitals, setAccessibleHospitals] = useState<AccessibleHospital[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -83,6 +99,18 @@ export function ProfileView({ isAdmin = false }: ProfileViewProps) {
       .catch(err => {
         console.error('Failed to fetch profile:', err);
         setError('Could not load profile. Please refresh.');
+      });
+
+    // MH.7b — fetch accessible hospitals for Hospital Access section.
+    fetch('/api/hospitals/accessible')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => {
+        if (d?.success && Array.isArray(d.data)) {
+          setAccessibleHospitals(d.data as AccessibleHospital[]);
+        }
+      })
+      .catch(() => {
+        // Non-fatal — Hospital Access section will fall back to primary only
       });
   }, []);
 
@@ -269,6 +297,40 @@ export function ProfileView({ isAdmin = false }: ProfileViewProps) {
               <div className="flex items-center gap-3 text-sm">
                 <Building2 size={15} className="text-gray-400" />
                 <span className="text-gray-600">{profile.department_name}</span>
+              </div>
+            )}
+            {/* MH.7b — Hospital Access section. Shows scope + accessible hospitals. */}
+            {(profile?.primary_hospital_slug || accessibleHospitals.length > 0) && (
+              <div className="pt-3 mt-1 border-t border-gray-100">
+                <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-2">Hospital access</div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {profile?.role_scope && <ScopeChip roleScope={profile.role_scope} />}
+                  {accessibleHospitals.length > 0
+                    ? accessibleHospitals.map(h => (
+                        <div key={h.id} className="flex items-center gap-0.5">
+                          <HospitalChip
+                            hospitalSlug={h.slug}
+                            hospitalShortName={h.short_name}
+                            hospitalName={h.name}
+                          />
+                          {h.id === profile?.primary_hospital_id && (
+                            <span className="text-[9px] text-amber-600 font-semibold ml-0.5" title="Primary affiliation">★</span>
+                          )}
+                        </div>
+                      ))
+                    : profile?.primary_hospital_slug && (
+                        <HospitalChip
+                          hospitalSlug={profile.primary_hospital_slug}
+                          hospitalShortName={profile.primary_hospital_short_name}
+                          hospitalName={profile.primary_hospital_name}
+                        />
+                      )}
+                </div>
+                {accessibleHospitals.length > 1 && (
+                  <p className="text-[10px] text-gray-400 mt-1.5">
+                    You have access to {accessibleHospitals.length} hospitals — ★ marks your primary.
+                  </p>
+                )}
               </div>
             )}
           </div>

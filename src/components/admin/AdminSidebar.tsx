@@ -24,6 +24,7 @@ import {
   GitMerge,
   Grid3x3,
   ShieldCheck,
+  Network,
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -87,6 +88,7 @@ const navItems: NavItem[] = [
   { group: 'OPERATIONS', label: 'User Management', href: '/admin/users', icon: <UserCog size={iconSize} /> },
   { group: 'OPERATIONS', label: 'Approvals', href: '/admin/approvals', icon: <UserCheck size={iconSize} />, badge: 0 },
   { group: 'OPERATIONS', label: 'Departments', href: '/admin/departments', icon: <Building2 size={iconSize} /> },
+  { group: 'OPERATIONS', label: 'Doctor Affiliations', href: '/admin/doctor-affiliations', icon: <Network size={iconSize} /> },
   { group: 'OPERATIONS', label: 'Duty Roster', href: '/admin/duty-roster', icon: <Calendar size={iconSize} /> },
   { group: 'OPERATIONS', label: 'Escalation Log', href: '/admin/escalations', icon: <AlertTriangle size={iconSize} />, badge: 0 },
   { group: 'OPERATIONS', label: 'Patient Changelog', href: '/admin/changelog', icon: <ClipboardList size={iconSize} /> },
