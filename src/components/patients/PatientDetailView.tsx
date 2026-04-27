@@ -26,7 +26,7 @@ import {
   Pencil,
   Check,
   X,
-  Stethoscope,
+  Stethoscope, ShieldCheck,
   Paperclip,
 } from 'lucide-react';
 import type { PatientStage, FormType, FormStatus, PacStatus } from '@/types';
@@ -45,11 +45,12 @@ import OTPlanningPanel from '@/components/drawer/OTPlanningPanel';
 import { PatientFilesTab } from './PatientFilesTab';
 import { PatientOTTab } from './PatientOTTab';
 // 26 Apr 2026 follow-up FU3 / P2-2: parent fetches once, panels share it.
+import { PatientActivityTab } from './PatientActivityTab';
 import { useSurgicalCase } from '@/lib/hooks/useSurgicalCase';
 import FCVersionHistory from '@/components/forms/FCVersionHistory';
 import PatientFormSubmissions from './PatientFormSubmissions';
 
-type DetailTab = 'overview' | 'files' | 'ot';
+type DetailTab = 'overview' | 'files' | 'ot' | 'activity';
 
 // ── Ordered stages for the progress bar ──
 const STAGES_ORDERED: PatientStage[] = [
@@ -524,6 +525,8 @@ export function PatientDetailView({
           ...(['admitted', 'medical_management', 'pre_op', 'surgery', 'post_op', 'post_op_care', 'discharge'].includes(patient.current_stage)
             ? [{ id: 'ot' as DetailTab, label: 'OT Planning', icon: <Stethoscope size={14} /> }]
             : []),
+          // GLASS.10.5 — per-patient audit timeline (every-user view).
+          { id: 'activity' as DetailTab, label: 'Activity', icon: <ShieldCheck size={14} /> },
         ]).map(tab => (
           <button
             key={tab.id}
@@ -561,7 +564,12 @@ export function PatientDetailView({
         </div>
       )}
 
-      {/* ── Overview Tab (Scrollable content) ── */}
+      {/* ── Overview Tab (Scrollable content)
+
+      {/* ── Activity Tab — GLASS.10.5 ── */}
+      {activeTab === 'activity' && (
+        <PatientActivityTab patientId={patient.id} />
+      )} ── */}
       <div className={`flex-1 overflow-y-auto pb-4 ${activeTab !== 'overview' ? 'hidden' : ''}`}>
         {/* ── Stage Progress Bar ── */}
         <div className="px-4 py-4">
