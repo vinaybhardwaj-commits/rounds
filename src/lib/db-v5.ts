@@ -337,10 +337,18 @@ export async function listFormSubmissions(filters?: {
   const limit = filters?.limit || 50;
   const offset = filters?.offset || 0;
 
+  // 26 Apr 2026 (FORMS.1) — surface patient context + version chain so the
+  // Recent Submissions row in FormsView can render meaningfully. Backward-compat:
+  // additive columns only; existing callers reading fs.* still get their fields.
   return query(
-    `SELECT fs.*, p.full_name as submitted_by_name
+    `SELECT fs.*,
+            p.full_name        AS submitted_by_name,
+            pt.patient_name    AS patient_name,
+            pt.uhid            AS uhid,
+            pt.current_stage   AS patient_stage
      FROM form_submissions fs
-     LEFT JOIN profiles p ON fs.submitted_by = p.id
+     LEFT JOIN profiles         p  ON fs.submitted_by      = p.id
+     LEFT JOIN patient_threads  pt ON fs.patient_thread_id = pt.id
      ${where}
      ORDER BY fs.created_at DESC
      LIMIT $${paramIndex++} OFFSET $${paramIndex++}`,

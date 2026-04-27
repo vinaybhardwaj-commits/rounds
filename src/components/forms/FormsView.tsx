@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+
 // ============================================
 // FormsView — Standalone Forms module (5th tab)
 // Flow: Browse all forms → Pick a form → Select patient → Fill & submit
@@ -10,6 +12,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, ChevronRight, ArrowLeft, CheckCircle, AlertCircle,
   ClipboardList, Users, FileText, X,
+  PenLine,
 } from 'lucide-react';
 import FormRenderer from '@/components/forms/FormRenderer';
 import {
@@ -36,9 +39,17 @@ interface RecentSubmission {
   id: string;
   form_type: string;
   status: string;
-  patient_name?: string;
+  // 26 Apr 2026 (FORMS.1+2): API returns these field names — earlier code
+  // referenced 'submitter_name' which never matched, so every row showed 'Unknown'.
+  submitted_by_name?: string | null;
+  patient_name?: string | null;
+  uhid?: string | null;
+  patient_stage?: string | null;
   created_at: string;
-  submitter_name?: string;
+  // Version chain — populated by the POST handler's version-linking pass
+  // (src/app/api/forms/route.ts ~line 274-315).
+  version_number?: number | null;
+  parent_submission_id?: string | null;
 }
 
 type ViewState = 'list' | 'pick-patient' | 'fill' | 'success';
@@ -341,29 +352,67 @@ export function FormsView() {
             <div>
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Recent Submissions</h2>
               <div className="space-y-1.5">
-                {recentSubmissions.map(s => (
-                  <div
-                    key={s.id}
-                    className="bg-white border border-gray-100 rounded-lg px-3 py-2.5 flex items-center gap-3"
-                  >
-                    <ClipboardList size={14} className="text-gray-400 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium text-gray-700 truncate">
-                        {FORM_TYPE_LABELS[s.form_type as FormType] || s.form_type}
+                {recentSubmissions.map(s => {
+                  const dt = new Date(s.created_at);
+                  const dateLine = dt.toLocaleString('en-IN', {
+                    day: '2-digit', month: 'short',
+                    hour: 'numeric', minute: '2-digit', hour12: true,
+                  });
+                  const ver = s.version_number || 0;
+                  const isResubmission = ver > 1;
+                  const formLabel = FORM_TYPE_LABELS[s.form_type as FormType] || s.form_type;
+                  return (
+                    <Link
+                      key={s.id}
+                      href={`/forms/${s.id}`}
+                      className="bg-white border border-gray-100 rounded-lg px-3 py-2.5 flex items-start gap-3 hover:border-even-blue/40 hover:bg-blue-50/30 active:bg-blue-50 transition-colors group"
+                    >
+                      <ClipboardList size={16} className="text-gray-400 group-hover:text-even-blue shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        {/* Title + version chip */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-semibold text-even-navy truncate">{formLabel}</span>
+                          {ver > 0 && (
+                            <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${
+                              isResubmission ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-500'
+                            }`}>
+                              v{ver}
+                              {isResubmission && ' · revised'}
+                            </span>
+                          )}
+                        </div>
+                        {/* Patient line */}
+                        {s.patient_name ? (
+                          <div className="text-[11px] text-gray-700 mt-0.5 flex items-center gap-1 truncate">
+                            <User size={10} className="text-gray-400 shrink-0" />
+                            <span className="font-medium">{s.patient_name}</span>
+                            {s.uhid && <span className="text-gray-400">· {s.uhid}</span>}
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-gray-400 italic mt-0.5">No patient linked</div>
+                        )}
+                        {/* Submitter + datetime line */}
+                        <div className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-1">
+                          <PenLine size={9} className="text-gray-400 shrink-0" />
+                          <span className="truncate">
+                            {s.submitted_by_name || 'Unknown user'} · {dateLine}
+                          </span>
+                        </div>
                       </div>
-                      <div className="text-[10px] text-gray-400">
-                        {s.submitter_name || 'Unknown'} · {new Date(s.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                      {/* Status pill + chevron stack */}
+                      <div className="flex flex-col items-end gap-1.5 shrink-0">
+                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                          s.status === 'submitted' ? 'bg-green-50 text-green-600' :
+                          s.status === 'draft' ? 'bg-gray-50 text-gray-500' :
+                          'bg-blue-50 text-blue-600'
+                        }`}>
+                          {s.status}
+                        </span>
+                        <ChevronRight size={14} className="text-gray-300 group-hover:text-even-blue transition-colors" />
                       </div>
-                    </div>
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                      s.status === 'submitted' ? 'bg-green-50 text-green-600' :
-                      s.status === 'draft' ? 'bg-gray-50 text-gray-500' :
-                      'bg-blue-50 text-blue-600'
-                    }`}>
-                      {s.status}
-                    </span>
-                  </div>
-                ))}
+                    </Link>
+                  );
+                })}
               </div>
             </div>
           )}
