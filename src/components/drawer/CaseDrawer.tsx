@@ -35,7 +35,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import SchedulePacModal from './SchedulePacModal';
 import EquipmentRequestModal from '@/components/ot/EquipmentRequestModal';
-import { hasRole, isSuperAdmin } from '@/lib/roles';
+import { isSuperAdmin } from '@/lib/roles';
 
 // ---- Types (mirrors the /api/cases/:id response shape) ----
 
@@ -417,10 +417,10 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
             {pac_events.length === 0 ? (
               <div className="space-y-3">
                 <p className="text-gray-500">No PAC events yet for this case.</p>
-                {/* 25 Apr 2026: IP Coordinator can schedule PAC straight from
-                    the case detail when state === 'draft'. Closes the loop
-                    opened by the auto-task created on handoff submit. */}
-                {c.state === 'draft' && hasRole(role, ['ip_coordinator']) && (
+                {/* 27 Apr 2026 (GLASS.7): role gate flattened — any authenticated
+                    user can schedule PAC straight from the case detail when
+                    state === 'draft'. Capability-flatten per Glass mode PRD §7.4. */}
+                {c.state === 'draft' && (
                   <button
                     type="button"
                     onClick={() => setSchedulePacOpen(true)}

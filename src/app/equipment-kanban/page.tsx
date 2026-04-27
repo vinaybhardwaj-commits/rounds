@@ -22,8 +22,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import EquipmentRequestModal from '@/components/ot/EquipmentRequestModal';
-// 26 Apr 2026 audit fix (P1-7): use hasRole() to centralize super_admin auto-pass.
-import { hasRole } from '@/lib/roles';
+// 27 Apr 2026 (GLASS.7): clinical role gate flattened — any authenticated user can mutate.
 
 interface EquipmentRow {
   id: string;
@@ -56,7 +55,6 @@ const COLS = [
   { key: 'verified_ready', label: 'Verified ready', tone: 'bg-emerald-50 border-emerald-200 text-emerald-900' },
 ] as const;
 
-const MUTATE_ROLES = new Set(['biomedical_engineer', 'ot_coordinator']);
 
 export default function EquipmentKanbanPage() {
   const [rows, setRows] = useState<EquipmentRow[]>([]);
@@ -94,7 +92,7 @@ export default function EquipmentKanbanPage() {
     load();
   }, [load]);
 
-  const canMutate = role ? hasRole(role, MUTATE_ROLES) : false;
+  const canMutate = !!role;  // GLASS.7 (27 Apr 2026): clinical role gate flattened — any authenticated user.
 
   const grouped = useMemo(() => {
     const m = new Map<string, EquipmentRow[]>();
