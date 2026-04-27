@@ -85,7 +85,8 @@ export async function middleware(request: NextRequest) {
     // Block non-admins from /admin routes (both UI and API)
     // NOTE: department_heads get access to the /admin UI and some API routes.
     // Individual API handlers enforce finer-grained permissions (e.g. super_admin-only).
-    if (pathname.startsWith('/admin') && payload.role !== 'super_admin' && payload.role !== 'department_head') {
+    // MH.3: hospital_admin can access /admin too; per-page filters scope to their hospital.
+    if (pathname.startsWith('/admin') && payload.role !== 'super_admin' && payload.role !== 'department_head' && payload.role !== 'hospital_admin') {
       if (pathname.startsWith('/api/')) {
         return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
       }
