@@ -116,8 +116,9 @@ export async function POST(request: NextRequest) {
         payloadAfter: { pac_scheduled_at: new Date().toISOString(), anaesthetist_id: user.profileId },
         request,
       }).catch((e) => console.error('[audit] pac.schedule failed (fire_and_forget):', e instanceof Error ? e.message : e));
-      
-      
+
+      return NextResponse.json({
+        success: true,
         data: created,
       });
     }
@@ -172,8 +173,9 @@ export async function POST(request: NextRequest) {
       payloadAfter: { pac_scheduled_at: new Date().toISOString(), anaesthetist_id: user.profileId },
       request,
     }).catch((e) => console.error('[audit] pac.schedule failed (fire_and_forget):', e instanceof Error ? e.message : e));
-    
-    
+
+    return NextResponse.json({
+      success: true,
       data: updated,
     });
   } catch (error) {

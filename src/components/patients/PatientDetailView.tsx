@@ -564,12 +564,12 @@ export function PatientDetailView({
         </div>
       )}
 
-      {/* ── Overview Tab (Scrollable content)
-
       {/* ── Activity Tab — GLASS.10.5 ── */}
       {activeTab === 'activity' && (
         <PatientActivityTab patientId={patient.id} />
-      )} ── */}
+      )}
+
+      {/* ── Overview Tab (Scrollable content) ── */}
       <div className={`flex-1 overflow-y-auto pb-4 ${activeTab !== 'overview' ? 'hidden' : ''}`}>
         {/* ── Stage Progress Bar ── */}
         <div className="px-4 py-4">

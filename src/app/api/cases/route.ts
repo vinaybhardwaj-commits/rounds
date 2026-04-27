@@ -396,6 +396,7 @@ async function POST_inner(request: NextRequest) {
        )
        SELECT id, state FROM new_case`,
       [patient.hospital_id, patientThreadId, inferredState, urgency, hydratedProcedure, user.profileId, metadataJson, surgeonId]
+    );
 
     await audit({
       actorId: user.profileId,
@@ -408,7 +409,6 @@ async function POST_inner(request: NextRequest) {
       payloadAfter: { patient_thread_id: patientThreadId, planned_procedure: hydratedProcedure, urgency, state: inserted.state },
       request,
     }).catch((e) => console.error('[audit] case.create failed (fire_and_forget):', e instanceof Error ? e.message : e));
-    );
 
     return NextResponse.json({
       success: true,
