@@ -170,6 +170,12 @@ export function ChannelSidebar({
   const pulseTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const highlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
+  // PTR.8 (28 Apr 2026) — primary_hospital_slug from /api/auth/me, replaces
+  // hardcoded 'ehrc' in PTR.3. Multi-hospital users still see all groups;
+  // default-open buckets honor their primary hospital. Fallback 'ehrc' for
+  // legacy / unauth states keeps prior behavior.
+  const [primaryHospitalSlug, setPrimaryHospitalSlug] = useState<string>('ehrc');
+
   // Fetch and group channels — query each type separately so department
   // and cross-functional channels aren't crowded out by patient threads
   const loadChannels = useCallback(async () => {
@@ -376,11 +382,9 @@ export function ChannelSidebar({
           };
         });
       // PTR.3 — per-hospital Admitted + Post-Care row builders.
-      // TODO v1.x: read primary_hospital_slug from /api/auth/me or stamp onto
-      // Stream user.primary_hospital_slug at syncUserToGetStream. Hardcoded
-      // 'ehrc' for v1 since 99% of active users are EHRC-bound; multi-hospital
-      // users will see all groups but only EHRC's Admitted is open by default.
-      const PRIMARY_HOSPITAL_SLUG = 'ehrc';
+      // PTR.8 (28 Apr 2026) — PRIMARY_HOSPITAL_SLUG now comes from
+      // /api/auth/me (default 'ehrc' until that fetch resolves).
+      const PRIMARY_HOSPITAL_SLUG = primaryHospitalSlug;
       const hospitalAdmittedTypes = Object.keys(groups)
         .filter((k) => k.startsWith('ptg:admitted:'))
         .sort()
@@ -558,7 +562,7 @@ export function ChannelSidebar({
       setLoading(false);
       hasLoadedOnceRef.current = true;
     }
-  }, [client, onUnreadCountChange]);
+  }, [client, onUnreadCountChange, primaryHospitalSlug]);
 
   useEffect(() => {
     loadChannels();
@@ -592,6 +596,28 @@ export function ChannelSidebar({
       client.off('notification.mark_read', handleEvent);
     };
   }, [client, loadChannels]);
+
+  // PTR.8 — fetch user's primary_hospital_slug once on mount.
+  // /api/auth/me returns h.slug AS primary_hospital_slug for the JOIN-resolved
+  // primary hospital. Fall back silently to default 'ehrc' on any failure.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (cancelled) return;
+        const slug = body?.data?.primary_hospital_slug;
+        if (typeof slug === 'string' && slug.length > 0) {
+          setPrimaryHospitalSlug(slug);
+        }
+      })
+      .catch(() => {
+        // graceful fallback — already at default 'ehrc'
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // PTR.7 — clear all pulse/highlight timers on unmount.
   useEffect(() => {
