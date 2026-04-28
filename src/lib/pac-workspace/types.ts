@@ -106,11 +106,27 @@ export interface PacWorkspacePatient {
   anaesthetist_name: string | null;
 }
 
+export interface PacPatientContext {
+  /** snake_case taxonomy aligned with pac_clearance_specialties.sop_trigger_comorbidities */
+  comorbidities: string[];
+  /** Free-text allergies as captured on Marketing Handoff form (or null). */
+  allergies: string | null;
+  /** Free-text current medications. */
+  current_medications: string | null;
+  /** comorbidities_controlled flag from MH form. */
+  comorbidities_controlled: string | null;
+  /** Source form_submission id, for audit + 'view source' link. */
+  source_form_submission_id: string | null;
+  /** ISO timestamp of source form. Null if no MH form found. */
+  source_submitted_at: string | null;
+}
+
 export interface PacWorkspacePayload {
   patient: PacWorkspacePatient;
   progress: PacWorkspaceProgressRow;
   orders: PacOrderRow[];
   clearances: PacClearanceRow[];
+  patient_context: PacPatientContext | null;
   channel_id: string | null;
   generated_at: string;
 }

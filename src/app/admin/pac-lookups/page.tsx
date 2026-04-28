@@ -27,7 +27,7 @@ interface ClearanceSpecialty {
   hospital_id: string | null;
 }
 
-type Tab = 'orders' | 'clearances';
+type Tab = 'orders' | 'clearances' | 'templates';
 
 export default function AdminPacLookupsPage() {
   const [tab, setTab] = useState<Tab>('orders');
@@ -43,6 +43,7 @@ export default function AdminPacLookupsPage() {
           {[
             { id: 'orders', label: 'Order types' },
             { id: 'clearances', label: 'Clearance specialties' },
+            { id: 'templates', label: 'Checklist templates' },
           ].map((t) => (
             <button
               key={t.id}
@@ -58,7 +59,7 @@ export default function AdminPacLookupsPage() {
         </div>
       </header>
       <div className="max-w-5xl mx-auto p-4">
-        {tab === 'orders' ? <OrderTypesTab /> : <ClearanceSpecialtiesTab />}
+        {tab === 'orders' ? <OrderTypesTab /> : tab === 'clearances' ? <ClearanceSpecialtiesTab /> : <ChecklistTemplatesTab />}
       </div>
     </main>
   );
@@ -420,6 +421,167 @@ function ClearanceSpecialtiesTab() {
           </div>
         ))}
         {rows.length === 0 && <p className="px-3 py-4 text-xs text-gray-400">No specialties defined.</p>}
+      </div>
+    </div>
+  );
+}
+
+
+// =============================================================================
+// Checklist templates tab
+// =============================================================================
+
+interface ChecklistTemplate {
+  code: string;
+  pac_mode: string;
+  items_json: ChecklistTemplateItem[];
+  active: boolean;
+  hospital_id: string | null;
+}
+
+interface ChecklistTemplateItem {
+  id: string;
+  label: string;
+  required: boolean;
+  gating_condition?: string | null;
+  sop_ref?: string | null;
+}
+
+function ChecklistTemplatesTab() {
+  const [rows, setRows] = useState<ChecklistTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [savingCode, setSavingCode] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/pac-lookups/checklist-templates', { cache: 'no-store' });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || `HTTP ${res.status}`);
+      setRows(json.data as ChecklistTemplate[]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const patchRow = useCallback(
+    async (code: string, patch: Partial<ChecklistTemplate>) => {
+      setSavingCode(code);
+      setError(null);
+      try {
+        const res = await fetch('/api/admin/pac-lookups/checklist-templates', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, ...patch }),
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) throw new Error(json.error || `HTTP ${res.status}`);
+        setRows((prev) => prev.map((r) => (r.code === code ? (json.data as ChecklistTemplate) : r)));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setSavingCode(null);
+      }
+    },
+    [],
+  );
+
+  const saveDraft = (code: string) => {
+    const draft = drafts[code];
+    if (draft === undefined) return;
+    let parsed: ChecklistTemplateItem[];
+    try {
+      parsed = JSON.parse(draft);
+      if (!Array.isArray(parsed)) throw new Error('items_json must be an array');
+    } catch (e) {
+      setError(`Invalid JSON for ${code}: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+    patchRow(code, { items_json: parsed });
+    setDrafts((d) => {
+      const next = { ...d };
+      delete next[code];
+      return next;
+    });
+  };
+
+  if (loading) return <Spinner />;
+
+  return (
+    <div className="space-y-3">
+      {error && <ErrorBar message={error} />}
+      <header className="flex items-center gap-2">
+        <h2 className="text-sm font-semibold text-gray-800">Checklist templates ({rows.length})</h2>
+        <span className="text-xs text-gray-500">
+          One row per PAC mode. Items are stored as JSON; edit inline below.
+        </span>
+      </header>
+
+      <div className="space-y-3">
+        {rows.map((r) => {
+          const draft = drafts[r.code] ?? JSON.stringify(r.items_json, null, 2);
+          const dirty = drafts[r.code] !== undefined;
+          return (
+            <div key={r.code} className="bg-white border border-gray-200 rounded-lg p-3">
+              <header className="flex items-center gap-2 mb-2 text-xs">
+                <code className="text-gray-500">{r.code}</code>
+                <span className="text-gray-400">·</span>
+                <span className="font-medium text-gray-700">{r.pac_mode.replace(/_/g, ' ')}</span>
+                <span className="text-gray-400">·</span>
+                <span className="text-gray-600">{(r.items_json as ChecklistTemplateItem[]).length} items</span>
+                <label className="inline-flex items-center gap-1 ml-2 text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={r.active}
+                    onChange={(e) => patchRow(r.code, { active: e.target.checked })}
+                  />
+                  {r.active ? 'active' : 'inactive'}
+                </label>
+                <span className="ml-auto text-[10px] text-gray-400">
+                  {savingCode === r.code ? <Loader2 size={10} className="inline animate-spin" /> : ' '}
+                </span>
+              </header>
+              <textarea
+                rows={Math.min(20, Math.max(8, draft.split('\n').length))}
+                value={draft}
+                onChange={(e) => setDrafts((d) => ({ ...d, [r.code]: e.target.value }))}
+                className="w-full text-[11px] font-mono border border-gray-200 rounded p-2 focus:border-indigo-300 focus:outline-none"
+                spellCheck={false}
+              />
+              {dirty && (
+                <div className="mt-2 flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => saveDraft(r.code)}
+                    disabled={savingCode === r.code}
+                    className="bg-indigo-600 text-white px-3 py-1 rounded inline-flex items-center gap-1 disabled:opacity-50 hover:bg-indigo-700"
+                  >
+                    <Save size={11} /> Save items_json
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDrafts((d) => {
+                      const next = { ...d };
+                      delete next[r.code];
+                      return next;
+                    })}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    Discard
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {rows.length === 0 && <p className="text-xs text-gray-400">No templates defined.</p>}
       </div>
     </div>
   );

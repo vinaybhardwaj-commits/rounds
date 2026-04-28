@@ -23,6 +23,7 @@ import { query, queryOne } from '@/lib/db';
 import { ensurePacWorkspaceChannel } from '@/lib/getstream';
 import { computeSLADeadline } from '@/lib/pac-workspace/sla';
 import { seedChecklistFromTemplate } from '@/lib/pac-workspace/checklist';
+import { loadIntakeContext, autoTickChecklist } from '@/lib/pac-workspace/intake-prefill';
 import type {
   PacWorkspacePatient,
   PacWorkspaceProgressRow,
@@ -30,6 +31,7 @@ import type {
   PacClearanceRow,
   PacWorkspacePayload,
   PacChecklistItem,
+  PacPatientContext,
 } from '@/lib/pac-workspace/types';
 
 export const dynamic = 'force-dynamic';
@@ -127,11 +129,37 @@ export async function GET(
       [caseId],
     );
 
+    let patientContext: PacPatientContext | null = null;
+    try {
+      patientContext = await loadIntakeContext(patientRow.patient_thread_id);
+    } catch (e) {
+      console.error('[pcw.3] loadIntakeContext failed (non-fatal):', e instanceof Error ? e.message : e);
+    }
+
     if (!progress) {
       // First open — seed everything.
       const { templateCode, items } = await seedChecklistFromTemplate('in_person_opd', patientRow.hospital_id);
       const sla = computeSLADeadline(patientRow.urgency, null);
       const ipcOwnerId = isPacWriteRole(user.role) ? user.profileId : null;
+
+      // PCW.3 Q5 pre-fill: auto-tick allergy_history + current_medications when
+      // the intake form has data populated. Marks the actor as the user who
+      // first opened the workspace (closest available proxy) and adds a 'Pre-filled
+      // from intake form' notes string.
+      const itemsAfterPrefill = patientContext
+        ? autoTickChecklist(
+            items,
+            {
+              hasAllergies: !!patientContext.allergies,
+              hasMedications: !!patientContext.current_medications,
+            },
+            user.profileId,
+            // We don't have the user's full name on the JWT — use email as the
+            // safer non-null fallback. PCW.4 can swap in profile name when the
+            // session includes it.
+            user.email,
+          )
+        : items;
 
       progress = await queryOne<PacWorkspaceProgressRow>(
         `INSERT INTO pac_workspace_progress
@@ -152,7 +180,7 @@ export async function GET(
            sla_deadline_at::text AS sla_deadline_at,
            created_at::text AS created_at,
            updated_at::text AS updated_at`,
-        [caseId, patientRow.hospital_id, templateCode, JSON.stringify(items), ipcOwnerId, sla],
+        [caseId, patientRow.hospital_id, templateCode, JSON.stringify(itemsAfterPrefill), ipcOwnerId, sla],
       );
 
       // Stamp surgical_cases denorm column once. Ignored if re-opened by ON CONFLICT.
@@ -236,6 +264,7 @@ export async function GET(
       progress: { ...progress, checklist_state: ensureChecklistArray(progress.checklist_state) },
       orders,
       clearances,
+      patient_context: patientContext,
       channel_id: channelId,
       generated_at: new Date().toISOString(),
     };

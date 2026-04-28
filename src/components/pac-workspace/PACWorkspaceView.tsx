@@ -37,6 +37,7 @@ import {
 } from '@/lib/pac-workspace/types';
 import { OrdersSection } from './OrdersSection';
 import { ClearancesSection } from './ClearancesSection';
+import { ChecklistSection } from './ChecklistSection';
 
 const PAC_WRITE_ROLES = new Set([
   'super_admin',
@@ -196,6 +197,10 @@ export function PACWorkspaceView({ caseId, userRole }: Props) {
           onChange={setMode}
         />
 
+        {payload.patient_context && (
+          <PatientContextBanner ctx={payload.patient_context} />
+        )}
+
         {/* PCW.2 LIVE sections */}
         <OrdersSection
           caseId={caseId}
@@ -213,13 +218,13 @@ export function PACWorkspaceView({ caseId, userRole }: Props) {
           onAdded={load}
           onUpdated={load}
         />
-        <PlaceholderSection
-          title="Checklist"
-          icon={<ListChecks size={16} className="text-gray-400" />}
-          subtitle={`Mode-specific items from template "${progress.checklist_template}" — ${
-            progress.checklist_state.length
-          } items seeded`}
-          sprintHint="Wired in PCW.3"
+        <ChecklistSection
+          caseId={caseId}
+          templateCode={progress.checklist_template}
+          items={progress.checklist_state}
+          plannedSurgeryDate={patient.planned_surgery_date}
+          canWrite={canWrite}
+          onUpdated={load}
         />
         <PlaceholderSection
           title="Anaesthetist publish"
@@ -229,7 +234,7 @@ export function PACWorkspaceView({ caseId, userRole }: Props) {
         />
 
         <p className="text-[11px] text-gray-400 text-center pt-2 pb-6">
-          PCW.1 · workspace shell + mode picker shipped · sandbox version
+          PCW.3 · checklist + intake pre-fill live · PCW.4 wires anaesthetist publish
           {payload.channel_id ? ` · live channel ${payload.channel_id}` : ' · live channel offline'}
         </p>
       </div>
@@ -296,6 +301,61 @@ function ModeSection({
           );
         })}
       </ul>
+    </section>
+  );
+}
+
+
+// =============================================================================
+// PatientContextBanner — surfaces intake-derived comorbidities/allergies/meds
+// =============================================================================
+
+function PatientContextBanner({ ctx }: { ctx: NonNullable<PacWorkspacePayload['patient_context']> }) {
+  const isEmpty =
+    ctx.comorbidities.length === 0 && !ctx.allergies && !ctx.current_medications;
+  if (isEmpty && !ctx.source_form_submission_id) return null;
+  return (
+    <section className="bg-amber-50/40 border border-amber-100 rounded-lg p-3 text-xs">
+      <header className="flex items-center gap-1.5 mb-1">
+        <span className="text-[10px] uppercase tracking-wide bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold">
+          Intake
+        </span>
+        <span className="text-gray-700 font-medium">Patient context (from Marketing Handoff)</span>
+        {ctx.source_submitted_at && (
+          <span className="ml-auto text-[10px] text-gray-500">
+            captured {new Date(ctx.source_submitted_at).toLocaleDateString()}
+          </span>
+        )}
+      </header>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-gray-700">
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-gray-500">Comorbidities</div>
+          {ctx.comorbidities.length > 0 ? (
+            <div className="mt-0.5 flex flex-wrap gap-1">
+              {ctx.comorbidities.map((c) => (
+                <span key={c} className="text-[10px] bg-white border border-amber-200 text-amber-900 px-1.5 py-0.5 rounded">
+                  {c.replace(/_/g, ' ')}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-400 italic mt-0.5">none recorded</p>
+          )}
+          {ctx.comorbidities_controlled && (
+            <p className="text-[10px] text-gray-500 mt-1">
+              Control: {ctx.comorbidities_controlled}
+            </p>
+          )}
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-gray-500">Allergies</div>
+          <p className="mt-0.5 break-words">{ctx.allergies ?? <span className="text-gray-400 italic">none recorded</span>}</p>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-gray-500">Current medications</div>
+          <p className="mt-0.5 break-words">{ctx.current_medications ?? <span className="text-gray-400 italic">none recorded</span>}</p>
+        </div>
+      </div>
     </section>
   );
 }
