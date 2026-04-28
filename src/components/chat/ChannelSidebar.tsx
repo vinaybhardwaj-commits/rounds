@@ -160,6 +160,16 @@ export function ChannelSidebar({
   // idempotent but each call is still a network roundtrip.
   const markedReadArchivedRef = useRef<Set<string>>(new Set());
 
+  // PTR.7 (28 Apr 2026) — channel-arrival pulse/highlight UX per PRD §9 Q6.
+  // Diff prev/current ptg:* group channel sets after each loadChannels.
+  // First load is skipped to avoid pulsing every channel on mount.
+  const prevPtgCidsRef = useRef<Map<string, Set<string>>>(new Map());
+  const hasComputedPtgDiffRef = useRef(false);
+  const [pulsedGroups, setPulsedGroups] = useState<Set<string>>(new Set());
+  const [highlightedChannels, setHighlightedChannels] = useState<Set<string>>(new Set());
+  const pulseTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const highlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
   // Fetch and group channels — query each type separately so department
   // and cross-functional channels aren't crowded out by patient threads
   const loadChannels = useCallback(async () => {
@@ -454,6 +464,71 @@ export function ChannelSidebar({
       // are already logged surgically; safe to set unconditionally.
       setChannelGroups(result);
 
+      // PTR.7 — diff prev/current ptg:* channel sets, fire pulse on group
+      // headers (~30s) + row highlight (~3s) on additions. Skip first load.
+      {
+        const currentPtg = new Map<string, Set<string>>();
+        for (const grp of result) {
+          if (!grp.type.startsWith('ptg:')) continue;
+          currentPtg.set(grp.type, new Set(grp.channels.map((c) => c.cid)));
+        }
+        if (hasComputedPtgDiffRef.current) {
+          const newGroups = new Set<string>();
+          const newCids = new Set<string>();
+          for (const [groupType, cids] of Array.from(currentPtg.entries())) {
+            const prev = prevPtgCidsRef.current.get(groupType) ?? new Set<string>();
+            for (const cid of Array.from(cids)) {
+              if (!prev.has(cid)) {
+                newCids.add(cid);
+                newGroups.add(groupType);
+              }
+            }
+          }
+          if (newGroups.size > 0) {
+            setPulsedGroups((p) => {
+              const next = new Set(p);
+              for (const g of Array.from(newGroups)) {
+                next.add(g);
+                const existing = pulseTimersRef.current.get(g);
+                if (existing) clearTimeout(existing);
+                const t = setTimeout(() => {
+                  setPulsedGroups((pp) => {
+                    const n = new Set(pp);
+                    n.delete(g);
+                    return n;
+                  });
+                  pulseTimersRef.current.delete(g);
+                }, 30000);
+                pulseTimersRef.current.set(g, t);
+              }
+              return next;
+            });
+          }
+          if (newCids.size > 0) {
+            setHighlightedChannels((p) => {
+              const next = new Set(p);
+              for (const cid of Array.from(newCids)) {
+                next.add(cid);
+                const existing = highlightTimersRef.current.get(cid);
+                if (existing) clearTimeout(existing);
+                const t = setTimeout(() => {
+                  setHighlightedChannels((pp) => {
+                    const n = new Set(pp);
+                    n.delete(cid);
+                    return n;
+                  });
+                  highlightTimersRef.current.delete(cid);
+                }, 3000);
+                highlightTimersRef.current.set(cid, t);
+              }
+              return next;
+            });
+          }
+        }
+        prevPtgCidsRef.current = currentPtg;
+        hasComputedPtgDiffRef.current = true;
+      }
+
       // Compute unread count from ACTIVE channels only (exclude archived)
       const activeChannels = Object.values(groups).flat();
       let activeUnread = 0;
@@ -517,6 +592,18 @@ export function ChannelSidebar({
       client.off('notification.mark_read', handleEvent);
     };
   }, [client, loadChannels]);
+
+  // PTR.7 — clear all pulse/highlight timers on unmount.
+  useEffect(() => {
+    const pulseTimers = pulseTimersRef.current;
+    const highlightTimers = highlightTimersRef.current;
+    return () => {
+      pulseTimers.forEach((t) => clearTimeout(t));
+      pulseTimers.clear();
+      highlightTimers.forEach((t) => clearTimeout(t));
+      highlightTimers.clear();
+    };
+  }, []);
 
   const toggleGroup = (groupType: string) => {
     setCollapsedGroups((prev) => {
@@ -647,7 +734,11 @@ export function ChannelSidebar({
                   {/* Group header */}
                   <button
                     onClick={() => toggleGroup(group.type)}
-                    className="flex items-center gap-1.5 w-full px-2 py-1 text-[10px] uppercase tracking-widest text-white/40 font-semibold hover:text-white/60 transition-colors"
+                    className={`flex items-center gap-1.5 w-full px-2 py-1 text-[10px] uppercase tracking-widest font-semibold transition-colors ${
+                      pulsedGroups.has(group.type)
+                        ? 'text-amber-300 animate-pulse hover:text-amber-200'
+                        : 'text-white/40 hover:text-white/60'
+                    }`}
                   >
                     {isCollapsed ? (
                       <ChevronRight size={12} />
@@ -699,6 +790,11 @@ export function ChannelSidebar({
                                   : unreadCount > 0
                                   ? 'text-white font-medium hover:bg-white/10'
                                   : 'text-white/70 hover:bg-white/10 hover:text-white'
+                              }
+                              ${
+                                highlightedChannels.has(channel.cid)
+                                  ? 'ring-1 ring-amber-300/60 bg-amber-300/10 animate-pulse'
+                                  : ''
                               }
                             `}
                           >
