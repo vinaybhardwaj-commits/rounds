@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/cleanup-audit",
       "schedule": "0 2 * * 0"
+    },
+    {
+      "path": "/api/cron/qa-smoke",
+      "schedule": "0 * * * *"
     }
   ],
   "git": {
