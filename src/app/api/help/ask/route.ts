@@ -27,13 +27,60 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Missing question parameter' }, { status: 400 });
     }
 
-    // 3. Answer the question
+    // 3. Fetch user's hospital vars for {{user.*}} substitution (v1.1 — 28 Apr 2026).
+    // The JWT payload only carries profileId/email/role/status; hospital info
+    // lives in profiles + hospitals so we JOIN once per help request.
+    // Failure is non-fatal — substitution falls back to generic labels
+    // ('your hospital'). Same defensive posture as the audit() wires.
+    let userVars: {
+      full_name?: string | null;
+      role?: string | null;
+      role_scope?: 'hospital_bound' | 'multi_hospital' | 'central' | null;
+      primary_hospital_id?: string | null;
+      primary_hospital_slug?: string | null;
+      primary_hospital_short_name?: string | null;
+      primary_hospital_name?: string | null;
+    } = { role: user.role };
+    try {
+      const rows = await sql`
+        SELECT
+          p.full_name,
+          p.role,
+          p.role_scope,
+          p.primary_hospital_id::text AS primary_hospital_id,
+          h.slug AS primary_hospital_slug,
+          h.short_name AS primary_hospital_short_name,
+          h.name AS primary_hospital_name
+        FROM profiles p
+        LEFT JOIN hospitals h ON h.id = p.primary_hospital_id
+        WHERE p.id = ${user.profileId}::uuid
+        LIMIT 1
+      `;
+      const rowArr = rows as unknown as Record<string, unknown>[];
+      const row = rowArr[0];
+      if (row) {
+        userVars = {
+          full_name: row.full_name as string | null,
+          role: (row.role as string | null) ?? user.role,
+          role_scope: row.role_scope as 'hospital_bound' | 'multi_hospital' | 'central' | null,
+          primary_hospital_id: row.primary_hospital_id as string | null,
+          primary_hospital_slug: row.primary_hospital_slug as string | null,
+          primary_hospital_short_name: row.primary_hospital_short_name as string | null,
+          primary_hospital_name: row.primary_hospital_name as string | null,
+        };
+      }
+    } catch (err) {
+      console.warn('[HelpAPI] Failed to fetch user vars (substitution will use fallbacks):', err);
+    }
+
+    // 4. Answer the question
     const response = await answerHelpQuestion(question.trim(), {
       role: user.role,
       page: page || undefined,
+      userVars,
     });
 
-    // 4. Log the interaction and get the ID back for feedback
+    // 5. Log the interaction and get the ID back for feedback
     let interactionId: number | null = null;
     try {
       interactionId = await logInteraction(user.profileId, question.trim(), response.matched_features, response.source, page);
@@ -64,7 +111,9 @@ async function logInteraction(
       VALUES (${profileId}, ${question}, ${matchedFeatures as unknown as string}, ${responseSource}, ${contextPage || null})
       RETURNING id
     `;
-    return rows[0]?.id ?? null;
+    // v1.1 drive-by: cast for proper typed indexing (was a TS7053 baseline error).
+    const rowArr = rows as unknown as { id: number }[];
+    return rowArr[0]?.id ?? null;
   } catch (err) {
     // Table might not exist yet — silently fail
     console.warn('[HelpAPI] Could not log interaction (table may not exist):', err);

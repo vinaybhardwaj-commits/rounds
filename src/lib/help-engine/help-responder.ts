@@ -5,6 +5,7 @@
 import llm, { MODEL_PRIMARY } from '@/lib/llm';
 import { logLLMCall } from '@/lib/ai';
 import { searchKnowledgeBase, type SearchResult } from './knowledge-base';
+import { substituteVars, substituteSections, type HelpUserVars } from './substitute';
 
 export interface HelpResponse {
   answer: string;
@@ -24,7 +25,7 @@ export interface HelpResponse {
  */
 export async function answerHelpQuestion(
   question: string,
-  context: { role?: string; page?: string; department?: string }
+  context: { role?: string; page?: string; department?: string; userVars?: HelpUserVars }
 ): Promise<HelpResponse> {
   // 1. Search the knowledge base
   const results = searchKnowledgeBase(question, {
@@ -53,7 +54,7 @@ export async function answerHelpQuestion(
 
   // 3. Try Qwen for a conversational answer
   try {
-    const aiAnswer = await generateAIAnswer(question, results, context);
+    const aiAnswer = await generateAIAnswer(question, results, context, context.userVars ?? {});
     if (aiAnswer) {
       return {
         answer: aiAnswer,
@@ -66,8 +67,9 @@ export async function answerHelpQuestion(
     console.error('[HelpEngine] Qwen error, falling back to template:', err);
   }
 
-  // 4. Fallback: show the best-matching KB section directly
-  const templateAnswer = generateTemplateAnswer(question, results);
+  // 4. Fallback: show the best-matching KB section directly.
+  // Substitute user vars (e.g. {{user.primary_hospital_name}}) per v1.1 (28 Apr 2026).
+  const templateAnswer = generateTemplateAnswer(question, results, context.userVars ?? {});
   return {
     answer: templateAnswer,
     source: 'template',
@@ -82,11 +84,16 @@ export async function answerHelpQuestion(
 async function generateAIAnswer(
   question: string,
   results: SearchResult[],
-  context: { role?: string; page?: string; department?: string }
+  context: { role?: string; page?: string; department?: string },
+  userVars: HelpUserVars
 ): Promise<string | null> {
-  // Build context from top KB matches
+  // Build context from top KB matches.
+  // v1.1 (28 Apr 2026) — substitute {{user.*}} placeholders before sending
+  // to Qwen so the LLM sees fully-resolved hospital names instead of raw
+  // template syntax (which it would parrot back verbatim).
   const docContext = results.map((r, i) => {
-    const sections = Object.entries(r.manifest.sections)
+    const subbed = substituteSections(r.manifest.sections, userVars);
+    const sections = Object.entries(subbed)
       .map(([heading, content]) => `### ${heading}\n${content}`)
       .join('\n\n');
     return `<doc title="${r.manifest.title}" feature="${r.manifest.feature}">\n${sections}\n</doc>`;
@@ -143,36 +150,40 @@ ${docContext}`;
 /**
  * Template fallback: extract the most relevant section from the best match.
  */
-function generateTemplateAnswer(question: string, results: SearchResult[]): string {
+function generateTemplateAnswer(question: string, results: SearchResult[], userVars: HelpUserVars): string {
   const best = results[0].manifest;
   const questionLower = question.toLowerCase();
+
+  // v1.1 (28 Apr 2026) — wrap every returned section with substituteVars so
+  // {{user.primary_hospital_name}} etc. resolve before the user sees them.
+  const sub = (s: string) => substituteVars(s, userVars);
 
   // Try to match a specific section based on question intent
   if (questionLower.includes('how') || questionLower.includes('step') || questionLower.includes('use')) {
     if (best.sections['How to use it']) {
-      return `**${best.title}**\n\n${best.sections['How to use it']}`;
+      return `**${best.title}**\n\n${sub(best.sections['How to use it'])}`;
     }
   }
 
   if (questionLower.includes('problem') || questionLower.includes('error') || questionLower.includes('not working') || questionLower.includes("can't") || questionLower.includes('broken')) {
     if (best.sections['Troubleshooting']) {
-      return `**${best.title} — Troubleshooting**\n\n${best.sections['Troubleshooting']}`;
+      return `**${best.title} — Troubleshooting**\n\n${sub(best.sections['Troubleshooting'])}`;
     }
   }
 
   if (questionLower.includes('what') && (questionLower.includes('is') || questionLower.includes('does') || questionLower.includes('mean'))) {
     if (best.sections['What is this?']) {
-      return `**${best.title}**\n\n${best.sections['What is this?']}`;
+      return `**${best.title}**\n\n${sub(best.sections['What is this?'])}`;
     }
   }
 
   // Default: show the FAQ section or the full body
   if (best.sections['Common questions']) {
-    return `**${best.title} — FAQ**\n\n${best.sections['Common questions']}`;
+    return `**${best.title} — FAQ**\n\n${sub(best.sections['Common questions'])}`;
   }
 
   // Last resort: first 500 chars of body
-  return `**${best.title}**\n\n${best.body.slice(0, 500)}...`;
+  return `**${best.title}**\n\n${sub(best.body.slice(0, 500))}...`;
 }
 
 /**
