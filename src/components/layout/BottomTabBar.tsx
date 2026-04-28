@@ -1,8 +1,8 @@
 'use client';
 
-import { Users, MessageSquare, ClipboardCheck, UserCircle, ClipboardList } from 'lucide-react';
+import { Users, MessageSquare, ClipboardCheck, UserCircle, ClipboardList, Stethoscope } from 'lucide-react';
 
-export type TabId = 'patients' | 'chat' | 'forms' | 'tasks' | 'me';
+export type TabId = 'patients' | 'chat' | 'forms' | 'tasks' | 'ot' | 'me';
 
 interface BottomTabBarProps {
   activeTab: TabId;
@@ -15,6 +15,7 @@ const TABS: { id: TabId; label: string; icon: typeof Users }[] = [
   { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'forms', label: 'Forms', icon: ClipboardList },
   { id: 'tasks', label: 'Tasks', icon: ClipboardCheck },
+  { id: 'ot', label: 'OT', icon: Stethoscope },
   { id: 'me', label: 'Me', icon: UserCircle },
 ];
 

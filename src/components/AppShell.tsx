@@ -13,6 +13,7 @@ import { ChatShell } from './chat/ChatShell';
 import { PatientsView } from './patients/PatientsView';
 import { PatientDetailView } from './patients/PatientDetailView';
 import { TasksView } from './tasks/TasksView';
+import { OTManagementView } from './ot-management/OTManagementView';
 import { ProfileView } from './profile/ProfileView';
 import { FormsView } from './forms/FormsView';
 import { BottomTabBar, type TabId } from './layout/BottomTabBar';
@@ -36,7 +37,13 @@ export function AppShell({ userId, userRole, streamToken }: AppShellProps) {
 // ── Inner component (inside ChatProvider so it can use useChatContext) ──
 function AppShellInner({ userId, userRole }: { userId: string; userRole: string }) {
   useChatContext(); // keep ChatProvider mounted
-  const [activeTab, setActiveTab] = useState<TabId>('patients');
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
+    // OT.1 — accept ?tab=ot (or any TabId) from /ot-management redirect or external links.
+    if (typeof window === 'undefined') return 'patients';
+    const t = new URLSearchParams(window.location.search).get('tab') as TabId | null;
+    const valid: TabId[] = ['patients', 'chat', 'forms', 'tasks', 'ot', 'me'];
+    return t && valid.includes(t) ? t : 'patients';
+  });
   const isAdmin = userRole === 'super_admin' || userRole === 'department_head';
 
   // Channel to auto-navigate to in Chat tab
@@ -290,6 +297,11 @@ function AppShellInner({ userId, userRole }: { userId: string; userRole: string 
               setActiveTab('patients');
             }}
           />
+        </div>
+
+        {/* OT Tab — OT Management Module v1 (OT.1, 28 Apr 2026) */}
+        <div className={activeTab === 'ot' ? 'h-full' : 'hidden'}>
+          <OTManagementView userRole={userRole} userId={userId} />
         </div>
 
         {/* Me Tab */}

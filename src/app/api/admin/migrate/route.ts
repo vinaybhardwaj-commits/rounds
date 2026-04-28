@@ -916,6 +916,22 @@ export async function POST() {
     `);
     await run('r1_form_types_migration', `INSERT INTO _migrations (name) VALUES ('v19-r1-form-type-expand') ON CONFLICT (name) DO NOTHING`);
 
+    // ── Step 20: OT.1 — OT Management Module v1 (notes table + KPI index) ──
+    await run('ot_coordinator_notes', `
+      CREATE TABLE IF NOT EXISTS ot_coordinator_notes (
+        hospital_id      UUID PRIMARY KEY REFERENCES hospitals(id) ON DELETE CASCADE,
+        body             TEXT NOT NULL DEFAULT '' CHECK (octet_length(body) <= 4096),
+        updated_by       UUID REFERENCES profiles(id) ON DELETE SET NULL,
+        updated_by_name  TEXT,
+        updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run('idx_cse_to_state_time', `
+      CREATE INDEX IF NOT EXISTS idx_cse_to_state_time
+        ON case_state_events(to_state, occurred_at DESC)
+    `);
+    await run('ot_management_v1_marker', `INSERT INTO _migrations (name) VALUES ('v20-ot-management-v1') ON CONFLICT (name) DO NOTHING`);
+
     // 9. Verify
     const tables = await sql`
       SELECT table_name FROM information_schema.tables
