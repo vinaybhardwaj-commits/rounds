@@ -196,6 +196,24 @@ export function ChannelSidebar({
         }
       };
 
+      // PTR.4 (28 Apr 2026) — cross-hospital query for OPD/Pre-Adm patients.
+      // Drops members filter; filters server-side by current_stage IN list.
+      // On GetStream rejection, returns empty rather than failing the whole sidebar.
+      const safeQueryCrossHospital = async (limit: number): Promise<SafeResult> => {
+        try {
+          const channels = await client.queryChannels(
+            { type: 'patient-thread', current_stage: { $in: ['opd', 'pre_admission'] } } as unknown as Parameters<typeof client.queryChannels>[0],
+            sort,
+            { ...opts, limit }
+          );
+          return { ok: true, type: 'patient-thread-cross', channels };
+        } catch (e) {
+          const err = e as { status?: number; message?: string };
+          console.warn('[PTR.4] cross-hospital query rejected', err.status, err.message);
+          return { ok: true, type: 'patient-thread-cross', channels: [] };
+        }
+      };
+
       const results = await Promise.all([
         // v1.1 #9 (28 Apr 2026) bumped department 30 → 100 since we now seed
         // {dept-slug}-{hospital_slug} per active hospital (19 depts × N hospitals).
@@ -204,6 +222,7 @@ export function ChannelSidebar({
         safeQuery('department', 100),
         safeQuery('cross-functional', 20),
         safeQuery('patient-thread', 200),
+        safeQueryCrossHospital(200),
         safeQuery('direct', 30),
         safeQuery('ops-broadcast', 20),
         // 26 Apr 2026 — see WA_INSIGHTS_ENABLED comment above. When OFF we
@@ -227,9 +246,22 @@ export function ChannelSidebar({
       const deptChannels = pick(0, 'department');
       const cfChannels = pick(1, 'cross-functional');
       const ptChannels = pick(2, 'patient-thread');
-      const directChannels = pick(3, 'direct');
-      const broadcastChannels = pick(4, 'ops-broadcast');
-      const waChannels = pick(5, 'whatsapp-analysis');
+      // PTR.4 — merge cross-hospital OPD/Pre-Adm channels (index 6 — after
+      // ops-broadcast at index 4 + whatsapp-analysis at index 5).
+      // Note: indexes shift because safeQueryCrossHospital was inserted at index 3.
+      // Recount: 0=dept, 1=cf, 2=pt, 3=pt-cross, 4=direct, 5=ops-broadcast, 6=wa.
+      const ptCrossChannels = (() => {
+        const r = results[3];
+        return r.ok ? r.channels : [];
+      })();
+      // Dedupe: any channel already in ptChannels (member-fetched) wins.
+      const existingIds = new Set(ptChannels.map((c) => c.cid));
+      for (const ch of ptCrossChannels) {
+        if (!existingIds.has(ch.cid)) ptChannels.push(ch);
+      }
+      const directChannels = pick(4, 'direct');
+      const broadcastChannels = pick(5, 'ops-broadcast');
+      const waChannels = pick(6, 'whatsapp-analysis');
 
       // Surgical warn: log exactly which types failed + what kind. First
       // error message included for quick debugging.
