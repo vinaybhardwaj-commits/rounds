@@ -47,3 +47,17 @@ Check your internet connection. If you see a red error bar at the top, the chat 
 
 **Problem: I can't see the chat tab.**
 Make sure you're logged in. If your account is pending approval, you won't have access to chat until an admin approves you.
+
+## Recent updates (April 2026)
+
+**Per-hospital broadcast channels (MH.5):** the channel sidebar now has separate Broadcast rows per accessible hospital — "EHRC · Broadcast" and "EHBR · Broadcast" (only if you have access to EHBR). System messages like SLA breach alerts post to the relevant hospital's broadcast channel. Hospital-bound users see only their hospital's broadcast row. The legacy single "hospital-broadcast" channel is renamed to "Broadcast (legacy)" — it's kept for back-compat but new alerts go to the per-hospital channels.
+
+**Channel naming with -ehrc/-ehbr suffix (Sprint 2):** department channels are now named with their hospital suffix (e.g. `marketing-ehrc`, `nursing-ehbr`, `ot-ehrc`). The sidebar groups them under "EHRC · Departments" and "EHBR · Departments" rows. Hospital-bound users see only their hospital's department channels.
+
+**ChannelSidebar splits by hospital_slug:** every channel type that has a `hospital_slug` in its data is auto-split into per-hospital rows. Cross-functional channels (Marketing, Central Broadcast, OT Schedule, etc.) stay un-suffixed since they span all hospitals.
+
+**Hospital tenancy via channel membership:** you can only see channels you're a member of (GetStream enforces). Server seeds department + broadcast channels with the right staff per hospital. Cross-hospital filtering is automatic — no client-side gate needed.
+
+**Chat tasks (separate feature):** any chat message can be turned into a tracked actionable task with assignee + due date + status lifecycle. Tap the "+" icon on a message or use the `/task` slash command. See *chat-tasks*.
+
+**HospitalChip on Recent Submissions rows:** when you open the Forms tab from the chat sidebar's quick search, recent form submissions now show a HospitalChip per row. Multi-hospital users get visual disambiguation; hospital-bound users see the chip as a visual confirm.

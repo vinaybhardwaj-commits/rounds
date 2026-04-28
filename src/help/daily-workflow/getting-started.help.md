@@ -53,3 +53,25 @@ Rounds is designed to work on both, but the layout adjusts. On mobile, you'll se
 
 **Problem: The app isn't loading or shows a blank screen.**
 Try refreshing the page. If it still doesn't work, clear your browser cache or try a different browser. If the problem persists, the server may be down — check with IT.
+
+## Recent updates (April 2026)
+
+**Multi-hospital aware:** Rounds is now a multi-hospital system covering EHRC (Race Course Road) and EHBR (Brookefield), with EHIN (Indiranagar) coming soon. Most clinical staff are "hospital-bound" — you only see your hospital's data, hospital is auto-filled on every form. A few users are "multi-hospital" or "central" scope. Open your Profile page → "Hospital access" section to see your scope + accessible hospitals. See *multi-hospital-overview*.
+
+**`/all-modules` page:** every authenticated user can visit `/all-modules` (or tap the entry in the sidebar / Profile page) to see a domain-grouped grid of every clinical module. Useful as the "I know X feature exists somewhere but where" escape hatch. See *glass-mode-capability*.
+
+**Glass mode (capability flat):** since 27 April 2026, every authenticated user can perform every clinical action (book an OT, schedule PAC, discharge a patient, etc.) regardless of role. Identity + tenancy still enforced. The 6 highest-impact actions get a 24h Undo banner. See *glass-mode-capability*.
+
+**Activity tab on every patient:** see the full audit timeline (who did what when) for any patient via the Activity tab in their detail view. See *patient-activity-timeline*.
+
+**Form Submissions panel + cross-form prefill:** opening a form for a patient pre-fills shared fields from their prior submissions (allergies, BMI, demographics). See *cross-form-prefill*. Form Submissions panel on patient overview shows every form filled at a glance.
+
+**Marketing Handoff is now a polished workflow:** doctor picker mandatory, 18 required fields, target hospital, Practo coupon auto-stamp, version chain with EDIT highlights, print view. See *marketing-handoff*.
+
+**OT Planning panel + Equipment Kanban:** see and act on OT pipeline + drag equipment requests through the kanban. See *ot-planning-equipment*.
+
+**Anaesthetist Queue:** anaesthesiologists have a dedicated daily worklist for PAC scheduling and clearance. See *anaesthetist-pac-queue*.
+
+**Chat tasks:** turn any chat message into a tracked actionable item with an assignee and status lifecycle. See *chat-tasks*.
+
+**Help has new manifests:** if you're not sure how a new feature works, ask the helpbot at /help/ask. The knowledge base now covers all of the above.

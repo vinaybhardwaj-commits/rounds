@@ -47,3 +47,15 @@ Check that you're not filtering by a specific stage. Tap "All" to see every pati
 
 **Problem: The stage dropdown won't let me select the stage I want.**
 Stage transitions follow a specific order. For example, a patient must be "Admitted" before they can be moved to "In Treatment." If the transition you need isn't available, check if an intermediate step is missing.
+
+## Recent updates (April 2026)
+
+**HospitalChip on every row (MH.6):** Each patient row now shows a small color-coded chip with their hospital's short code — **EHRC** (blue) or **EHBR** (green). Multi-hospital users see chips on every row to disambiguate at a glance. Hospital-bound users still see the chip (visual confirmation).
+
+**HospitalPicker on patient create (MH.4b):** The "+ New patient" form now opens with a Hospital field at the top. Hospital-bound users see it auto-filled with a Lock icon (read-only — your hospital). Multi-hospital users see "Pick a hospital…" dropdown — required, no default. The picker only shows hospitals you have access to (e.g. EHIN doesn't appear since it's inactive).
+
+**Silent NULL hospital_id bug fix (MH.4b):** Patients created prior to MH.4b sometimes saved without a hospital_id (they'd disappear from your filtered list). All new patient creates now correctly stamp the hospital. Older patients with NULL hospital_id may need admin backfill.
+
+**Tenancy filter on the list itself:** the patient list is server-side filtered by `user_accessible_hospital_ids()`. You only see patients at hospitals you have access to. Cross-hospital patients return 404 if you try to access them by URL.
+
+See *multi-hospital-overview* for the broader context.

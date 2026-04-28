@@ -74,3 +74,21 @@ Solution: The form is saved — it should still be in the list. Try refreshing t
 
 **Problem: A computed field is showing an error or incorrect value.**
 Solution: Check the formula in the computed field — it may reference fields that don't exist or use incorrect syntax. Go to Edit Form, find the computed field, and review/fix the formula. Common errors: using wrong field names, missing operators, or dividing by zero. Once fixed, recalculate the field.
+
+## Recent updates (April 2026)
+
+**Cross-form prefill (8 form types):** opening any of the 8 main form types — Marketing Handoff, Surgery Booking, Surgery Posting, PAC Clearance, Admission Advice, Financial Counseling, OT Billing Clearance, Admission Checklist — now pre-fills shared fields from the patient's prior submissions. Allergies captured at intake carry to PAC; BMI from Surgery Booking carries to PAC; demographics carry across all. See *cross-form-prefill* for full details.
+
+**EDIT highlights:** any field you change from a pre-filled value gets a yellow "EDITED" tag so reviewers can spot deltas. Tags persist across versions to show historical changes.
+
+**Version history button:** every form submission has a "Version history" button on the success screen + on the patient's Form Submissions panel. Tap to see every prior version with submitter, timestamp, and field-level diff.
+
+**target_hospital filter (MH.4b):** the Marketing Handoff form's Target Hospital dropdown is now filtered to your accessible hospitals. EHIN doesn't appear (inactive). Hospital-bound users see only their hospital. Multi-hospital users see all their hospitals.
+
+**Doctor↔hospital soft warning (MH.7a):** if you submit a Marketing Handoff with an admitting doctor whose primary hospital doesn't match the target hospital, the form still submits but you see a yellow warning banner: *"Dr X is not on file as affiliated with EHBR. Submitted anyway — flagged for review."* Logged for ops review. Submission is accepted normally.
+
+**Print view:** every submitted form has a Print button. The print view strips EDIT highlights for clean output. Use Cmd+P / Ctrl+P to send to a printer.
+
+**Form Submissions panel on patient overview:** see every form filled for a patient at a glance from their overview tab. See *patient-detail*.
+
+**Marketing Handoff is a major refactor:** the marketing handoff form now has its own dedicated manifest with the full doctor-picker + 18-required-fields + target hospital + Practo coupon + version chain + print view documented. See *marketing-handoff*.

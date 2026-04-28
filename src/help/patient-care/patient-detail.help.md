@@ -53,3 +53,17 @@ Solution: Try tapping again — the field should highlight and turn into an edit
 
 **Problem: I advanced a patient to a new stage but I see an error message.**
 Solution: The patient may not be ready for that stage (missing documents, incomplete readiness items). Check the error message, complete any missing items (e.g., upload consent forms), and try again.
+
+## Recent updates (April 2026)
+
+**Activity tab (Glass mode):** A new "Activity" tab in the bottom navigation shows the full audit timeline for this patient — every form submitted, every state transition, every case mutation, with actor + timestamp + summary. See *patient-activity-timeline* for the full how-to. Visible to every authenticated user with hospital access.
+
+**Form Submissions panel on Overview:** the patient overview tab now shows a Form Submissions panel listing every form filled for this patient with version count + latest submitter. Tap "All versions" on any row to drill into the version chain. Tap "Version history" on any submission to see the per-version diff.
+
+**Version chain on every form:** each form submission now lives on a versioned chain. Re-submitting a form for the same patient creates a new version (not an overwrite). Edited fields between versions are tagged with a yellow "EDITED" pill so reviewers can see deltas. Print view strips the EDIT highlights for clean printable output.
+
+**Doctor + Department pickers persist:** changes to "Primary Consultant" and "Department" auto-save on Enter or blur. No need to tap a Save button.
+
+**HospitalChip on the header:** the patient detail header now shows the patient's hospital chip alongside their stage. Useful for multi-hospital users opening many patients in succession.
+
+**Schedule PAC quick action:** any authenticated user with access can tap "+ Schedule PAC" on the overview tab when the patient has a surgery_booking on file or is in `pre_op` stage. Glass mode flattened the role gate. See *anaesthetist-pac-queue*.
