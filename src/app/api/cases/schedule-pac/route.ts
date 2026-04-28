@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { query, queryOne } from '@/lib/db';
 import { audit } from '@/lib/audit';
+import { validateConsultantHospitalAffiliation } from '@/lib/validate-consultant-hospital';
 
 // 26 Apr 2026 follow-up F3: V added IPD coordinator + OT coordinator. The
 // IPD coordinator is the typical assigner; OT coordinator can pre-emptively
@@ -60,8 +61,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Tenancy check on the patient.
-    const patient = await queryOne<{ id: string; hospital_id: string | null }>(
-      `SELECT id, hospital_id FROM patient_threads
+    // v1.1 (28 Apr 2026) — extended SELECT to include primary_consultant_id
+    // so we can soft-validate consultant↔hospital affiliation before scheduling.
+    const patient = await queryOne<{ id: string; hospital_id: string | null; primary_consultant_id: string | null }>(
+      `SELECT id, hospital_id, primary_consultant_id::text FROM patient_threads
         WHERE id = $1
           AND archived_at IS NULL
           AND hospital_id = ANY(user_accessible_hospital_ids($2::UUID))`,
@@ -86,6 +89,45 @@ export async function POST(request: NextRequest) {
       via: 'POST /api/cases/schedule-pac',
       reason: 'anaesthetist self-assigned via search',
     });
+
+    // v1.1 (28 Apr 2026) — soft-warn if patient.primary_consultant_id (a
+    // profile UUID) doesn't have an affiliation row in
+    // doctor_hospital_affiliations linking that consultant to the patient's
+    // hospital. NEVER blocks scheduling — same rationale as MH.7a's
+    // marketing-handoff validator. Free-text consultants (UUID_RE-failing
+    // values, post consultant-name-flex migration) skip cleanly.
+    const warnings: { code: string; message: string }[] = [];
+    try {
+      const v = await validateConsultantHospitalAffiliation(
+        patient.primary_consultant_id,
+        patient.hospital_id
+      );
+      if (v.severity === 'warn' && v.message) {
+        warnings.push({ code: 'consultant_hospital_mismatch', message: v.message });
+        // Fire-and-forget audit log. Do NOT await — we don't want PAC
+        // scheduling to depend on audit success.
+        audit({
+          actorId: user.profileId,
+          actorRole: user.role,
+          hospitalId: patient.hospital_id,
+          action: 'pac.consultant_hospital_mismatch',
+          targetType: 'patient_thread',
+          targetId: body.patient_thread_id,
+          summary: v.message,
+          payloadAfter: {
+            consultant_id: patient.primary_consultant_id,
+            consultant_name: v.consultantName,
+            hospital_id: patient.hospital_id,
+            hospital_slug: v.hospitalSlug,
+          },
+          request,
+        }).catch((e) => console.error('[audit] pac.consultant_hospital_mismatch failed (fire_and_forget):', e instanceof Error ? e.message : e));
+      }
+    } catch (e) {
+      // Validator failure is non-fatal — log + proceed. Same defensive
+      // posture as the /api/forms validator wire (MH.7a).
+      console.error('[validate-consultant-hospital] failed:', e instanceof Error ? e.message : e);
+    }
 
     if (!existing) {
       // No case yet — atomic CREATE in pac_scheduled.
@@ -120,6 +162,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         data: created,
+        warnings: warnings.length > 0 ? warnings : undefined,
       });
     }
 
@@ -177,6 +220,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: updated,
+      warnings: warnings.length > 0 ? warnings : undefined,
     });
   } catch (error) {
     console.error('POST /api/cases/schedule-pac error:', error);
