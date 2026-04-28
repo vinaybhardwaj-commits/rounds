@@ -106,3 +106,5 @@ if [ "$SOFT_WARN" -gt 0 ]; then
 fi
 echo "✓ All 6 gates passed. Sprint ready."
 exit 0
+
+# Tier 2 CI armed with TEST_SESSION_COOKIE secret 28 Apr 2026
