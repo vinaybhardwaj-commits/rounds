@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { HospitalPicker } from '@/components/HospitalPicker';
+import { HospitalChip } from '@/components/HospitalChip';
 import { X, Save, Key, Loader2, AlertCircle, CheckCircle, ShieldAlert, Trash2, Ban } from 'lucide-react';
 
 interface Department {
@@ -93,6 +94,18 @@ export function ProfileEditModal({ profileId, onClose, onSaved, currentUserRole,
   // MH.7c — multi-hospital tenancy editable fields
   const [primaryHospitalId, setPrimaryHospitalId] = useState<string | null>(null);
   const [roleScope, setRoleScope] = useState<string>('hospital_bound');
+  // MH.7d — additional hospital grants (only relevant for multi_hospital scope)
+  const [grants, setGrants] = useState<Array<{
+    id: string;
+    hospital_id: string;
+    hospital_slug: string;
+    hospital_short_name: string | null;
+    hospital_name: string;
+  }>>([]);
+  const [grantsLoading, setGrantsLoading] = useState(false);
+  const [grantsError, setGrantsError] = useState<string | null>(null);
+  const [addGrantHospitalId, setAddGrantHospitalId] = useState<string | null>(null);
+  const [addGrantSubmitting, setAddGrantSubmitting] = useState(false);
   const [newPin, setNewPin] = useState('');
   const [showPinReset, setShowPinReset] = useState(false);
 
@@ -133,6 +146,65 @@ export function ProfileEditModal({ profileId, onClose, onSaved, currentUserRole,
   }, [profileId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // MH.7d — fetch additional hospital grants (separately from profile fetch).
+  const fetchGrants = useCallback(async () => {
+    setGrantsLoading(true);
+    setGrantsError(null);
+    try {
+      const res = await fetch(`/api/admin/profiles/${profileId}/hospital-access`);
+      const data = await res.json();
+      if (data.success) {
+        setGrants(data.data || []);
+      } else {
+        setGrantsError(data.error || 'Failed to load grants');
+      }
+    } catch (e) {
+      setGrantsError(e instanceof Error ? e.message : 'Failed to load grants');
+    } finally {
+      setGrantsLoading(false);
+    }
+  }, [profileId]);
+  useEffect(() => { fetchGrants(); }, [fetchGrants]);
+
+  const handleAddGrant = async () => {
+    if (!addGrantHospitalId) return;
+    setAddGrantSubmitting(true);
+    setGrantsError(null);
+    try {
+      const res = await fetch(`/api/admin/profiles/${profileId}/hospital-access`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hospital_id: addGrantHospitalId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
+      setAddGrantHospitalId(null);
+      await fetchGrants();
+    } catch (e) {
+      setGrantsError(e instanceof Error ? e.message : 'Failed to add grant');
+    } finally {
+      setAddGrantSubmitting(false);
+    }
+  };
+
+  const handleRemoveGrant = async (grantId: string) => {
+    if (!confirm('Revoke this hospital access?')) return;
+    try {
+      const res = await fetch(`/api/admin/profiles/${profileId}/hospital-access/${grantId}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
+      await fetchGrants();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to revoke grant');
+    }
+  };
 
   // Close on Escape
   useEffect(() => {
@@ -352,6 +424,73 @@ export function ProfileEditModal({ profileId, onClose, onSaved, currentUserRole,
                 </p>
               </div>
             </div>
+
+            {/* MH.7d — Additional Hospitals (only when scope = multi_hospital).
+                Hospital-bound users only see their primary; central users see all
+                automatically. Only multi_hospital users need explicit grants. */}
+            {roleScope === 'multi_hospital' && (
+              <div className="rounded-lg border border-purple-100 bg-purple-50/40 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <div className="text-xs font-semibold text-purple-900">
+                      Additional Hospitals
+                    </div>
+                    <div className="text-[10px] text-purple-700">
+                      Beyond the primary above. This user gets access to data at any hospital listed here.
+                    </div>
+                  </div>
+                </div>
+                {grantsError && (
+                  <div className="mb-2 rounded bg-red-50 border border-red-200 px-2 py-1 text-[11px] text-red-700">
+                    {grantsError}
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                  {grantsLoading ? (
+                    <span className="text-[11px] text-gray-400">Loading…</span>
+                  ) : grants.length === 0 ? (
+                    <span className="text-[11px] text-gray-500 italic">No additional grants yet.</span>
+                  ) : (
+                    grants.map((g) => (
+                      <div key={g.id} className="flex items-center gap-0.5 group">
+                        <HospitalChip
+                          hospitalSlug={g.hospital_slug}
+                          hospitalShortName={g.hospital_short_name}
+                          hospitalName={g.hospital_name}
+                        />
+                        <button
+                          onClick={() => handleRemoveGrant(g.id)}
+                          className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500"
+                          aria-label={`Revoke ${g.hospital_slug.toUpperCase()} access`}
+                          type="button"
+                        >
+                          <span className="text-xs">✕</span>
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <HospitalPicker
+                      value={addGrantHospitalId}
+                      onChange={setAddGrantHospitalId}
+                      label="Grant access to…"
+                      required={false}
+                      name="add_grant_hospital_id"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddGrant}
+                    disabled={!addGrantHospitalId || addGrantSubmitting}
+                    className="h-9 px-3 text-xs bg-even-blue text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                  >
+                    {addGrantSubmitting ? 'Adding…' : '+ Grant'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Designation */}
             <div>
