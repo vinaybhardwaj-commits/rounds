@@ -197,11 +197,15 @@ export function ChannelSidebar({
       };
 
       const results = await Promise.all([
-        safeQuery('department', 30),
+        // v1.1 #9 (28 Apr 2026) bumped department 30 → 100 since we now seed
+        // {dept-slug}-{hospital_slug} per active hospital (19 depts × N hospitals).
+        // ops-broadcast bumped 5 → 20 to handle per-hospital broadcasts (broadcast-{slug}
+        // for each active hospital + the legacy un-suffixed channel).
+        safeQuery('department', 100),
         safeQuery('cross-functional', 20),
         safeQuery('patient-thread', 200),
         safeQuery('direct', 30),
-        safeQuery('ops-broadcast', 5),
+        safeQuery('ops-broadcast', 20),
         // 26 Apr 2026 — see WA_INSIGHTS_ENABLED comment above. When OFF we
         // return an empty success result so the rest of the merge logic
         // doesn't have to special-case the missing index.
