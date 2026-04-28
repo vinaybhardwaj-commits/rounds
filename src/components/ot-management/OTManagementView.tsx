@@ -91,14 +91,52 @@ interface PacRow {
   target_department: string | null;
 }
 
+interface EquipmentRow {
+  request_id: string;
+  case_id: string;
+  patient_thread_id: string;
+  patient_name: string | null;
+  uhid: string | null;
+  planned_surgery_date: string | null;
+  planned_start_time: string | null;
+  ot_room: number | null;
+  surgeon_name: string | null;
+  item_type: string;
+  item_label: string;
+  quantity: number;
+  status: string;
+  vendor_name: string | null;
+  eta: string | null;
+  notes: string | null;
+  bucket: 'today' | 'tomorrow' | 'blocked';
+}
+
+interface KpiPayload {
+  utilization_pct: number | null;
+  utilization_basis: string;
+  on_time_first_case_pct: number | null;
+  on_time_first_case_basis: string;
+  equipment_blocked_cancellations_7d: number;
+  avg_pac_to_ot_days: number | null;
+  avg_pac_to_ot_basis: string;
+  asof: string;
+}
+
+interface NotesPayload {
+  body: string;
+  updated_by_name: string | null;
+  updated_at: string | null;
+  _migration_pending?: boolean;
+}
+
 interface TodayPayload {
   hospital: { id: string; slug: string; name: string; ot_room_count: number };
   slate: SlateRow[];
   booking_inbox: InboxRow[];
   pac_queue: PacRow[];
-  equipment: unknown[];
-  kpis: unknown | null;
-  notes: unknown | null;
+  equipment: EquipmentRow[];
+  kpis: KpiPayload | null;
+  notes: NotesPayload | null;
   generated_at: string;
 }
 
@@ -297,20 +335,12 @@ export function OTManagementView(_props: OTManagementViewProps) {
             subtitle="OT.4 folds /ot-calendar contents into this tab. Until then, open the standalone calendar →"
             cta={{ label: 'Open OT Calendar', href: '/ot-calendar' }}
           />
-          <SectionPlaceholder
-            icon={Wrench}
-            title="Equipment / vendor calls"
-            subtitle="OT.3 will render today + tomorrow + currently-blocked equipment items."
-          />
-          <SectionPlaceholder
-            icon={BarChart3}
-            title="KPIs · yesterday"
-            subtitle="OT.3 will render utilization % · on-time first-case % · equipment-blocked cancellations 7d · avg PAC-to-OT lag."
-          />
-          <SectionPlaceholder
-            icon={StickyNote}
-            title="Coordinator notes"
-            subtitle="OT.3 will render the per-hospital persistent notepad with edit + see-history modal."
+          <EquipmentSection rows={today?.equipment || []} loading={loadingToday && !today} />
+          <KpiStripSection kpis={today?.kpis || null} loading={loadingToday && !today} />
+          <NotesSection
+            hospitalSlug={activeSlug}
+            notes={today?.notes || null}
+            onChanged={() => loadToday(activeSlug)}
           />
         </div>
       </div>
@@ -572,6 +602,375 @@ function PacQueueSection({ rows, loading }: { rows: PacRow[]; loading: boolean }
 }
 
 // =============================================================================
+// =============================================================================
+// Section: Equipment (today + tomorrow + currently-blocked)
+// =============================================================================
+
+const EQUIP_STATUS_CHIP: Record<string, string> = {
+  requested: 'bg-gray-100 text-gray-700',
+  vendor_confirmed: 'bg-blue-100 text-blue-700',
+  in_transit: 'bg-amber-100 text-amber-800',
+  delivered: 'bg-indigo-100 text-indigo-700',
+  verified_ready: 'bg-green-100 text-green-700',
+};
+
+function EquipmentSection({ rows, loading }: { rows: EquipmentRow[]; loading: boolean }) {
+  const grouped = useMemo(() => {
+    const byBucket: Record<'today' | 'tomorrow' | 'blocked', EquipmentRow[]> = {
+      today: [],
+      tomorrow: [],
+      blocked: [],
+    };
+    for (const r of rows) byBucket[r.bucket].push(r);
+    return byBucket;
+  }, [rows]);
+
+  return (
+    <section className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+      <header className="flex items-center gap-2 mb-3">
+        <Wrench size={16} className="text-gray-500" />
+        <h3 className="text-sm font-semibold text-gray-800">Equipment / vendor calls</h3>
+        <span className="ml-auto text-xs text-gray-400">{rows.length} items</span>
+      </header>
+      {loading && rows.length === 0 ? (
+        <div className="text-xs text-gray-400 py-6 text-center">
+          <Loader2 size={14} className="inline-block animate-spin mr-1" />
+          Loading equipment…
+        </div>
+      ) : rows.length === 0 ? (
+        <p className="text-xs text-gray-400 py-4 text-center">
+          No outstanding equipment for today, tomorrow, or blocked rentals.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {(['today', 'tomorrow', 'blocked'] as const).map((bucket) => {
+            const bucketRows = grouped[bucket];
+            if (bucketRows.length === 0) return null;
+            const label = bucket === 'today' ? 'Today' : bucket === 'tomorrow' ? 'Tomorrow' : 'Blocked / overdue';
+            const labelColor = bucket === 'blocked' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700';
+            return (
+              <div key={bucket}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded font-semibold ${labelColor}`}>
+                    {label}
+                  </span>
+                  <span className="text-[10px] text-gray-400">{bucketRows.length}</span>
+                  <div className="flex-1 border-t border-gray-100 ml-2" />
+                </div>
+                <ul className="space-y-1.5">
+                  {bucketRows.map((r) => {
+                    const chipColor = EQUIP_STATUS_CHIP[r.status] || 'bg-gray-100 text-gray-700';
+                    const time = r.planned_start_time ? r.planned_start_time.slice(0, 5) : '—';
+                    const room = r.ot_room ? `OT-${r.ot_room}` : '—';
+                    return (
+                      <li key={r.request_id} className="border border-gray-100 rounded-md p-2 hover:bg-gray-50 transition-colors">
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 mb-0.5 text-xs">
+                              <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold ${chipColor}`}>
+                                {r.status.replace(/_/g, ' ')}
+                              </span>
+                              <span className="text-gray-500 font-mono">{time} · {room}</span>
+                              {r.quantity > 1 && (
+                                <span className="text-[10px] text-gray-500">×{r.quantity}</span>
+                              )}
+                            </div>
+                            <div className="text-sm text-gray-900 font-medium truncate">
+                              {r.item_label}
+                              <span className="text-[10px] text-gray-500 font-normal ml-1.5 uppercase">
+                                {r.item_type}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-600 truncate">
+                              {r.patient_name || 'Unnamed'}
+                              {r.uhid ? <span className="text-gray-500"> · {r.uhid}</span> : null}
+                              {r.surgeon_name ? <span className="text-gray-500"> · {r.surgeon_name}</span> : null}
+                              {r.vendor_name ? <span className="text-gray-500"> · vendor: {r.vendor_name}</span> : null}
+                            </div>
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// =============================================================================
+// Section: KPI strip
+// =============================================================================
+
+function KpiStripSection({ kpis, loading }: { kpis: KpiPayload | null; loading: boolean }) {
+  return (
+    <section className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+      <header className="flex items-center gap-2 mb-3">
+        <BarChart3 size={16} className="text-gray-500" />
+        <h3 className="text-sm font-semibold text-gray-800">KPIs · yesterday</h3>
+        {kpis?.asof && (
+          <span className="ml-auto text-[10px] text-gray-400">
+            as of {new Date(kpis.asof).toLocaleString()}
+          </span>
+        )}
+      </header>
+      {loading && !kpis ? (
+        <div className="text-xs text-gray-400 py-6 text-center">
+          <Loader2 size={14} className="inline-block animate-spin mr-1" />
+          Computing…
+        </div>
+      ) : !kpis ? (
+        <p className="text-xs text-gray-400 py-4 text-center">No KPI data.</p>
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+          <KpiCard label="OT utilization" value={kpis.utilization_pct != null ? `${kpis.utilization_pct}%` : '—'} basis={kpis.utilization_basis} />
+          <KpiCard label="On-time first case" value={kpis.on_time_first_case_pct != null ? `${kpis.on_time_first_case_pct}%` : '—'} basis={kpis.on_time_first_case_basis} />
+          <KpiCard label="Eqp-blocked cancels (7d)" value={String(kpis.equipment_blocked_cancellations_7d)} basis="case_state_events.cancelled w/ equipment reason" />
+          <KpiCard label="Avg PAC → OT lag" value={kpis.avg_pac_to_ot_days != null ? `${kpis.avg_pac_to_ot_days}d` : '—'} basis={kpis.avg_pac_to_ot_basis} />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function KpiCard({ label, value, basis }: { label: string; value: string; basis: string }) {
+  return (
+    <div className="border border-gray-100 rounded-md p-2.5 bg-gray-50" title={basis}>
+      <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">{label}</div>
+      <div className="text-2xl text-gray-900 font-semibold leading-tight mt-0.5">{value}</div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Section: Coordinator notes (edit-in-place + see-history modal)
+// =============================================================================
+
+function NotesSection({
+  hospitalSlug,
+  notes,
+  onChanged,
+}: {
+  hospitalSlug: string;
+  notes: NotesPayload | null;
+  onChanged: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(notes?.body || '');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  // Sync draft when notes change externally (e.g. tab switch)
+  useEffect(() => {
+    if (!editing) setDraft(notes?.body || '');
+  }, [notes?.body, editing]);
+
+  const save = useCallback(async () => {
+    setSaving(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/ot-management/notes?hospital=${encodeURIComponent(hospitalSlug)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: draft }),
+      });
+      const body = await res.json();
+      if (!res.ok || !body.success) throw new Error(body.error || `HTTP ${res.status}`);
+      setEditing(false);
+      onChanged();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }, [draft, hospitalSlug, onChanged]);
+
+  const charCount = Buffer.byteLength(draft, 'utf8');
+  const overCap = charCount > 4096;
+
+  return (
+    <section className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+      <header className="flex items-center gap-2 mb-2">
+        <StickyNote size={16} className="text-gray-500" />
+        <h3 className="text-sm font-semibold text-gray-800">Coordinator notes</h3>
+        <button
+          onClick={() => setHistoryOpen(true)}
+          className="ml-auto text-xs text-even-blue hover:underline"
+        >
+          See history
+        </button>
+        {!editing && (
+          <button
+            onClick={() => setEditing(true)}
+            className="text-xs text-even-blue hover:underline"
+          >
+            Edit
+          </button>
+        )}
+      </header>
+      {notes?._migration_pending && (
+        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-2">
+          Migration pending — V needs to run <code>POST /api/admin/migrate</code> as super_admin.
+        </p>
+      )}
+      {!editing ? (
+        <>
+          {notes?.body ? (
+            <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{notes.body}</p>
+          ) : (
+            <p className="text-xs text-gray-400 italic">No notes yet. Click Edit to add.</p>
+          )}
+          {notes?.updated_by_name && notes?.updated_at && (
+            <p className="text-[11px] text-gray-400 mt-2">
+              Last edited by {notes.updated_by_name} · {new Date(notes.updated_at).toLocaleString()}
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={6}
+            className="w-full text-sm border border-gray-200 rounded-md p-2 font-mono leading-snug focus:border-even-blue focus:outline-none"
+            placeholder="Pin reminders for the shift…"
+            disabled={saving}
+          />
+          <div className="flex items-center gap-2 mt-2">
+            <span className={`text-[11px] ${overCap ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
+              {charCount} / 4096 bytes
+            </span>
+            {err && <span className="text-[11px] text-red-600">{err}</span>}
+            <div className="ml-auto flex gap-2">
+              <button
+                onClick={() => {
+                  setEditing(false);
+                  setDraft(notes?.body || '');
+                  setErr(null);
+                }}
+                disabled={saving}
+                className="text-xs px-2.5 py-1 rounded-md text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={save}
+                disabled={saving || overCap}
+                className="text-xs px-3 py-1 rounded-md bg-even-blue text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+      {historyOpen && (
+        <NotesHistoryModal hospitalSlug={hospitalSlug} onClose={() => setHistoryOpen(false)} />
+      )}
+    </section>
+  );
+}
+
+interface HistoryEntry {
+  id: string;
+  ts: string;
+  actor_name: string | null;
+  summary: string;
+  payload_before: { body?: string } | null;
+  payload_after: { body?: string } | null;
+}
+
+function NotesHistoryModal({ hospitalSlug, onClose }: { hospitalSlug: string; onClose: () => void }) {
+  const [rows, setRows] = useState<HistoryEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/ot-management/notes/history?hospital=${encodeURIComponent(hospitalSlug)}&limit=10`)
+      .then((r) => r.json())
+      .then((b) => {
+        if (cancelled) return;
+        if (!b.success) throw new Error(b.error || 'Failed');
+        setRows((b.data as HistoryEntry[]) || []);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setErr(e instanceof Error ? e.message : 'Failed');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hospitalSlug]);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="px-4 py-3 border-b border-gray-200 flex items-center">
+          <h4 className="text-sm font-semibold text-gray-800">Notes history — {hospitalSlug.toUpperCase()}</h4>
+          <button onClick={onClose} className="ml-auto text-gray-400 hover:text-gray-700 text-xs">Close</button>
+        </header>
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <div className="text-xs text-gray-400 py-6 text-center">
+              <Loader2 size={14} className="inline-block animate-spin mr-1" />Loading…
+            </div>
+          ) : err ? (
+            <div className="text-xs text-red-600">{err}</div>
+          ) : rows.length === 0 ? (
+            <p className="text-xs text-gray-400">No history yet.</p>
+          ) : (
+            <ul className="space-y-3">
+              {rows.map((h) => {
+                const before = h.payload_before?.body || '';
+                const after = h.payload_after?.body || '';
+                return (
+                  <li key={h.id} className="border border-gray-100 rounded-md p-2.5">
+                    <div className="text-[11px] text-gray-500 mb-1">
+                      {new Date(h.ts).toLocaleString()} · {h.actor_name || 'Unknown'}
+                    </div>
+                    <details className="text-xs text-gray-700">
+                      <summary className="cursor-pointer text-even-blue hover:underline">
+                        Show diff ({before.length} → {after.length} chars)
+                      </summary>
+                      <div className="mt-2 grid sm:grid-cols-2 gap-2">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wide text-gray-400 mb-0.5">Before</div>
+                          <pre className="bg-red-50 border border-red-100 p-1.5 rounded text-[11px] whitespace-pre-wrap font-mono">
+                            {before || '(empty)'}
+                          </pre>
+                        </div>
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wide text-gray-400 mb-0.5">After</div>
+                          <pre className="bg-green-50 border border-green-100 p-1.5 rounded text-[11px] whitespace-pre-wrap font-mono">
+                            {after || '(empty)'}
+                          </pre>
+                        </div>
+                      </div>
+                    </details>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Section placeholder (OT.3 + OT.4 fill these)
 // Section placeholder (OT.3 + OT.4 fill these)
 // =============================================================================
 
