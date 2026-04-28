@@ -932,11 +932,208 @@ export async function POST() {
     `);
     await run('ot_management_v1_marker', `INSERT INTO _migrations (name) VALUES ('v20-ot-management-v1') ON CONFLICT (name) DO NOTHING`);
 
+    // ── Step 21: PCW.0 — PAC Coordinator Workspace v1 (7 migrations) ──
+    // PRD: Daily Dash EHRC/PAC-COORDINATOR-WORKSPACE-PRD.md (v1.0 LOCKED 29 Apr 2026)
+    // SOP: EHRC/SOP/OT/001 v5.0
+    // Recon note: ip_coordinator role already exists in profiles_role_check
+    // (added in mh-v2-1b); no role enum migration needed.
+
+    // 21.1 — pac_workspace_progress (per-case workspace state)
+    await run('pac_workspace_progress', `
+      CREATE TABLE IF NOT EXISTS pac_workspace_progress (
+        case_id            UUID PRIMARY KEY REFERENCES surgical_cases(id) ON DELETE CASCADE,
+        hospital_id        UUID NOT NULL REFERENCES hospitals(id),
+        pac_mode           TEXT NOT NULL CHECK (pac_mode IN ('in_person_opd','bedside','telephonic','paper_screening')),
+        sub_state          TEXT NOT NULL DEFAULT 'prep_in_progress'
+                             CHECK (sub_state IN ('prep_in_progress','awaiting_results','awaiting_clearance','ready_for_anaesthetist','anaesthetist_examined','published','cancelled')),
+        checklist_template TEXT NOT NULL,
+        checklist_state    JSONB NOT NULL DEFAULT '[]'::jsonb,
+        scheduled_pac_at   TIMESTAMPTZ,
+        ipc_owner_id       UUID REFERENCES profiles(id),
+        anaesthetist_id    UUID REFERENCES profiles(id),
+        sla_deadline_at    TIMESTAMPTZ,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_by         UUID REFERENCES profiles(id) ON DELETE SET NULL,
+        archived_at        TIMESTAMPTZ
+      )
+    `);
+    await run('idx_pac_ws_hospital_substate', `
+      CREATE INDEX IF NOT EXISTS idx_pac_ws_hospital_substate
+        ON pac_workspace_progress (hospital_id, sub_state)
+        WHERE archived_at IS NULL
+    `);
+    await run('idx_pac_ws_sla', `
+      CREATE INDEX IF NOT EXISTS idx_pac_ws_sla
+        ON pac_workspace_progress (sla_deadline_at)
+        WHERE sub_state NOT IN ('published','cancelled') AND archived_at IS NULL
+    `);
+    await run('idx_pac_ws_anaesthetist', `
+      CREATE INDEX IF NOT EXISTS idx_pac_ws_anaesthetist
+        ON pac_workspace_progress (anaesthetist_id)
+        WHERE anaesthetist_id IS NOT NULL AND archived_at IS NULL
+    `);
+
+    // 21.2 — pac_orders (per-case lab/imaging order requests)
+    await run('pac_orders', `
+      CREATE TABLE IF NOT EXISTS pac_orders (
+        id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        case_id             UUID NOT NULL REFERENCES surgical_cases(id) ON DELETE CASCADE,
+        order_type          TEXT NOT NULL,
+        status              TEXT NOT NULL DEFAULT 'requested'
+                              CHECK (status IN ('requested','sample_drawn','in_lab','reported','reviewed','cancelled')),
+        result_text         TEXT,
+        result_attached_url TEXT,
+        task_id             UUID REFERENCES tasks(id),
+        requested_by        UUID REFERENCES profiles(id),
+        requested_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        reported_at         TIMESTAMPTZ,
+        reviewed_at         TIMESTAMPTZ,
+        notes               TEXT
+      )
+    `);
+    await run('idx_pac_orders_case', `CREATE INDEX IF NOT EXISTS idx_pac_orders_case ON pac_orders (case_id)`);
+    await run('idx_pac_orders_open', `CREATE INDEX IF NOT EXISTS idx_pac_orders_open ON pac_orders (status) WHERE status NOT IN ('reviewed','cancelled')`);
+    await run('idx_pac_orders_task', `CREATE INDEX IF NOT EXISTS idx_pac_orders_task ON pac_orders (task_id) WHERE task_id IS NOT NULL`);
+
+    // 21.3 — pac_clearances (per-case specialist clearance requests)
+    await run('pac_clearances_table', `
+      CREATE TABLE IF NOT EXISTS pac_clearances (
+        id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        case_id           UUID NOT NULL REFERENCES surgical_cases(id) ON DELETE CASCADE,
+        specialty         TEXT NOT NULL,
+        status            TEXT NOT NULL DEFAULT 'requested'
+                            CHECK (status IN ('requested','specialist_reviewing','cleared','cleared_with_conditions','declined','cancelled')),
+        conditions_text   TEXT,
+        task_id           UUID REFERENCES tasks(id),
+        assigned_to       UUID REFERENCES profiles(id),
+        requested_by      UUID REFERENCES profiles(id),
+        requested_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        responded_at      TIMESTAMPTZ,
+        notes             TEXT
+      )
+    `);
+    await run('idx_pac_clearances_case', `CREATE INDEX IF NOT EXISTS idx_pac_clearances_case ON pac_clearances (case_id)`);
+    await run('idx_pac_clearances_assigned', `CREATE INDEX IF NOT EXISTS idx_pac_clearances_assigned ON pac_clearances (assigned_to) WHERE status NOT IN ('cleared','cleared_with_conditions','declined','cancelled')`);
+    await run('idx_pac_clearances_task', `CREATE INDEX IF NOT EXISTS idx_pac_clearances_task ON pac_clearances (task_id) WHERE task_id IS NOT NULL`);
+
+    // 21.4 — pac_order_types (lookup + 30 seed rows per SOP §6.2)
+    await run('pac_order_types', `
+      CREATE TABLE IF NOT EXISTS pac_order_types (
+        code                  TEXT PRIMARY KEY,
+        label                 TEXT NOT NULL,
+        category              TEXT,
+        sop_default_for_asa   INT[],
+        sop_default_for_mode  TEXT[],
+        active                BOOLEAN NOT NULL DEFAULT TRUE,
+        hospital_id           UUID REFERENCES hospitals(id)
+      )
+    `);
+    await run('idx_pac_order_types_active', `CREATE INDEX IF NOT EXISTS idx_pac_order_types_active ON pac_order_types (active, category) WHERE active = TRUE`);
+    await run('seed_pac_order_types', `
+      INSERT INTO pac_order_types (code, label, category, sop_default_for_asa, sop_default_for_mode) VALUES
+        ('cbc','Complete Blood Count (CBC)','haematology',ARRAY[1,2,3],NULL),
+        ('coag_pt_aptt_inr','Coagulation (PT/aPTT/INR)','haematology',ARRAY[1,2,3],NULL),
+        ('gxm','Group & Cross-Match (GXM)','haematology',ARRAY[1,2,3],NULL),
+        ('d_dimer','D-Dimer','haematology',NULL,NULL),
+        ('rft','Renal Function Test (RFT - BUN/Cr/Na/K)','biochem',ARRAY[1,2,3],NULL),
+        ('lft','Liver Function Test (LFT)','biochem',ARRAY[1,2,3],NULL),
+        ('lipid_profile','Lipid Profile','biochem',ARRAY[2,3],NULL),
+        ('abg','Arterial Blood Gas (ABG)','biochem',ARRAY[3],NULL),
+        ('urine_rm','Urine Routine + Microscopy','biochem',ARRAY[2,3],NULL),
+        ('electrolytes_extra','Extended Electrolytes (Ca/Mg/Cl)','biochem',NULL,NULL),
+        ('tft','Thyroid Function (TSH)','endocrine',ARRAY[1,2,3],NULL),
+        ('rbs','Random Blood Sugar (RBS)','endocrine',ARRAY[1,2,3],NULL),
+        ('hba1c','Glycated Haemoglobin (HbA1c)','endocrine',ARRAY[1,2,3],NULL),
+        ('fbs','Fasting Blood Sugar (FBS)','endocrine',NULL,NULL),
+        ('serology_bundle','Serology Bundle (HBsAg / anti-HCV / HIV rapid)','serology',ARRAY[1,2,3],NULL),
+        ('ecg','Electrocardiogram (ECG)','cardiology',ARRAY[1,2,3],NULL),
+        ('echo_2d','2D Echocardiogram','cardiology',ARRAY[2,3],NULL),
+        ('stress_echo','Dobutamine Stress Echo','cardiology',ARRAY[3],NULL),
+        ('chest_xr_pa','Chest X-Ray (PA view)','imaging',ARRAY[1,2,3],ARRAY['general_anaesthesia']),
+        ('ct_thorax_plain','CT Thorax (plain)','imaging',ARRAY[3],NULL),
+        ('usg_abdomen','USG Abdomen','imaging',NULL,NULL),
+        ('pregnancy_test','Pregnancy Test (beta-hCG)','other',NULL,NULL),
+        ('covid_pcr','COVID PCR','other',NULL,NULL),
+        ('blood_group_verify','Blood Group Verification (transfer-independent)','haematology',NULL,NULL),
+        ('cardio_consult','Cardiology Consultation Referral','other',NULL,NULL),
+        ('pulm_consult','Pulmonology Consultation Referral','other',NULL,NULL),
+        ('endo_consult','Endocrinology Consultation Referral','other',NULL,NULL),
+        ('nephro_consult','Nephrology Consultation Referral','other',NULL,NULL),
+        ('haem_consult','Haematology Consultation Referral','other',NULL,NULL),
+        ('dental_clearance','Dental Clearance','other',NULL,NULL)
+      ON CONFLICT (code) DO NOTHING
+    `);
+
+    // 21.5 — pac_clearance_specialties (lookup + 9 seed rows per SOP §6.3)
+    await run('pac_clearance_specialties', `
+      CREATE TABLE IF NOT EXISTS pac_clearance_specialties (
+        code                       TEXT PRIMARY KEY,
+        label                      TEXT NOT NULL,
+        default_assignee_role      TEXT NOT NULL DEFAULT 'specialist',
+        sop_trigger_comorbidities  TEXT[],
+        active                     BOOLEAN NOT NULL DEFAULT TRUE,
+        hospital_id                UUID REFERENCES hospitals(id)
+      )
+    `);
+    await run('idx_pac_clearance_specialties_active', `CREATE INDEX IF NOT EXISTS idx_pac_clearance_specialties_active ON pac_clearance_specialties (active) WHERE active = TRUE`);
+    await run('seed_pac_clearance_specialties', `
+      INSERT INTO pac_clearance_specialties (code, label, default_assignee_role, sop_trigger_comorbidities) VALUES
+        ('cardiology','Cardiology','specialist',ARRAY['cardiac_disease','recent_mi','angina','hypertension_uncontrolled','ecg_changes','heart_failure','arrhythmia','valvular_disease']),
+        ('pulmonology','Pulmonology','specialist',ARRAY['asthma','copd','osa','recent_pneumonia','active_wheeze','spo2_low','urti_active','tuberculosis_history']),
+        ('endocrinology','Endocrinology','specialist',ARRAY['diabetes_uncontrolled','hba1c_high','thyroid_uncontrolled','tsh_elevated','adrenal_insufficiency','pheochromocytoma']),
+        ('nephrology','Nephrology','specialist',ARRAY['ckd','esrd','egfr_low','dialysis','renal_transplant']),
+        ('neurology','Neurology','specialist',ARRAY['recent_cva','seizure_disorder','parkinsons','myasthenia','multiple_sclerosis']),
+        ('gastroenterology','Gastroenterology','specialist',ARRAY['cirrhosis','liver_disease','gi_bleed_recent','inflammatory_bowel']),
+        ('haematology','Haematology','specialist',ARRAY['anaemia_severe','coagulopathy','thrombocytopenia','anticoagulant_active','sickle_cell','haemophilia']),
+        ('dental','Dental','specialist',ARRAY['dental_infection_active','prosthetic_valve','recent_dental_work']),
+        ('orthopaedics','Orthopaedics','specialist',ARRAY['cervical_spine_instability','lumbar_disease_severe'])
+      ON CONFLICT (code) DO NOTHING
+    `);
+
+    // 21.6 — pac_checklist_templates (lookup + 4 seed rows, one per mode)
+    await run('pac_checklist_templates', `
+      CREATE TABLE IF NOT EXISTS pac_checklist_templates (
+        code         TEXT PRIMARY KEY,
+        pac_mode     TEXT NOT NULL CHECK (pac_mode IN ('in_person_opd','bedside','telephonic','paper_screening')),
+        items_json   JSONB NOT NULL,
+        active       BOOLEAN NOT NULL DEFAULT TRUE,
+        hospital_id  UUID REFERENCES hospitals(id)
+      )
+    `);
+    await run('idx_pac_checklist_templates_active', `CREATE INDEX IF NOT EXISTS idx_pac_checklist_templates_active ON pac_checklist_templates (pac_mode, active) WHERE active = TRUE`);
+    await run('seed_pac_checklist_in_person_opd', `
+      INSERT INTO pac_checklist_templates (code, pac_mode, items_json) VALUES
+      ('in_person_opd_v1','in_person_opd','[{"id":"allergy_history","label":"Allergy history confirmed","required":true},{"id":"current_medications","label":"Current medications captured","required":true},{"id":"consent_generated","label":"Consent form generated","required":true,"sop_ref":"§9 Pre-Op Verification"},{"id":"baseline_vitals","label":"Baseline vitals (BP, HR, SpO2, temp)","required":true},{"id":"height_weight_bmi","label":"Height / weight / BMI documented","required":true},{"id":"asa_classification","label":"ASA classification documented (anaesthetist)","required":true,"sop_ref":"§6.2"},{"id":"airway_mallampati","label":"Airway exam (Mallampati grade) (anaesthetist)","required":true,"sop_ref":"§9 PAC"},{"id":"counselled_anaesthesia","label":"Counselled patient on anaesthesia mode","required":true},{"id":"npo_time_set","label":"NPO time set per SOP §6.4","required":true,"sop_ref":"§6.4"},{"id":"hair_shaved","label":"Hair shaved at site","required":false,"gating_condition":"day_of_surgery"},{"id":"preop_meds_dispensed","label":"Pre-op meds dispensed","required":false},{"id":"fasting_verified_dos","label":"Fasting verified day-of-surgery","required":true,"gating_condition":"day_of_surgery","sop_ref":"§6.4"}]'::jsonb)
+      ON CONFLICT (code) DO NOTHING
+    `);
+    await run('seed_pac_checklist_bedside', `
+      INSERT INTO pac_checklist_templates (code, pac_mode, items_json) VALUES
+      ('bedside_v1','bedside','[{"id":"allergy_history","label":"Allergy history confirmed","required":true},{"id":"current_medications","label":"Current medications captured","required":true},{"id":"consent_generated","label":"Consent form signed at bedside","required":true},{"id":"baseline_vitals","label":"Baseline vitals (BP, HR, SpO2, temp)","required":true},{"id":"asa_classification","label":"ASA classification documented (anaesthetist)","required":true,"sop_ref":"§6.2"},{"id":"airway_mallampati","label":"Airway exam (Mallampati grade) (anaesthetist)","required":true},{"id":"bed_allotted","label":"Bed allotted","required":true},{"id":"ward_nurse_handover","label":"Ward nurse handover received","required":true},{"id":"charts_at_bedside","label":"Patient chart + reports at bedside","required":true},{"id":"iv_cannula_18g","label":"IV cannula 18G (major cases) / 20G (minor)","required":false,"sop_ref":"§9 Pre-Op Verification"}]'::jsonb)
+      ON CONFLICT (code) DO NOTHING
+    `);
+    await run('seed_pac_checklist_telephonic', `
+      INSERT INTO pac_checklist_templates (code, pac_mode, items_json) VALUES
+      ('telephonic_v1','telephonic','[{"id":"identity_verified","label":"Patient identity verified by phone","required":true},{"id":"reports_received","label":"Reports received digitally","required":true},{"id":"allergies_verbal","label":"Allergies confirmed verbally","required":true},{"id":"medications_verbal","label":"Medications confirmed verbally","required":true},{"id":"consent_at_admission","label":"Consent will be signed at admission","required":true},{"id":"npo_instructions","label":"NPO instructions given per SOP §6.4","required":true,"sop_ref":"§6.4"},{"id":"reporting_time","label":"Reporting time confirmed","required":true},{"id":"escalation_contact","label":"Escalation contact noted","required":false}]'::jsonb)
+      ON CONFLICT (code) DO NOTHING
+    `);
+    await run('seed_pac_checklist_paper_screening', `
+      INSERT INTO pac_checklist_templates (code, pac_mode, items_json) VALUES
+      ('paper_screening_v1','paper_screening','[{"id":"screening_form","label":"Screening form completed","required":true},{"id":"identity_verified","label":"Patient identity verified","required":true},{"id":"allergies_verified","label":"Allergies confirmed","required":true},{"id":"medications_verified","label":"Medications confirmed","required":true},{"id":"npo_instructions","label":"NPO instructions given per SOP §6.4","required":true,"sop_ref":"§6.4"},{"id":"anaesthetist_signoff","label":"Anaesthetist signoff received","required":true,"sop_ref":"§4.3"}]'::jsonb)
+      ON CONFLICT (code) DO NOTHING
+    `);
+
+    // 21.7 — surgical_cases.pac_workspace_started_at column
+    await run('sc_pac_workspace_started_at_col', `ALTER TABLE surgical_cases ADD COLUMN IF NOT EXISTS pac_workspace_started_at TIMESTAMPTZ`);
+    await run('idx_sc_pac_ws_started', `CREATE INDEX IF NOT EXISTS idx_sc_pac_ws_started ON surgical_cases (pac_workspace_started_at) WHERE pac_workspace_started_at IS NOT NULL`);
+
+    await run('pac_coordinator_workspace_v1_marker', `INSERT INTO _migrations (name) VALUES ('v21-pac-coordinator-workspace-v1') ON CONFLICT (name) DO NOTHING`);
+
     // 9. Verify
     const tables = await sql`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public'
-      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages','insurance_claims','claim_events','discharge_milestones','surgery_postings','ot_readiness_items','ot_readiness_audit_log','ot_equipment_items','help_interactions','help_dismissals','app_errors','session_events','daily_active_users','deleted_profiles','files','patient_files','pac_clearances','llm_logs','admin_query_log','chat_activity_log')
+      AND table_name IN ('patient_threads','form_submissions','readiness_items','escalation_log','admission_tracker','duty_roster','_migrations','deleted_messages','insurance_claims','claim_events','discharge_milestones','surgery_postings','ot_readiness_items','ot_readiness_audit_log','ot_equipment_items','help_interactions','help_dismissals','app_errors','session_events','daily_active_users','deleted_profiles','files','patient_files','pac_clearances','llm_logs','admin_query_log','chat_activity_log','pac_workspace_progress','pac_orders','pac_order_types','pac_clearance_specialties','pac_checklist_templates','ot_coordinator_notes')
       ORDER BY table_name
     `;
 
@@ -953,7 +1150,7 @@ export async function POST() {
         tables_found: tables.map((t) => t.table_name),
         log: results,
       },
-      message: `Migration complete. ${successCount} executed, ${skipCount} skipped, ${errorCount} errors. ${tables.length}/25 tables found.`,
+      message: `Migration complete. ${successCount} executed, ${skipCount} skipped, ${errorCount} errors. ${tables.length}/32 tables found.`,
     });
   } catch (error) {
     console.error('POST /api/admin/migrate error:', error);
