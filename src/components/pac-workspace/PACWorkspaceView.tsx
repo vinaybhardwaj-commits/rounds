@@ -35,6 +35,8 @@ import {
   type PacMode,
   type PacWorkspacePayload,
 } from '@/lib/pac-workspace/types';
+import { OrdersSection } from './OrdersSection';
+import { ClearancesSection } from './ClearancesSection';
 
 const PAC_WRITE_ROLES = new Set([
   'super_admin',
@@ -194,18 +196,22 @@ export function PACWorkspaceView({ caseId, userRole }: Props) {
           onChange={setMode}
         />
 
-        {/* Placeholder sections — wired in PCW.2-4 */}
-        <PlaceholderSection
-          title="Orders"
-          icon={<FlaskConical size={16} className="text-gray-400" />}
-          subtitle="Lab + imaging requests with SOP §6.2 ASA-driven auto-suggest"
-          sprintHint="Wired in PCW.2"
+        {/* PCW.2 LIVE sections */}
+        <OrdersSection
+          caseId={caseId}
+          orders={payload.orders}
+          canWrite={canWrite}
+          pacMode={progress.pac_mode}
+          onAdded={load}
+          onUpdated={load}
         />
-        <PlaceholderSection
-          title="Clearances"
-          icon={<ShieldCheck size={16} className="text-gray-400" />}
-          subtitle="Specialist routing (cardio / pulm / endo / dental / etc.) per SOP §6.3"
-          sprintHint="Wired in PCW.2"
+        <ClearancesSection
+          caseId={caseId}
+          clearances={payload.clearances}
+          canWrite={canWrite}
+          pacMode={progress.pac_mode}
+          onAdded={load}
+          onUpdated={load}
         />
         <PlaceholderSection
           title="Checklist"
