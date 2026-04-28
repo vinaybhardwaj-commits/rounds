@@ -24,6 +24,7 @@ interface PatientChannelMetadata {
   current_stage: string;
   hospital_slug: string | null;
   hospital_id: string | null;
+  getstream_channel_id: string | null;
 }
 
 /**
@@ -36,7 +37,8 @@ export async function syncPatientChannelMetadata(patientThreadId: string): Promi
   let meta: PatientChannelMetadata | null = null;
   try {
     meta = await queryOne<PatientChannelMetadata>(
-      `SELECT pt.current_stage, h.slug AS hospital_slug, pt.hospital_id::text AS hospital_id
+      `SELECT pt.current_stage, h.slug AS hospital_slug, pt.hospital_id::text AS hospital_id,
+              pt.getstream_channel_id
        FROM patient_threads pt
        LEFT JOIN hospitals h ON h.id = pt.hospital_id
        WHERE pt.id = $1::uuid`,
@@ -52,8 +54,15 @@ export async function syncPatientChannelMetadata(patientThreadId: string): Promi
     return false;
   }
 
-  // Channel ID convention from src/lib/getstream.ts:140 → `pt-${id.slice(0,8)}`.
-  const channelId = `pt-${patientThreadId.slice(0, 8)}`;
+  // Prefer the actual stored channel_id (some legacy threads pre-date the
+  // pt-{first8} convention); fall back to convention only as last resort.
+  const channelId = meta.getstream_channel_id || `pt-${patientThreadId.slice(0, 8)}`;
+  if (!meta.getstream_channel_id) {
+    // Likely no channel exists at all — skip silently rather than try to update
+    // a channel that doesn't exist (would 404 from GetStream API).
+    console.info('[syncPatientChannelMetadata] no getstream_channel_id', patientThreadId);
+    return false;
+  }
 
   try {
     await updatePatientChannel(channelId, {
