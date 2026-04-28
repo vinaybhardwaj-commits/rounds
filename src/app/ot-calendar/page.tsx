@@ -18,7 +18,7 @@
 //   - Click a booking entry → re-opens the modal in edit mode.
 // =============================================================================
 
-import { useCallback, useEffect, useMemo, useState, Suspense } from 'react';
+import { useCallback, useEffect, useMemo, useState, Suspense, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Search, X, Loader2, ChevronRight } from 'lucide-react';
 import OTBookingModal, { BookingValues } from '@/components/drawer/OTBookingModal';
@@ -101,6 +101,10 @@ const STAGE_TONE: Record<string, string> = {
 function OtCalendarPageInner() {
   const searchParams = useSearchParams();
   const focusId = searchParams.get('patient') || '';
+  // v1.1 (28 Apr 2026) — when entering through a patient chart, scroll the
+  // pinned focus row into view so the user doesn't have to hunt for it even
+  // if the list has scrolled out of focus.
+  const focusRowRef = useRef<HTMLLIElement | null>(null);
 
   const [cases, setCases] = useState<CaseLite[]>([]);
   const [patients, setPatients] = useState<EligiblePatient[]>([]);
@@ -182,6 +186,15 @@ function OtCalendarPageInner() {
       .catch(() => {});
     loadCases();
   }, [loadCases]);
+
+  // v1.1 (28 Apr 2026) — scroll focus row into view once patients hydrate.
+  // Runs once per patients array (e.g., on initial load, or whenever a fresh
+  // server response replaces the list).
+  useEffect(() => {
+    if (!focusId || patients.length === 0) return;
+    if (!focusRowRef.current) return;
+    focusRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [focusId, patients]);
 
   // Debounced patient list reload on search change.
   useEffect(() => {
@@ -319,7 +332,7 @@ function OtCalendarPageInner() {
           <h1 className="text-xl font-semibold text-gray-900">Week-Ahead OT Calendar</h1>
           <p className="mt-1 text-sm text-gray-600">
             Click a patient on the left, fill the booking card, and place them onto a slot.
-            {focusId && ' · You entered through a patient chart — they\'re pinned to the top of the list.'}
+            {focusId && (() => { const f = patients.find((p) => p.is_focus); return f && f.patient_name ? ` · ${f.patient_name} is pinned at the top — click to book.` : ' · The patient you came in for is pinned at the top of the list.'; })()}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -378,7 +391,7 @@ function OtCalendarPageInner() {
               </li>
             )}
             {patients.map((p) => (
-              <li key={p.id}>
+              <li key={p.id} ref={p.is_focus ? focusRowRef : null}>
                 <button
                   type="button"
                   onClick={() => onPickPatient(p)}

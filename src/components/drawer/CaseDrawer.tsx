@@ -516,9 +516,9 @@ export default function CaseDrawer({ caseId, mode = 'drawer', role, onClose, ful
               </div>
             </div>
             <a
-              href="/ot-calendar"
+              href={`/ot-calendar?patient=${encodeURIComponent(c.patient_thread_id)}`}
               className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:underline"
-              title="Open the Week-Ahead OT Calendar to schedule or move this case"
+              title="Open the Week-Ahead OT Calendar with this patient pinned to the top of the list"
             >
               Schedule on OT Calendar →
             </a>
