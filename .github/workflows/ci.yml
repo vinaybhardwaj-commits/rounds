@@ -1,0 +1,68 @@
+# QA Gates v1 — Tier 1 CI
+# Runs on every push to main + every PR. Hard-blocks (per PRD §9 Q4):
+#   1. TypeScript compile must pass with 0 errors above the 441 baseline.
+#   2. ESLint with react-hooks/rules-of-hooks at error must be clean.
+#   3. next build must succeed.
+# Soft-blocks (Tier 2+ added in QA.2-QA.7):
+#   4-6. Regression suite, authed smoke, runtime log scan.
+#
+# Skipped on docs-only commits per PRD §9 Q9 (workspace .md skip; src/help/ runs).
+
+name: QA Gates — Tier 1 (TS + ESLint + build)
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'Daily Dash EHRC/**'
+      - '*.md'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'Daily Dash EHRC/**'
+      - '*.md'
+
+jobs:
+  tier1:
+    name: TS + ESLint + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci --no-audit --no-fund
+
+      - name: Gate 1 — TypeScript compile (≤ 441 baseline)
+        run: |
+          set +e
+          npx tsc --noEmit 2>&1 | tee /tmp/tsc.out
+          # Count errors via lines matching "error TS" pattern.
+          COUNT=$(grep -c "error TS" /tmp/tsc.out || true)
+          BASELINE=441
+          echo "TypeScript error count: $COUNT (baseline: $BASELINE)"
+          if [ "$COUNT" -gt "$BASELINE" ]; then
+            echo "::error::TS error count $COUNT exceeds baseline $BASELINE — fix new errors before merging."
+            exit 1
+          fi
+          echo "::notice::TS gate passed ($COUNT ≤ $BASELINE)"
+
+      - name: Gate 2 — ESLint (react-hooks/rules-of-hooks at error)
+        run: npx next lint
+
+      - name: Gate 3 — next build
+        run: npx next build
+        env:
+          # Skip env-var-required checks at build time. Real runtime envs are
+          # set on Vercel; build only needs syntactic validity.
+          POSTGRES_URL: 'postgres://noop:noop@localhost:5432/noop'
+          JWT_SECRET: 'ci-build-only-not-a-real-secret-do-not-use-anywhere'
+          STREAM_API_KEY: 'ci-noop'
+          STREAM_API_SECRET: 'ci-noop'
