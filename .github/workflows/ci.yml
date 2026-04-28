@@ -1,14 +1,14 @@
-# QA Gates v1 — Tier 1 CI
-# Runs on every push to main + every PR. Hard-blocks (per PRD §9 Q4):
-#   1. TypeScript compile must pass with 0 errors above the 441 baseline.
+# QA Gates v1 — Tier 1 + Tier 2 CI
+# Tier 1 hard-blocks (per PRD §9 Q4):
+#   1. TS compile must pass with 0 errors above the 441 baseline.
 #   2. ESLint with react-hooks/rules-of-hooks at error must be clean.
 #   3. next build must succeed.
-# Soft-blocks (Tier 2+ added in QA.2-QA.7):
-#   4-6. Regression suite, authed smoke, runtime log scan.
-#
+# Tier 2 soft-blocks:
+#   4. Vitest regression suite (r001-r008) — runs but doesn't fail CI.
+#      Auth-gated tests soft-skip if TEST_SESSION_COOKIE not set in env.
 # Skipped on docs-only commits per PRD §9 Q9 (workspace .md skip; src/help/ runs).
 
-name: QA Gates — Tier 1 (TS + ESLint + build)
+name: QA Gates — Tier 1 + Tier 2
 
 on:
   push:
@@ -24,27 +24,19 @@ on:
 
 jobs:
   tier1:
-    name: TS + ESLint + build
+    name: Tier 1 — TS + ESLint + build (hard block)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install deps
-        run: npm ci --no-audit --no-fund
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci --no-audit --no-fund --legacy-peer-deps
 
       - name: Gate 1 — TypeScript compile (≤ 441 baseline)
         run: |
           set +e
           npx tsc --noEmit 2>&1 | tee /tmp/tsc.out
-          # Count errors via lines matching "error TS" pattern.
           COUNT=$(grep -c "error TS" /tmp/tsc.out || true)
           BASELINE=441
           echo "TypeScript error count: $COUNT (baseline: $BASELINE)"
@@ -60,9 +52,27 @@ jobs:
       - name: Gate 3 — next build
         run: npx next build
         env:
-          # Skip env-var-required checks at build time. Real runtime envs are
-          # set on Vercel; build only needs syntactic validity.
           POSTGRES_URL: 'postgres://noop:noop@localhost:5432/noop'
           JWT_SECRET: 'ci-build-only-not-a-real-secret-do-not-use-anywhere'
           STREAM_API_KEY: 'ci-noop'
           STREAM_API_SECRET: 'ci-noop'
+
+  tier2:
+    name: Tier 2 — Regression suite (soft block)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    needs: tier1
+    continue-on-error: true  # soft-block per PRD §9 Q4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci --no-audit --no-fund --legacy-peer-deps
+
+      - name: Gate 4 — Vitest regression suite (r001-r008)
+        run: npm run test:regressions
+        env:
+          BASE_URL: 'https://rounds-sqxh.vercel.app'
+          TEST_SESSION_COOKIE: ${{ secrets.TEST_SESSION_COOKIE }}
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PIN: ${{ secrets.TEST_USER_PIN }}

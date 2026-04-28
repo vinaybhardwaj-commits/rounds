@@ -9,7 +9,10 @@
     "start": "next start",
     "lint": "next lint",
     "db:migrate": "tsx scripts/migrate.ts",
-    "db:seed": "tsx scripts/seed-departments.ts"
+    "db:seed": "tsx scripts/seed-departments.ts",
+    "test:unit": "vitest run tests/unit",
+    "test:regressions": "vitest run tests/regressions",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
@@ -31,6 +34,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.0.0",
     "@types/react": "^18.3.0",
@@ -43,6 +47,7 @@
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^1.6.1"
   }
 }
