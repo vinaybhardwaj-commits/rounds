@@ -71,6 +71,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // v1.1 (28 Apr 2026) — MH.1 made profiles.primary_hospital_id NOT NULL
+    // (no DB default). Self-signup must therefore resolve a hospital_id to
+    // attach the new profile to. Default to EHRC — the only active hospital
+    // for self-signup today; super_admin can move the user to EHBR later
+    // via /admin/users → Edit Profile (MH.7c).
+    // role_scope has DEFAULT 'hospital_bound' so we don't need to set it.
+    const hospitalRows = await sql`
+      SELECT id::text AS id FROM hospitals WHERE slug = 'ehrc' AND is_active = TRUE LIMIT 1
+    `;
+    const hospitalRowArr = hospitalRows as unknown as Array<{ id: string }>;
+    const defaultHospitalId = hospitalRowArr[0]?.id;
+    if (!defaultHospitalId) {
+      console.error('POST /api/auth/signup — no active EHRC hospital row');
+      return NextResponse.json(
+        { success: false, error: 'Signup is misconfigured (no default hospital). Contact admin.' },
+        { status: 500 }
+      );
+    }
+
     // Hash the PIN
     const passwordHash = await hashPin(pin);
 
@@ -92,11 +111,12 @@ export async function POST(request: NextRequest) {
       userRole = role as UserRole;
     }
 
-    // Create the profile
+    // Create the profile.
+    // v1.1: includes primary_hospital_id (NOT NULL since MH.1).
     const result = await sql`
       INSERT INTO profiles (
         email, full_name, password_hash, role, account_type,
-        department_id, designation, phone, status
+        department_id, designation, phone, status, primary_hospital_id
       ) VALUES (
         ${email.toLowerCase()},
         ${full_name},
@@ -106,7 +126,8 @@ export async function POST(request: NextRequest) {
         ${department_id || null},
         ${designation || null},
         ${phone || null},
-        ${status}
+        ${status},
+        ${defaultHospitalId}::uuid
       )
       RETURNING id, email, full_name, role, status
     `;
@@ -136,9 +157,19 @@ export async function POST(request: NextRequest) {
       message: 'Account created. Pending admin approval.',
     });
   } catch (error) {
+    // v1.1 (28 Apr 2026) — surface the actual error to the UI instead of
+    // swallowing it as the generic 'Signup failed.' Two real users (Rajeshwari
+    // + Binita) hit MH.1's NOT NULL violation on this route and we had no
+    // visibility into the cause from the screenshot. Internal staff-only app
+    // — sharing the DB error message is fine and helps admins triage.
     console.error('POST /api/auth/signup error:', error);
+    const detail = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { success: false, error: 'Signup failed. Please try again.' },
+      {
+        success: false,
+        error: `Signup failed: ${detail.slice(0, 200)}`,
+        error_detail: detail,
+      },
       { status: 500 }
     );
   }
