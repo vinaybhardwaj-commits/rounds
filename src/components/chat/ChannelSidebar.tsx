@@ -279,12 +279,13 @@ export function ChannelSidebar({
       }
       if (waChannels.length > 0) groups['whatsapp-analysis'] = waChannels;
 
-      // Split patient threads into active vs archived
+      // PTR.3 — split patient-thread channels into 6 stage+hospital-aware buckets.
+      const ACTIVE_STAGES = new Set(['admitted', 'pre_op', 'surgery', 'post_op']);
+      const POSTCARE_STAGES = new Set(['discharge', 'post_discharge']);
       for (const ch of ptChannels) {
         const chData = ch.data as Record<string, unknown> | undefined;
         const isArchived = chData?.archived === true;
         const archiveType = chData?.archive_type as string | undefined;
-
         if (isArchived) {
           if (archiveType === 'removed') {
             archivedRemoved.push(ch);
@@ -293,9 +294,16 @@ export function ChannelSidebar({
           }
           continue;
         }
-
-        if (!groups['patient-thread']) groups['patient-thread'] = [];
-        groups['patient-thread'].push(ch);
+        const stage = (chData?.current_stage as string) || '';
+        const slug = (chData?.hospital_slug as string) || '';
+        let key: string;
+        if (stage === 'opd') key = 'ptg:opd';
+        else if (stage === 'pre_admission') key = 'ptg:pre_admission';
+        else if (slug && ACTIVE_STAGES.has(stage)) key = `ptg:admitted:${slug}`;
+        else if (slug && POSTCARE_STAGES.has(stage)) key = `ptg:postcare:${slug}`;
+        else key = 'patient-thread';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(ch);
       }
 
       // Build per-hospital department rows sorted by hospital slug (stable).
@@ -325,6 +333,27 @@ export function ChannelSidebar({
             defaultOpen: false,
           };
         });
+      // PTR.3 — per-hospital Admitted + Post-Care row builders.
+      // TODO v1.x: read primary_hospital_slug from /api/auth/me or stamp onto
+      // Stream user.primary_hospital_slug at syncUserToGetStream. Hardcoded
+      // 'ehrc' for v1 since 99% of active users are EHRC-bound; multi-hospital
+      // users will see all groups but only EHRC's Admitted is open by default.
+      const PRIMARY_HOSPITAL_SLUG = 'ehrc';
+      const hospitalAdmittedTypes = Object.keys(groups)
+        .filter((k) => k.startsWith('ptg:admitted:'))
+        .sort()
+        .map((k) => {
+          const slug = k.slice('ptg:admitted:'.length);
+          return { type: k, label: `${slug.toUpperCase()} · Admitted`, icon: Activity, defaultOpen: slug === PRIMARY_HOSPITAL_SLUG };
+        });
+      const hospitalPostCareTypes = Object.keys(groups)
+        .filter((k) => k.startsWith('ptg:postcare:'))
+        .sort()
+        .map((k) => {
+          const slug = k.slice('ptg:postcare:'.length);
+          return { type: k, label: `${slug.toUpperCase()} · Post-Care`, icon: Activity, defaultOpen: false };
+        });
+
       const orderedTypes = [
         // 26 Apr 2026 — only render the group when the feature flag is ON.
         // When OFF, the array filter below will trivially drop the entry
@@ -339,7 +368,15 @@ export function ChannelSidebar({
         { type: 'department', label: 'Departments (unassigned)', icon: Hash, defaultOpen: false },
         { type: 'direct', label: 'Direct Messages', icon: MessageCircle, defaultOpen: true },
         { type: 'cross-functional', label: 'Cross-Functional', icon: Users, defaultOpen: true },
-        { type: 'patient-thread', label: 'Patient Threads', icon: Activity, defaultOpen: true },
+        // PTR.3 — patient-thread groups in 6-bucket taxonomy.
+        // Order: OPD → Pre-Adm → {hospital} · Admitted (alpha) → {hospital} · Post-Care (alpha).
+        { type: 'ptg:opd', label: 'OPD', icon: Activity, defaultOpen: true },
+        { type: 'ptg:pre_admission', label: 'Pre-Admission', icon: Activity, defaultOpen: true },
+        ...hospitalAdmittedTypes,
+        ...hospitalPostCareTypes,
+        // Legacy fallback for unbackfilled channels (should be empty after PTR.1
+        // backfill ran; remains visible if stale legacy data appears).
+        { type: 'patient-thread', label: 'Patient Threads (unassigned)', icon: Activity, defaultOpen: false },
         // MH.5 — per-hospital broadcasts (one row per accessible hospital).
         // v1.1 (28 Apr 2026) — legacy 'Broadcast (legacy)' row retired now that
         // every active hospital has a broadcast-{slug} channel with proper
