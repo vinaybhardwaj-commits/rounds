@@ -147,7 +147,7 @@ async function POST_inner(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { email, full_name, role, department_id, designation, phone } = body;
+    const { email, full_name, role, department_id, designation, phone, primary_hospital_id, role_scope } = body;
 
     if (!email || !full_name) {
       return NextResponse.json({ success: false, error: 'email and full_name are required' }, { status: 400 });
@@ -156,8 +156,30 @@ async function POST_inner(request: NextRequest) {
     // Validate role against the UserRole enum
     const validatedRole = role && VALID_ROLES.includes(role) ? role : 'staff';
 
+    // MH.7c — multi-hospital tenancy validation
+    const VALID_SCOPES = new Set(['hospital_bound', 'multi_hospital', 'central']);
+    const validatedScope = role_scope && VALID_SCOPES.has(role_scope) ? role_scope : 'hospital_bound';
+    if (role_scope && !VALID_SCOPES.has(role_scope)) {
+      return NextResponse.json({ success: false, error: `Invalid role_scope: ${role_scope}` }, { status: 400 });
+    }
+    // Verify primary_hospital_id exists if provided. profiles.primary_hospital_id is NOT NULL
+    // post-MH.1 — fall back to EHRC if caller didn't pass one (back-compat for old admin flows).
+    let resolvedPrimaryHospitalId: string | null = primary_hospital_id || null;
+    if (resolvedPrimaryHospitalId) {
+      const hExists = await sql`SELECT 1 AS ok FROM hospitals WHERE id = ${resolvedPrimaryHospitalId}::uuid` as Record<string, unknown>[];
+      if (hExists.length === 0) {
+        return NextResponse.json({ success: false, error: 'primary_hospital_id not found' }, { status: 400 });
+      }
+    } else {
+      const ehrc = await sql`SELECT id::text AS id FROM hospitals WHERE slug = 'ehrc' LIMIT 1` as Record<string, string>[];
+      resolvedPrimaryHospitalId = ehrc[0]?.id ?? null;
+    }
+    if (!resolvedPrimaryHospitalId) {
+      return NextResponse.json({ success: false, error: 'No primary_hospital_id resolvable (EHRC fallback also missing)' }, { status: 500 });
+    }
+
     const result = await sql`
-      INSERT INTO profiles (email, full_name, role, department_id, designation, phone, account_type, status)
+      INSERT INTO profiles (email, full_name, role, department_id, designation, phone, account_type, status, primary_hospital_id, role_scope)
       VALUES (
         ${email.toLowerCase()},
         ${full_name},
@@ -166,7 +188,9 @@ async function POST_inner(request: NextRequest) {
         ${designation || null},
         ${phone || null},
         ${email.endsWith('@even.in') ? 'internal' : 'guest'},
-        'active'
+        'active',
+        ${resolvedPrimaryHospitalId}::uuid,
+        ${validatedScope}
       )
       ON CONFLICT (email) DO UPDATE SET
         full_name = EXCLUDED.full_name,
@@ -174,6 +198,8 @@ async function POST_inner(request: NextRequest) {
         department_id = EXCLUDED.department_id,
         designation = EXCLUDED.designation,
         phone = EXCLUDED.phone,
+        primary_hospital_id = EXCLUDED.primary_hospital_id,
+        role_scope = EXCLUDED.role_scope,
         updated_at = NOW()
       RETURNING *
     `;

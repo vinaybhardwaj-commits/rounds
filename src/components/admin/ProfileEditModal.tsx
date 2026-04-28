@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { HospitalPicker } from '@/components/HospitalPicker';
 import { X, Save, Key, Loader2, AlertCircle, CheckCircle, ShieldAlert, Trash2, Ban } from 'lucide-react';
 
 interface Department {
@@ -24,6 +25,12 @@ interface ProfileData {
   has_pin: boolean;
   created_at: string;
   last_login_at: string | null;
+  // MH.7c — multi-hospital tenancy fields surfaced by GET /api/admin/profiles/[id]
+  primary_hospital_id: string | null;
+  primary_hospital_slug: string | null;
+  primary_hospital_short_name: string | null;
+  primary_hospital_name: string | null;
+  role_scope: string | null;
 }
 
 interface Props {
@@ -83,6 +90,9 @@ export function ProfileEditModal({ profileId, onClose, onSaved, currentUserRole,
   const [departmentId, setDepartmentId] = useState('');
   const [designation, setDesignation] = useState('');
   const [phone, setPhone] = useState('');
+  // MH.7c — multi-hospital tenancy editable fields
+  const [primaryHospitalId, setPrimaryHospitalId] = useState<string | null>(null);
+  const [roleScope, setRoleScope] = useState<string>('hospital_bound');
   const [newPin, setNewPin] = useState('');
   const [showPinReset, setShowPinReset] = useState(false);
 
@@ -106,6 +116,8 @@ export function ProfileEditModal({ profileId, onClose, onSaved, currentUserRole,
         setDepartmentId(p.department_id || '');
         setDesignation(p.designation || '');
         setPhone(p.phone || '');
+        setPrimaryHospitalId(p.primary_hospital_id || null);
+        setRoleScope(p.role_scope || 'hospital_bound');
       } else {
         setError('Failed to load profile');
       }
@@ -142,6 +154,9 @@ export function ProfileEditModal({ profileId, onClose, onSaved, currentUserRole,
       department_id: departmentId || null,
       designation: designation || null,
       phone: phone || null,
+      // MH.7c — multi-hospital tenancy fields (validated server-side)
+      primary_hospital_id: primaryHospitalId,
+      role_scope: roleScope,
     };
 
     if (showPinReset && newPin) {
@@ -306,6 +321,36 @@ export function ProfileEditModal({ profileId, onClose, onSaved, currentUserRole,
                   <option key={d.id} value={d.id}>{d.name}</option>
                 ))}
               </select>
+            </div>
+
+            {/* MH.7c — Primary Hospital + Scope (multi-hospital tenancy controls) */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <HospitalPicker
+                  value={primaryHospitalId}
+                  onChange={setPrimaryHospitalId}
+                  label="Primary Hospital"
+                  required
+                  name="primary_hospital_id"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">
+                  Scope <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={roleScope}
+                  onChange={e => setRoleScope(e.target.value)}
+                  className="w-full h-9 px-3 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-even-blue outline-none"
+                >
+                  <option value="hospital_bound">Hospital-bound (only sees primary)</option>
+                  <option value="multi_hospital">Multi-hospital (visiting consultants)</option>
+                  <option value="central">Central (all hospitals — leadership)</option>
+                </select>
+                <p className="text-[10px] text-gray-400 mt-1">
+                  Controls how much cross-hospital data this user can see.
+                </p>
+              </div>
             </div>
 
             {/* Designation */}

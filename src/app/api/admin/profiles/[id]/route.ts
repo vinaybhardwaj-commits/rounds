@@ -32,11 +32,17 @@ export async function GET(
   const rows = await sql`
     SELECT p.id, p.email, p.full_name, p.display_name, p.role, p.status,
            p.designation, p.phone, p.department_id, p.account_type,
+           p.primary_hospital_id::text AS primary_hospital_id,
+           p.role_scope,
            d.name as department_name, d.slug as department_slug,
+           h.slug       as primary_hospital_slug,
+           h.short_name as primary_hospital_short_name,
+           h.name       as primary_hospital_name,
            p.created_at, p.last_login_at,
            (p.password_hash IS NOT NULL) as has_pin
     FROM profiles p
     LEFT JOIN departments d ON d.id = p.department_id
+    LEFT JOIN hospitals   h ON h.id = p.primary_hospital_id
     WHERE p.id = ${id}
   `;
 
@@ -83,13 +89,28 @@ export async function PATCH(
     phone: 'phone',
     department_id: 'department_id',
     account_type: 'account_type',
+    // MH.7c — multi-hospital tenancy fields editable from /admin/users edit modal
+    primary_hospital_id: 'primary_hospital_id',
+    role_scope: 'role_scope',
   };
+  const VALID_SCOPES = new Set(['hospital_bound', 'multi_hospital', 'central']);
 
   for (const [key, col] of Object.entries(allowedFields)) {
     if (key in body && body[key] !== undefined) {
       // Validate role against the UserRole enum
       if (key === 'role' && !isValidRole(body[key])) {
         return NextResponse.json({ success: false, error: `Invalid role: ${body[key]}` }, { status: 400 });
+      }
+      // MH.7c — validate role_scope enum
+      if (key === 'role_scope' && body[key] && !VALID_SCOPES.has(body[key])) {
+        return NextResponse.json({ success: false, error: `Invalid role_scope: ${body[key]}. Must be one of: hospital_bound, multi_hospital, central.` }, { status: 400 });
+      }
+      // MH.7c — validate primary_hospital_id is a real hospital + active (skip if blanking to null)
+      if (key === 'primary_hospital_id' && body[key]) {
+        const exists = await sql`SELECT 1 AS ok FROM hospitals WHERE id = ${body[key]}::uuid` as Record<string, unknown>[];
+        if (exists.length === 0) {
+          return NextResponse.json({ success: false, error: `primary_hospital_id not found in hospitals table` }, { status: 400 });
+        }
       }
       updates.push(`${col} = $${paramIdx}`);
       values.push(body[key] === '' ? null : body[key]);

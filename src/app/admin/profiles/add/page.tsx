@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { HospitalPicker } from '@/components/HospitalPicker';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 
@@ -39,7 +40,12 @@ export default function AddStaffPage() {
     department_id: '',
     role: 'staff',
     initial_pin: '1234',
+    // MH.7c — multi-hospital tenancy fields. Default scope=hospital_bound.
+    role_scope: 'hospital_bound',
   });
+  // primary_hospital_id is a separate state because HospitalPicker manages its own
+  // value flow (auto-fills for hospital-bound admins; mandatory pick for multi-hospital).
+  const [primaryHospitalId, setPrimaryHospitalId] = useState<string | null>(null);
 
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(false);
@@ -88,6 +94,9 @@ export default function AddStaffPage() {
           designation: formData.designation || null,
           department_id: formData.department_id || null,
           role: formData.role,
+          // MH.7c — multi-hospital tenancy
+          primary_hospital_id: primaryHospitalId,
+          role_scope: formData.role_scope,
         }),
       });
 
@@ -103,6 +112,7 @@ export default function AddStaffPage() {
           designation: '',
           department_id: '',
           role: 'staff',
+          role_scope: 'hospital_bound',
           initial_pin: '1234',
         });
         // Auto-hide success after 3 seconds
@@ -264,6 +274,38 @@ export default function AddStaffPage() {
               </select>
             </div>
 
+            {/* MH.7c — Primary Hospital + Scope (multi-hospital tenancy controls) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <HospitalPicker
+                  value={primaryHospitalId}
+                  onChange={setPrimaryHospitalId}
+                  label="Primary Hospital"
+                  required
+                  name="primary_hospital_id"
+                />
+              </div>
+              <div>
+                <label htmlFor="role_scope" className="block text-sm font-medium text-gray-900 mb-1.5">
+                  Scope <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="role_scope"
+                  name="role_scope"
+                  value={formData.role_scope}
+                  onChange={handleChange}
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-even-blue focus:border-transparent"
+                >
+                  <option value="hospital_bound">Hospital-bound (only sees primary)</option>
+                  <option value="multi_hospital">Multi-hospital (visiting consultants)</option>
+                  <option value="central">Central (all hospitals — leadership)</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Controls how much cross-hospital data this user can see.
+                </p>
+              </div>
+            </div>
+
             {/* Initial PIN */}
             <div>
               <label htmlFor="initial_pin" className="block text-sm font-medium text-gray-900 mb-1.5">
@@ -312,7 +354,9 @@ export default function AddStaffPage() {
                     department_id: '',
                     role: 'staff',
                     initial_pin: '1234',
+                    role_scope: 'hospital_bound',
                   });
+                  setPrimaryHospitalId(null);
                 }}
                 className="px-4 py-2 text-sm font-medium text-even-blue hover:bg-even-blue/5 rounded-lg transition-colors"
               >
