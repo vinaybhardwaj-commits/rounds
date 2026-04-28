@@ -27,6 +27,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Search, X } from 'lucide-react';
+import { HospitalPicker } from '@/components/HospitalPicker';
 
 interface CaseSummary {
   id: string;
@@ -50,12 +51,6 @@ interface InventoryItem {
   is_rentable: boolean;
   default_vendor_name: string | null;
   default_vendor_phone: string | null;
-}
-
-interface HospitalOpt {
-  id: string;
-  slug: string;
-  name: string;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -85,7 +80,6 @@ export default function EquipmentRequestModal({
 
   // Hospital — derived from caseRow.hospital_id, presetHospitalId, or picker.
   const [hospitalId, setHospitalId] = useState<string>('');
-  const [hospitalOpts, setHospitalOpts] = useState<HospitalOpt[]>([]);
 
   // Inventory picker
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -161,27 +155,15 @@ export default function EquipmentRequestModal({
       .finally(() => setCaseLoading(false));
   }, [isOpen, presetCaseId]);
 
-  // If no preset case AND no preset hospital, fetch the user's accessible
-  // hospitals so they can pick which one to file under.
+  // v1.1 (28 Apr 2026) — preset pass-through only. The HospitalPicker
+  // component (rendered below when no preset) handles its own /api/hospitals/
+  // accessible fetch + auto-fill for single-hospital users + lock-icon UX.
+  // Removed the inline <select> + duplicate fetch in favor of the shared
+  // component for visual consistency with PatientsView + FormRenderer.
   useEffect(() => {
     if (!isOpen) return;
-    if (presetCaseId || presetHospitalId) {
-      if (presetHospitalId && !hospitalId) setHospitalId(presetHospitalId);
-      return;
-    }
-    // No preset — load hospital options.
-    fetch('/api/hospitals/accessible')
-      .then((r) => r.json())
-      .then((b) => {
-        if (b?.success && Array.isArray(b.data)) {
-          setHospitalOpts(b.data as HospitalOpt[]);
-          if (!hospitalId && b.data.length === 1) {
-            setHospitalId(b.data[0].id);
-          }
-        }
-      })
-      .catch(() => {});
-  }, [isOpen, presetCaseId, presetHospitalId, hospitalId]);
+    if (presetHospitalId && !hospitalId) setHospitalId(presetHospitalId);
+  }, [isOpen, presetHospitalId, hospitalId]);
 
   // Load inventory whenever search / category / hospitalId changes.
   useEffect(() => {
@@ -313,20 +295,20 @@ export default function EquipmentRequestModal({
             </div>
           </section>
 
-          {/* Hospital picker — only when there's no preset and the user has multiple */}
-          {!caseRow && !presetHospitalId && hospitalOpts.length > 1 && (
+          {/* Hospital picker — only when there's no case banner and no preset.
+              v1.1 (28 Apr 2026): now uses the shared HospitalPicker component
+              for visual + behavioral consistency with PatientsView + FormRenderer.
+              HospitalPicker auto-fills + locks for single-hospital users (Lock
+              icon), shows mandatory dropdown for multi-hospital users, and
+              filters out is_active=false hospitals server-side. */}
+          {!caseRow && !presetHospitalId && (
             <section>
-              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600">Hospital</label>
-              <select
-                value={hospitalId}
-                onChange={(e) => setHospitalId(e.target.value)}
-                className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="">— Select hospital —</option>
-                {hospitalOpts.map((h) => (
-                  <option key={h.id} value={h.id}>{h.name} ({h.slug})</option>
-                ))}
-              </select>
+              <HospitalPicker
+                value={hospitalId || null}
+                onChange={setHospitalId}
+                name="hospital_id"
+                required
+              />
             </section>
           )}
 
