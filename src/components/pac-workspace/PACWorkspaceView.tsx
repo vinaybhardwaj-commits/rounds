@@ -158,7 +158,7 @@ export function PACWorkspaceView({ caseId, userRole }: Props) {
             <div className="flex-1 min-w-0">
               <div className="text-base font-semibold text-gray-900 truncate">
                 {patient.patient_name || 'Unnamed'}
-                {patient.uhid && <span className="text-gray-500 font-normal"> · UHID {patient.uhid}</span>}
+                {patient.uhid && <span className="text-gray-500 font-normal"> · {patient.uhid}</span>}
                 {ageSex && <span className="text-gray-500 font-normal"> · {ageSex}</span>}
               </div>
               <div className="text-xs text-gray-600 mt-0.5">
