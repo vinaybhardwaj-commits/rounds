@@ -220,13 +220,13 @@ export async function autoJoinDefaultChannels(
   const client = getStreamServerClient();
   const isSuperAdmin = role === 'super_admin';
 
-  // Always join hospital broadcast
-  try {
-    const broadcast = client.channel('ops-broadcast', 'hospital-broadcast');
-    await broadcast.addMembers([userId]);
-  } catch {
-    // Channel may not exist yet or user already a member — fine
-  }
+  // v1.1 (28 Apr 2026) — Auto-join to legacy 'hospital-broadcast' RETIRED.
+  // Per-hospital broadcast channels (broadcast-{slug}) handle membership at
+  // seed-channels time based on each user's primary_hospital_id. Existing
+  // members of the legacy channel keep access; new users are no longer added.
+  // The legacy channel still exists in GetStream and is reachable for any
+  // queryChannels({type:'ops-broadcast'}) caller, but ChannelSidebar no longer
+  // renders a row for it (see ChannelSidebar.tsx orderedTypes).
 
   // Super admins join ALL department channels; regular staff join only their own
   if (isSuperAdmin) {

@@ -70,12 +70,11 @@ const WHATSAPP_INSIGHTS = {
   description: 'Automated analysis of WhatsApp group chats — insights, metrics, and alerts shared hospital-wide',
 };
 
-// The hospital-wide ops broadcast channel
-const OPS_BROADCAST = {
-  id: 'hospital-broadcast',
-  name: 'EHRC Broadcast',
-  description: 'Hospital-wide operational announcements (read-only)',
-};
+// v1.1 (28 Apr 2026) — Legacy 'hospital-broadcast' channel RETIRED from
+// the seed loop. The channel still exists in GetStream (existing members keep
+// access) but seed-channels no longer refreshes it. Per-hospital
+// broadcast-{slug} channels (section 6 below) supersede it.
+// const OPS_BROADCAST = { id: 'hospital-broadcast', ... };
 
 /**
  * Ensure a channel exists and add a user as member.
@@ -266,28 +265,10 @@ export async function POST() {
 
     results.push(`[wa-insights] ${waResult} (${allStaffIds.length} staff)`);
 
-    // 5. Create/ensure ops broadcast channel + add ALL active staff
-    const broadcastResult = await ensureChannelWithMember(
-      client,
-      'ops-broadcast',
-      OPS_BROADCAST.id,
-      { name: OPS_BROADCAST.name, description: OPS_BROADCAST.description },
-      callerUserId
-    );
-
-    if (allStaffIds.length > 0) {
-      try {
-        const channel = client.channel('ops-broadcast', OPS_BROADCAST.id);
-        for (let i = 0; i < allStaffIds.length; i += 100) {
-          const batch = allStaffIds.slice(i, i + 100);
-          await channel.addMembers(batch);
-        }
-      } catch {
-        // Non-fatal
-      }
-    }
-
-    results.push(`[broadcast] ${broadcastResult} (${allStaffIds.length} staff)`);
+    // 5. RETIRED v1.1 (28 Apr 2026) — legacy 'hospital-broadcast' seed
+    // removed. The channel still exists in GetStream but seed-channels no
+    // longer refreshes its memberships. Per-hospital broadcasts below
+    // supersede it.
 
     // 6. MH.5 — per-hospital broadcast channels (broadcast-{slug}, type=ops-broadcast).
     // One channel per is_active hospital. Membership = staff with primary_hospital_id
@@ -338,7 +319,9 @@ export async function POST() {
       data: {
         department_channels: departments.length,
         cross_functional_channels: CROSS_FUNCTIONAL_CHANNELS.length,
-        broadcast_channels: 1 + perHospitalBroadcastCount,
+        // v1.1 — was 1 + perHospitalBroadcastCount (legacy + per-hospital).
+        // Now just per-hospital count since legacy seed retired.
+        broadcast_channels: perHospitalBroadcastCount,
         per_hospital_broadcasts: perHospitalBroadcastCount,
         log: results,
       },

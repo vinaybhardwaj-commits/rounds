@@ -337,10 +337,12 @@ export function ChannelSidebar({
         { type: 'cross-functional', label: 'Cross-Functional', icon: Users, defaultOpen: true },
         { type: 'patient-thread', label: 'Patient Threads', icon: Activity, defaultOpen: true },
         // MH.5 — per-hospital broadcasts (one row per accessible hospital).
-        // Falls back to the generic 'ops-broadcast' bucket below for the
-        // legacy un-suffixed 'hospital-broadcast' channel until that's retired.
+        // v1.1 (28 Apr 2026) — legacy 'Broadcast (legacy)' row retired now that
+        // every active hospital has a broadcast-{slug} channel with proper
+        // memberships. The legacy 'hospital-broadcast' channel still exists in
+        // GetStream for back-compat (existing members keep access) but no
+        // longer surfaces in the sidebar. seed-channels no longer refreshes it.
         ...hospitalBroadcastTypes,
-        { type: 'ops-broadcast', label: 'Broadcast (legacy)', icon: Megaphone, defaultOpen: false },
       ];
 
       const result: ChannelGroup[] = orderedTypes
