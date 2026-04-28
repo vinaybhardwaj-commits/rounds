@@ -87,6 +87,24 @@ export async function POST(request: NextRequest) {
       deptMap.set(dept.name.toLowerCase(), dept.id);
     }
 
+    // v1.1 (28 Apr 2026) — MH.1 made profiles.primary_hospital_id NOT NULL
+    // (no DB default). Bulk CSV import was never updated. Resolve EHRC's
+    // hospital_id once and stamp every new row with it. Existing rows on
+    // ON CONFLICT keep their hospital_id (we don't overwrite). Admins who
+    // need to reassign a user to EHBR can use /admin/users → Edit Profile
+    // (MH.7c) post-import.
+    const hospitalRows = await sql`
+      SELECT id::text AS id FROM hospitals WHERE slug = 'ehrc' AND is_active = TRUE LIMIT 1
+    `;
+    const hospitalRowArr = hospitalRows as unknown as Array<{ id: string }>;
+    const defaultHospitalId = hospitalRowArr[0]?.id;
+    if (!defaultHospitalId) {
+      return NextResponse.json(
+        { success: false, error: 'Bulk import is misconfigured (no active EHRC hospital row).' },
+        { status: 500 }
+      );
+    }
+
     const result: CSVImportResult = {
       total: records.length,
       created: 0,
@@ -125,7 +143,7 @@ export async function POST(request: NextRequest) {
 
       try {
         const upsertResult = await sql`
-          INSERT INTO profiles (email, full_name, role, department_id, designation, phone, account_type)
+          INSERT INTO profiles (email, full_name, role, department_id, designation, phone, account_type, primary_hospital_id)
           VALUES (
             ${email},
             ${fullName},
@@ -133,7 +151,8 @@ export async function POST(request: NextRequest) {
             ${departmentId},
             ${designation},
             ${phone},
-            ${email.endsWith('@even.in') ? 'internal' : 'guest'}
+            ${email.endsWith('@even.in') ? 'internal' : 'guest'},
+            ${defaultHospitalId}::uuid
           )
           ON CONFLICT (email) DO UPDATE SET
             full_name = EXCLUDED.full_name,
@@ -142,6 +161,9 @@ export async function POST(request: NextRequest) {
             designation = EXCLUDED.designation,
             phone = EXCLUDED.phone,
             updated_at = NOW()
+            -- v1.1: do NOT touch primary_hospital_id on conflict — existing
+            -- rows keep their hospital assignment. CSV upload never reassigns
+            -- a user's hospital (use /admin/users for that).
           RETURNING (xmax = 0) AS is_new
         `;
 

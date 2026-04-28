@@ -438,6 +438,23 @@ export async function POST(request: NextRequest) {
     deptCache.clear();
     syncedToGetStream.clear();
 
+    // v1.1 (28 Apr 2026) — Resolve EHRC hospital_id once per import run.
+    // Stub doctors created on the fly will be stamped with this hospital.
+    // MH.1 made profiles.primary_hospital_id NOT NULL with no DB default;
+    // every patient import creating a stub doctor would 500 without this.
+    // Defaults to EHRC since LSQ + bulk patient imports are EHRC-only today.
+    const hospitalRow = await queryOne<{ id: string }>(
+      `SELECT id::text AS id FROM hospitals WHERE slug = 'ehrc' AND is_active = TRUE LIMIT 1`,
+      []
+    );
+    const defaultHospitalId = hospitalRow?.id;
+    if (!defaultHospitalId) {
+      return NextResponse.json(
+        { success: false, error: 'Patient import is misconfigured (no active EHRC hospital row).' },
+        { status: 500 }
+      );
+    }
+
     // Track UHIDs processed in THIS batch to avoid within-batch duplicates
     const batchUhids = new Set<string>();
 
