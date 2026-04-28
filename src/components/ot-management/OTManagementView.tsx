@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { WeekView } from './WeekView';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import {
   AlertCircle,
   CalendarRange,
@@ -150,6 +150,7 @@ const DEFAULT_HOSPITAL_SLUG = 'ehrc';
 
 export function OTManagementView(_props: OTManagementViewProps) {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const patientIdFromUrl = searchParams.get('patient_id') || searchParams.get('patient');
 
   const [hospitals, setHospitals] = useState<AccessibleHospital[]>([]);
@@ -448,6 +449,7 @@ export function OTManagementView(_props: OTManagementViewProps) {
           <div id="ot-section-pac" ref={(el) => { sectionRefs.current.set('pac', el); }}>
             <PacQueueSection
               rows={today?.pac_queue || []}
+              onSelect={(caseId) => router.push(`/pac-workspace/${caseId}`)}
               loading={loadingToday && !today}
               highlightedCaseId={highlightedRowKey?.section === 'pac' ? highlightedRowKey.id : null}
             />
@@ -656,7 +658,7 @@ const PAC_STATE_DISPLAY: Record<string, { label: string; chipColor: string; orde
   unfit: { label: 'Unfit', chipColor: 'bg-red-100 text-red-700', order: 4 },
 };
 
-function PacQueueSection({ rows, loading, highlightedCaseId }: { rows: PacRow[]; loading: boolean; highlightedCaseId: string | null }) {
+function PacQueueSection({ rows, loading, highlightedCaseId, onSelect }: { rows: PacRow[]; loading: boolean; highlightedCaseId: string | null; onSelect: (caseId: string) => void }) {
   // PRD Q2: flat list with subtle visual grouping. Group by state in render
   // (rows are already sorted by state priority then recency by the API).
   const grouped = useMemo(() => {
@@ -703,9 +705,15 @@ function PacQueueSection({ rows, loading, highlightedCaseId }: { rows: PacRow[];
                     const u = urgencyChip(r.urgency);
                     const isHighlighted = highlightedCaseId === r.case_id;
                     return (
-                      <li key={r.case_id} className={`border rounded-md p-2 transition-all ${
-                        isHighlighted ? 'border-amber-300 bg-amber-50 ring-1 ring-amber-300' : 'border-gray-100 hover:bg-gray-50'
-                      }`}>
+                      <li key={r.case_id}>
+                        <button
+                          type="button"
+                          onClick={() => onSelect(r.case_id)}
+                          className={`w-full text-left border rounded-md p-2 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-300 ${
+                            isHighlighted ? 'border-amber-300 bg-amber-50 ring-1 ring-amber-300' : 'border-gray-100 hover:bg-gray-50 hover:border-indigo-200'
+                          }`}
+                          aria-label={`Open PAC workspace for ${r.patient_name || 'unnamed patient'}`}
+                        >
                         <div className="flex items-start gap-2">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 mb-0.5">
@@ -731,6 +739,7 @@ function PacQueueSection({ rows, loading, highlightedCaseId }: { rows: PacRow[];
                             </div>
                           </div>
                         </div>
+                        </button>
                       </li>
                     );
                   })}

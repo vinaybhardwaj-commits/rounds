@@ -301,3 +301,51 @@ export async function autoJoinDefaultChannels(
     // Query failed — non-fatal, user will see channels they're already in
   }
 }
+
+// =============================================================================
+// PAC Coordinator Workspace v1 — channel provisioning (PCW.1, PRD Q3 + §6.3)
+//
+// One channel per surgical_case, type 'pac-workspace'. Lazily created on first
+// workspace open. Members = ipc_owner + anaesthetist + super_admins (for
+// observability). Other roles can be added later via D2 role gating.
+//
+// Returns the channel id (always); throws only on credential/network failure
+// — caller is responsible for swallowing best-effort errors.
+// =============================================================================
+
+export interface PacWorkspaceChannelInput {
+  caseId: string;
+  hospitalId: string;
+  patientName: string | null;
+  uhid: string | null;
+  ipcOwnerId: string | null;
+  anaesthetistId: string | null;
+  initiatorId: string;
+  extraMemberIds?: string[];
+}
+
+export async function ensurePacWorkspaceChannel(input: PacWorkspaceChannelInput): Promise<string> {
+  const client = getStreamServerClient();
+  const channelId = `pacw-${input.caseId.slice(0, 18)}`;
+  const memberIds = Array.from(
+    new Set(
+      [input.initiatorId, input.ipcOwnerId, input.anaesthetistId, ...(input.extraMemberIds || [])]
+        .filter((x): x is string => !!x),
+    ),
+  );
+
+  const channel = client.channel('pac-workspace', channelId, {
+    name: input.patientName || 'PAC Workspace',
+    description: input.uhid ? `PAC workspace for ${input.patientName ?? ''} (UHID ${input.uhid})` : 'PAC workspace',
+    created_by_id: input.initiatorId,
+    case_id: input.caseId,
+    hospital_id: input.hospitalId,
+    patient_name: input.patientName,
+    uhid: input.uhid,
+    members: memberIds,
+  });
+
+  // create() is idempotent for existing channels — returns existing config.
+  await channel.create();
+  return channelId;
+}
