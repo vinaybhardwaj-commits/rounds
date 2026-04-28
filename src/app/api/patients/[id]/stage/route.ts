@@ -24,6 +24,7 @@ import { createDischargeMilestone, postMilestoneMessage } from '@/lib/discharge-
 import { audit } from '@/lib/audit';
 import type { PatientStage } from '@/types';
 import { PATIENT_STAGE_LABELS, VALID_STAGE_TRANSITIONS } from '@/types';
+import { syncPatientChannelMetadata } from '@/lib/sync-patient-channel-metadata';
 
 // Alias for local use
 const VALID_TRANSITIONS = VALID_STAGE_TRANSITIONS;
@@ -266,6 +267,10 @@ export async function PATCH(
       } catch (err) {
         console.error('Failed to update channel custom data:', err);
       }
+
+      // PTR.2 (28 Apr 2026) — also stamp hospital_slug for PTR.3 sidebar grouping.
+      // Fire-and-forget: helper logs + continues on any failure.
+      syncPatientChannelMetadata(id).catch((e) => console.error('[ptr.2] sync failed', e));
 
       // Auto-add stage-specific roles
       const stageRoles = getStageRoles(newStage);

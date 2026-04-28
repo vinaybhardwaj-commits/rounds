@@ -201,6 +201,11 @@ export async function POST(
           [c.patient_thread_id]
         );
         stageAdvanced = true;
+        // PTR.2 (28 Apr 2026) — stamp current_stage='pre_op' onto channel.data
+        // for PTR.3 sidebar grouping.
+        syncPatientChannelMetadata(c.patient_thread_id).catch((e) =>
+          console.error('[ptr.2] ot-booking sync failed', e)
+        );
       }
     } catch (e) {
       console.error('[ot-booking] stage advance failed:', e);

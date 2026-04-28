@@ -981,6 +981,11 @@ export async function POST(request: NextRequest) {
                VALUES ($1, 'form_submission', $2, $3, 'admitted', 'Consolidated Marketing Handoff submitted', 'info')`,
               [body.patient_thread_id, formId, patient.current_stage]
             );
+            // PTR.2 (28 Apr 2026) — stamp current_stage='admitted' + hospital_slug
+            // onto channel.data for PTR.3 sidebar grouping.
+            syncPatientChannelMetadata(body.patient_thread_id).catch((e) =>
+              console.error('[ptr.2] forms sync failed', e)
+            );
           } catch (err) {
             console.error('[ConsolidatedHandoff] Stage transition error:', err);
           }
