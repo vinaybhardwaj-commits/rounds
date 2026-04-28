@@ -16,7 +16,8 @@
 // OT.4.
 // =============================================================================
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { WeekView } from './WeekView';
 import { useSearchParams } from 'next/navigation';
 import {
   AlertCircle,
@@ -161,6 +162,20 @@ export function OTManagementView(_props: OTManagementViewProps) {
   const [loadingToday, setLoadingToday] = useState(false);
   const [todayErr, setTodayErr] = useState<string | null>(null);
 
+  // OT.4 — patient pre-load + section auto-scroll.
+  const sectionRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
+  const [pinnedPatient, setPinnedPatient] = useState<{
+    id: string;
+    name: string | null;
+    uhid: string | null;
+    age: number | null;
+    gender: string | null;
+    current_stage: string | null;
+    found: boolean;
+  } | null>(null);
+  const [highlightedRowKey, setHighlightedRowKey] = useState<{ section: string; id: string } | null>(null);
+  const hasAutoScrolledRef = useRef(false);
+
   // 1. Bootstrap: /api/auth/me + /api/hospitals/accessible
   useEffect(() => {
     let cancelled = false;
@@ -215,6 +230,83 @@ export function OTManagementView(_props: OTManagementViewProps) {
     const interval = setInterval(() => loadToday(activeSlug), 30_000);
     return () => clearInterval(interval);
   }, [activeSlug, loadingShell, loadToday]);
+
+  // OT.4 — patient pre-load: when ?patient_id is in the URL and `today`
+  // resolves, locate the patient in slate/inbox/pac, scroll to the
+  // section that contains them, fire a brief amber highlight on the row.
+  // Q6 lock: if patient not found, render the module + an amber banner.
+  // Q7-style first-load gate via hasAutoScrolledRef so polling refreshes
+  // don't keep re-scrolling.
+  useEffect(() => {
+    if (!patientIdFromUrl || !today) return;
+    const findIn = (
+      arr: { patient_thread_id?: string; case_id?: string }[],
+      keyField: 'case_id' | 'patient_thread_id'
+    ) => arr.find((r) => r.patient_thread_id === patientIdFromUrl) || null;
+    let hit: { section: 'slate' | 'inbox' | 'pac'; id: string; row: { patient_name: string | null; uhid: string | null; age: number | null; gender: string | null; pt_current_stage?: string; case_state?: string } } | null = null;
+    const slateHit = findIn(today.slate, 'case_id');
+    if (slateHit) {
+      const r = today.slate.find((s) => s.patient_thread_id === patientIdFromUrl)!;
+      hit = { section: 'slate', id: r.case_id, row: r };
+    } else {
+      const inboxHit = today.booking_inbox.find((r) => r.patient_thread_id === patientIdFromUrl);
+      if (inboxHit) {
+        hit = { section: 'inbox', id: inboxHit.case_id, row: inboxHit };
+      } else {
+        const pacHit = today.pac_queue.find((r) => r.patient_thread_id === patientIdFromUrl);
+        if (pacHit) hit = { section: 'pac', id: pacHit.case_id, row: pacHit };
+      }
+    }
+    if (hit) {
+      setPinnedPatient({
+        id: patientIdFromUrl,
+        name: hit.row.patient_name,
+        uhid: hit.row.uhid,
+        age: hit.row.age,
+        gender: hit.row.gender,
+        current_stage: hit.row.pt_current_stage || hit.row.case_state || null,
+        found: true,
+      });
+      if (!hasAutoScrolledRef.current) {
+        const el = sectionRefs.current.get(hit.section);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        hasAutoScrolledRef.current = true;
+      }
+      setHighlightedRowKey({ section: hit.section, id: hit.id });
+      const t = setTimeout(() => setHighlightedRowKey(null), 3000);
+      return () => clearTimeout(t);
+    } else {
+      setPinnedPatient({
+        id: patientIdFromUrl,
+        name: null,
+        uhid: null,
+        age: null,
+        gender: null,
+        current_stage: null,
+        found: false,
+      });
+    }
+    return undefined;
+  }, [patientIdFromUrl, today]);
+
+  // OT.4 — section auto-scroll for ?section=week (or other sections) when
+  // the URL specifies one. One-shot via hasAutoScrolledRef so polling
+  // refreshes don't keep re-scrolling.
+  const sectionFromUrl = searchParams.get('section');
+  useEffect(() => {
+    if (!sectionFromUrl || hasAutoScrolledRef.current || loadingShell) return;
+    const id = `ot-section-${sectionFromUrl}`;
+    const el = document.getElementById(id);
+    if (el) {
+      // small delay so the page has had time to render
+      const t = setTimeout(() => {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        hasAutoScrolledRef.current = true;
+      }, 100);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [sectionFromUrl, loadingShell]);
 
   const activeHospital = useMemo(
     () => hospitals.find((h) => h.slug === activeSlug) || null,
@@ -289,13 +381,37 @@ export function OTManagementView(_props: OTManagementViewProps) {
         </div>
       </div>
 
-      {/* Sticky patient pin banner placeholder (OT.4 will fill this in) */}
-      {patientIdFromUrl && (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 sticky top-[37px] z-10 flex items-center gap-2 text-sm">
-          <ClipboardList size={14} className="text-amber-600 flex-shrink-0" />
-          <span className="text-amber-800">
-            Patient pre-load <code className="text-xs bg-amber-100 px-1 rounded">{patientIdFromUrl}</code> — pin banner + auto-scroll arrives in OT.4.
-          </span>
+      {/* Sticky patient pin banner (OT.4) */}
+      {pinnedPatient && (
+        <div
+          className={`px-4 py-2 sticky top-[37px] z-10 border-b text-sm flex items-center gap-2 ${
+            pinnedPatient.found
+              ? 'bg-blue-50 border-blue-200 text-blue-900'
+              : 'bg-amber-50 border-amber-200 text-amber-800'
+          }`}
+        >
+          <ClipboardList size={14} className="flex-shrink-0" />
+          {pinnedPatient.found ? (
+            <span>
+              <span className="font-medium">{pinnedPatient.name || 'Patient'}</span>
+              {pinnedPatient.uhid ? <span className="text-blue-700"> · {pinnedPatient.uhid}</span> : null}
+              {pinnedPatient.age && pinnedPatient.gender ? (
+                <span className="text-blue-700">
+                  {' · '}
+                  {pinnedPatient.gender.charAt(0).toUpperCase()}/{pinnedPatient.age}
+                </span>
+              ) : null}
+              {pinnedPatient.current_stage ? (
+                <span className="ml-1.5 text-[10px] uppercase tracking-wide bg-blue-100 px-1.5 py-0.5 rounded">
+                  {pinnedPatient.current_stage}
+                </span>
+              ) : null}
+            </span>
+          ) : (
+            <span>
+              Patient <code className="text-xs bg-amber-100 px-1 rounded">{pinnedPatient.id}</code> not found in this hospital&apos;s OT pipeline.
+            </span>
+          )}
         </div>
       )}
 
@@ -312,36 +428,54 @@ export function OTManagementView(_props: OTManagementViewProps) {
             </div>
           )}
 
-          <SlateSection
-            hospitalLabel={activeHospital?.name || activeSlug.toUpperCase()}
-            rows={today?.slate || []}
-            loading={loadingToday && !today}
-          />
+          <div id="ot-section-slate" ref={(el) => { sectionRefs.current.set('slate', el); }}>
+            <SlateSection
+              hospitalLabel={activeHospital?.name || activeSlug.toUpperCase()}
+              rows={today?.slate || []}
+              loading={loadingToday && !today}
+              highlightedCaseId={highlightedRowKey?.section === 'slate' ? highlightedRowKey.id : null}
+            />
+          </div>
 
-          <BookingInboxSection
-            rows={today?.booking_inbox || []}
-            loading={loadingToday && !today}
-          />
+          <div id="ot-section-inbox" ref={(el) => { sectionRefs.current.set('inbox', el); }}>
+            <BookingInboxSection
+              rows={today?.booking_inbox || []}
+              loading={loadingToday && !today}
+              highlightedCaseId={highlightedRowKey?.section === 'inbox' ? highlightedRowKey.id : null}
+            />
+          </div>
 
-          <PacQueueSection
-            rows={today?.pac_queue || []}
-            loading={loadingToday && !today}
-          />
+          <div id="ot-section-pac" ref={(el) => { sectionRefs.current.set('pac', el); }}>
+            <PacQueueSection
+              rows={today?.pac_queue || []}
+              loading={loadingToday && !today}
+              highlightedCaseId={highlightedRowKey?.section === 'pac' ? highlightedRowKey.id : null}
+            />
+          </div>
 
           {/* Placeholders — OT.3 + OT.4 fill these */}
-          <SectionPlaceholder
-            icon={CalendarRange}
-            title="Week view"
-            subtitle="OT.4 folds /ot-calendar contents into this tab. Until then, open the standalone calendar →"
-            cta={{ label: 'Open OT Calendar', href: '/ot-calendar' }}
-          />
-          <EquipmentSection rows={today?.equipment || []} loading={loadingToday && !today} />
-          <KpiStripSection kpis={today?.kpis || null} loading={loadingToday && !today} />
-          <NotesSection
-            hospitalSlug={activeSlug}
-            notes={today?.notes || null}
-            onChanged={() => loadToday(activeSlug)}
-          />
+          <section id="ot-section-week" className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+            <header className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
+              <CalendarRange size={16} className="text-gray-500" />
+              <h3 className="text-sm font-semibold text-gray-800">Week view</h3>
+            </header>
+            <div className="p-2">
+              <WeekView />
+            </div>
+          </section>
+          <div id="ot-section-equipment" ref={(el) => { sectionRefs.current.set('equipment', el); }}>
+            <EquipmentSection rows={today?.equipment || []} loading={loadingToday && !today} />
+          </div>
+          <div id="ot-section-kpis" ref={(el) => { sectionRefs.current.set('kpis', el); }}>
+            <KpiStripSection kpis={today?.kpis || null} loading={loadingToday && !today} />
+          </div>
+          <div id="ot-section-notes" ref={(el) => { sectionRefs.current.set('notes', el); }}>
+            <NotesSection
+              hospitalSlug={activeSlug}
+              notes={today?.notes || null}
+              onChanged={() => loadToday(activeSlug)}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -368,7 +502,7 @@ function readinessLight(row: SlateRow): { color: string; label: string } {
   return { color: 'bg-amber-500', label: 'In progress' };
 }
 
-function SlateSection({ hospitalLabel, rows, loading }: { hospitalLabel: string; rows: SlateRow[]; loading: boolean }) {
+function SlateSection({ hospitalLabel, rows, loading, highlightedCaseId }: { hospitalLabel: string; rows: SlateRow[]; loading: boolean; highlightedCaseId: string | null }) {
   return (
     <section className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
       <header className="flex items-center gap-2 mb-3">
@@ -392,8 +526,11 @@ function SlateSection({ hospitalLabel, rows, loading }: { hospitalLabel: string;
             const time = r.planned_start_time ? r.planned_start_time.slice(0, 5) : '—';
             const room = r.ot_room ? `OT-${r.ot_room}` : '—';
             const ageSex = r.age && r.gender ? `${r.gender.charAt(0).toUpperCase()}/${r.age}` : '';
+            const isHighlighted = highlightedCaseId === r.case_id;
             return (
-              <li key={r.case_id} className="border border-gray-100 rounded-md p-2 hover:bg-gray-50 transition-colors">
+              <li key={r.case_id} className={`border rounded-md p-2 transition-all ${
+                isHighlighted ? 'border-amber-300 bg-amber-50 ring-1 ring-amber-300' : 'border-gray-100 hover:bg-gray-50'
+              }`}>
                 <div className="flex items-start gap-2">
                   <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${r_l.color}`} title={r_l.label} />
                   <div className="flex-1 min-w-0">
@@ -442,7 +579,7 @@ function urgencyChip(urgency: string | null): { color: string; label: string } |
   return null;
 }
 
-function BookingInboxSection({ rows, loading }: { rows: InboxRow[]; loading: boolean }) {
+function BookingInboxSection({ rows, loading, highlightedCaseId }: { rows: InboxRow[]; loading: boolean; highlightedCaseId: string | null }) {
   return (
     <section className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
       <header className="flex items-center gap-2 mb-3">
@@ -467,8 +604,11 @@ function BookingInboxSection({ rows, loading }: { rows: InboxRow[]; loading: boo
             const waitingDays = r.pac_cleared_at
               ? Math.max(0, Math.floor((Date.now() - new Date(r.pac_cleared_at).getTime()) / 86_400_000))
               : null;
+            const isHighlighted = highlightedCaseId === r.case_id;
             return (
-              <li key={r.case_id} className="border border-gray-100 rounded-md p-2 hover:bg-gray-50 transition-colors">
+              <li key={r.case_id} className={`border rounded-md p-2 transition-all ${
+                isHighlighted ? 'border-amber-300 bg-amber-50 ring-1 ring-amber-300' : 'border-gray-100 hover:bg-gray-50'
+              }`}>
                 <div className="flex items-start gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 mb-0.5">
@@ -516,7 +656,7 @@ const PAC_STATE_DISPLAY: Record<string, { label: string; chipColor: string; orde
   unfit: { label: 'Unfit', chipColor: 'bg-red-100 text-red-700', order: 4 },
 };
 
-function PacQueueSection({ rows, loading }: { rows: PacRow[]; loading: boolean }) {
+function PacQueueSection({ rows, loading, highlightedCaseId }: { rows: PacRow[]; loading: boolean; highlightedCaseId: string | null }) {
   // PRD Q2: flat list with subtle visual grouping. Group by state in render
   // (rows are already sorted by state priority then recency by the API).
   const grouped = useMemo(() => {
@@ -561,8 +701,11 @@ function PacQueueSection({ rows, loading }: { rows: PacRow[]; loading: boolean }
                   {group.map((r) => {
                     const ageSex = r.age && r.gender ? `${r.gender.charAt(0).toUpperCase()}/${r.age}` : '';
                     const u = urgencyChip(r.urgency);
+                    const isHighlighted = highlightedCaseId === r.case_id;
                     return (
-                      <li key={r.case_id} className="border border-gray-100 rounded-md p-2 hover:bg-gray-50 transition-colors">
+                      <li key={r.case_id} className={`border rounded-md p-2 transition-all ${
+                        isHighlighted ? 'border-amber-300 bg-amber-50 ring-1 ring-amber-300' : 'border-gray-100 hover:bg-gray-50'
+                      }`}>
                         <div className="flex items-start gap-2">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 mb-0.5">

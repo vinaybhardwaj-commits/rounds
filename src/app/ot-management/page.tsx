@@ -1,19 +1,16 @@
 // =============================================================================
-// /ot-management — top-level URL for OT Management Module v1 (OT.1)
+// /ot-management — top-level URL for OT Management Module v1
 //
-// Server-side redirects to / with ?tab=ot, preserving patient_id query.
-// AppShell parses ?tab on mount and switches the active bottom-nav tab.
+// Server-side redirects to / with ?tab=ot, preserving patient_id query and
+// translating tab={section} → section={section} so OTManagementView can
+// scroll to a specific section (e.g. ?tab=week → opens the OT tab and
+// scrolls to the Week View section).
 //
 // Why redirect rather than render the module here?
 // • The module is meant to live inside the AppShell so the bottom nav
 //   remains visible (Patients · Chat · Forms · Tasks · OT · Me).
 // • A standalone /ot-management page would lose the bottom nav and break
-//   the "tap a patient to jump to Patients tab" cross-module flows.
-// • PRD §6.4 entry-point updates in OT.4 will point all 5 deep-links here;
-//   this redirect makes the URL canonical from day one.
-//
-// Tolerates both ?patient= (legacy /ot-calendar query) and ?patient_id= (new
-// canonical name) so links from /ot-calendar work without further patching.
+//   cross-module flows.
 // =============================================================================
 
 import { redirect } from 'next/navigation';
@@ -21,11 +18,16 @@ import { redirect } from 'next/navigation';
 export default function OTManagementRedirectPage({
   searchParams,
 }: {
-  searchParams: { patient_id?: string; patient?: string; tab?: string };
+  searchParams: { patient_id?: string; patient?: string; tab?: string; section?: string };
 }) {
   const patientId = searchParams.patient_id || searchParams.patient || '';
+  // tab=week / tab=slate / tab=inbox / etc. → section so AppShell still
+  // routes the outer 'tab' to the OT bottom-nav tab.
+  const section = searchParams.section || searchParams.tab || '';
+
   const params = new URLSearchParams();
   params.set('tab', 'ot');
   if (patientId) params.set('patient_id', patientId);
+  if (section) params.set('section', section);
   redirect(`/?${params.toString()}`);
 }

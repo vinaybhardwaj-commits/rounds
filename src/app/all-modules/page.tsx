@@ -51,7 +51,7 @@ const MODULES: ModuleGroup[] = [
   {
     group: 'Operating Theatre',
     cards: [
-      { label: 'OT Calendar', description: 'Daily OT slot grid + bookings', href: '/ot-calendar', icon: Calendar },
+      { label: 'OT Management', description: 'Slate, booking inbox, PAC queue, week view, equipment, KPIs, notes', href: '/ot-management', icon: Calendar },
       { label: 'Anaesthetist Queue', description: 'Pending PAC publications', href: '/anaesthetist-queue', icon: Stethoscope },
       { label: 'Equipment Kanban', description: 'Kit + equipment request board', href: '/equipment-kanban', icon: Wrench },
     ],
