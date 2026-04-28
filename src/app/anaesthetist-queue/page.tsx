@@ -20,7 +20,8 @@
 // ============================================
 
 import { useEffect, useState, useCallback } from 'react';
-import PacPublishModal from '@/components/drawer/PacPublishModal';
+// PCW.4: PacPublishModal sunsetted — row click navigates to /pac-workspace/[caseId]
+import { useRouter } from 'next/navigation';
 // 26 Apr 2026 — V's typeahead ask: anaesthetist self-schedule.
 import PatientPacSearch from '@/components/anaesthetist/PatientPacSearch';
 
@@ -45,7 +46,16 @@ export default function AnaesthetistQueuePage() {
   const [featureEnabled, setFeatureEnabled] = useState(true);
   const [role, setRole] = useState<string | null>(null);
 
-  const [activeCase, setActiveCase] = useState<QueueCase | null>(null);
+  const [activeCase, _setActiveCase] = useState<QueueCase | null>(null);
+  const router = useRouter();
+  const setActiveCase = (c: QueueCase | null) => {
+    if (c) {
+      router.push(`/pac-workspace/${c.id}`);
+    } else {
+      _setActiveCase(null);
+    }
+  };
+  void activeCase; // suppress unused-var; preserved to minimize churn elsewhere in this file
 
   const load = useCallback(() => {
     setLoading(true);
@@ -213,14 +223,7 @@ export default function AnaesthetistQueuePage() {
         </ul>
       )}
 
-      <PacPublishModal
-        caseId={activeCase?.id ?? ''}
-        patientName={activeCase?.patient_name ?? null}
-        currentState={activeCase?.state ?? ''}
-        isOpen={!!activeCase}
-        onClose={() => setActiveCase(null)}
-        onPublished={() => { setActiveCase(null); load(); }}
-      />
+      {/* PCW.4: PacPublishModal removed; row click navigates to /pac-workspace/[caseId] */}
     </main>
   );
 }

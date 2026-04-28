@@ -90,6 +90,7 @@ interface PacRow {
   pac_published_at: string | null;
   primary_consultant_name: string | null;
   target_department: string | null;
+  workspace_pct: number | null;
 }
 
 interface EquipmentRow {
@@ -736,6 +737,15 @@ function PacQueueSection({ rows, loading, highlightedCaseId, onSelect }: { rows:
                             <div className="text-xs text-gray-600 truncate">
                               {r.target_department || 'Department TBD'}
                               {r.primary_consultant_name ? <span className="text-gray-500"> · {r.primary_consultant_name}</span> : null}
+                              {typeof r.workspace_pct === 'number' && (
+                                <span className={`ml-1.5 text-[10px] uppercase tracking-wide px-1 py-0.5 rounded ${
+                                  r.workspace_pct >= 90 ? 'bg-green-100 text-green-700' :
+                                  r.workspace_pct >= 50 ? 'bg-amber-100 text-amber-800' :
+                                                          'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {r.workspace_pct}%
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>

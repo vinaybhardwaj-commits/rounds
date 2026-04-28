@@ -75,6 +75,8 @@ interface PacQueueRow {
   pac_published_at: string | null;
   primary_consultant_name: string | null;
   target_department: string | null;
+  /** PCW.4 D14: weighted % of orders+clearances+checklist done; null if no workspace exists yet. */
+  workspace_pct: number | null;
 }
 
 interface HospitalLite {
@@ -287,10 +289,43 @@ export async function GET(request: NextRequest) {
               lp.outcome AS pac_outcome,
               lp.published_at::text AS pac_published_at,
               pt.primary_consultant_name,
-              pt.target_department
+              pt.target_department,
+              -- PCW.4 D14: weighted overall workspace %. Three components,
+              -- each weighted 1/3 (orders 'reviewed' / total ; clearances cleared
+              -- or cleared_with_conditions / total ; checklist done OR n/a / total).
+              -- NULL if no workspace exists yet (IPC hasn't opened the workspace).
+              CASE WHEN pwp.case_id IS NULL THEN NULL ELSE
+                LEAST(100, GREATEST(0, FLOOR(
+                  ((CASE WHEN orders_total = 0 THEN 1.0 ELSE orders_done::float / NULLIF(orders_total,0) END)
+                 + (CASE WHEN clr_total    = 0 THEN 1.0 ELSE clr_done::float    / NULLIF(clr_total,0) END)
+                 + (CASE WHEN cl_total     = 0 THEN 1.0 ELSE cl_done::float     / NULLIF(cl_total,0)  END)
+                  ) * 100.0 / 3.0
+                )))
+              END::int AS workspace_pct
          FROM patient_threads pt
          JOIN latest_case lc ON lc.patient_thread_id = pt.id
          LEFT JOIN latest_pac lp ON lp.case_id = lc.case_id
+         LEFT JOIN pac_workspace_progress pwp ON pwp.case_id = lc.case_id AND pwp.archived_at IS NULL
+         LEFT JOIN LATERAL (
+           SELECT
+             COUNT(*)::int AS orders_total,
+             COUNT(*) FILTER (WHERE status = 'reviewed')::int AS orders_done
+           FROM pac_orders WHERE case_id = lc.case_id
+         ) o ON TRUE
+         LEFT JOIN LATERAL (
+           SELECT
+             COUNT(*)::int AS clr_total,
+             COUNT(*) FILTER (WHERE status IN ('cleared','cleared_with_conditions'))::int AS clr_done
+           FROM pac_clearances WHERE case_id = lc.case_id
+         ) c ON TRUE
+         LEFT JOIN LATERAL (
+           SELECT
+             jsonb_array_length(pwp.checklist_state) AS cl_total,
+             (
+               SELECT COUNT(*) FROM jsonb_array_elements(pwp.checklist_state) AS item
+                WHERE item->>'state' IN ('done','na')
+             )::int AS cl_done
+         ) cl ON TRUE
         WHERE pt.archived_at IS NULL
           AND lc.hospital_id = $1::uuid
           AND lc.case_state IN ('fit_conds','optimizing','pac_scheduled','defer','unfit')

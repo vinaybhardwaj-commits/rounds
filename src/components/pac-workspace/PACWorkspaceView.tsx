@@ -38,6 +38,7 @@ import {
 import { OrdersSection } from './OrdersSection';
 import { ClearancesSection } from './ClearancesSection';
 import { ChecklistSection } from './ChecklistSection';
+import { AnaesthetistPublishSection } from './AnaesthetistPublishSection';
 
 const PAC_WRITE_ROLES = new Set([
   'super_admin',
@@ -226,15 +227,16 @@ export function PACWorkspaceView({ caseId, userRole }: Props) {
           canWrite={canWrite}
           onUpdated={load}
         />
-        <PlaceholderSection
-          title="Anaesthetist publish"
-          icon={<ClipboardCheck size={16} className="text-gray-400" />}
-          subtitle="fit / fit_conds / defer / unfit — replaces existing PacPublishModal"
-          sprintHint="Wired in PCW.4"
+        <AnaesthetistPublishSection
+          caseId={caseId}
+          caseState={patient.case_state}
+          subState={progress.sub_state}
+          canPublish={userRole === 'super_admin' || userRole === 'anesthesiologist'}
+          onPublished={load}
         />
 
         <p className="text-[11px] text-gray-400 text-center pt-2 pb-6">
-          PCW.3 · checklist + intake pre-fill live · PCW.4 wires anaesthetist publish
+          PCW.4 · anaesthetist publish live · workspace replaces PacPublishModal
           {payload.channel_id ? ` · live channel ${payload.channel_id}` : ' · live channel offline'}
         </p>
       </div>
