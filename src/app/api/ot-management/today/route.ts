@@ -187,7 +187,7 @@ export async function GET(request: NextRequest) {
               sc.planned_start_time::text AS planned_start_time,
               sc.ot_room,
               sc.case_serial_in_slot,
-              sc.surgeon_name,
+              COALESCE(sp.full_name, '') AS surgeon_name,
               sc.assist_surgeon_name,
               sc.anaesthetist_name,
               sc.anae_type,
@@ -196,6 +196,7 @@ export async function GET(request: NextRequest) {
               sc.ot_remarks
          FROM surgical_cases sc
          JOIN patient_threads pt ON pt.id = sc.patient_thread_id
+         LEFT JOIN profiles sp ON sp.id = sc.surgeon_id
         WHERE sc.hospital_id = $1::uuid
           AND sc.planned_surgery_date = CURRENT_DATE
           AND sc.archived_at IS NULL
@@ -321,7 +322,7 @@ export async function GET(request: NextRequest) {
               sc.planned_surgery_date::text AS planned_surgery_date,
               sc.planned_start_time::text   AS planned_start_time,
               sc.ot_room,
-              sc.surgeon_name,
+              COALESCE(sp.full_name, '') AS surgeon_name,
               er.item_type,
               er.item_label,
               er.quantity,
@@ -337,6 +338,7 @@ export async function GET(request: NextRequest) {
          FROM equipment_requests er
          JOIN surgical_cases sc ON sc.id = er.case_id
          JOIN patient_threads pt ON pt.id = sc.patient_thread_id
+         LEFT JOIN profiles sp ON sp.id = sc.surgeon_id
         WHERE sc.hospital_id = $1::uuid
           AND sc.archived_at IS NULL
           AND sc.state NOT IN ('cancelled','postponed','completed')
