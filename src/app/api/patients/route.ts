@@ -16,6 +16,7 @@ import {
   findProfilesByRole,
   getDepartmentHead,
 } from '@/lib/db-v5';
+import { syncPatientChannelMetadata } from '@/lib/sync-patient-channel-metadata';
 import {
   createPatientChannel,
   sendSystemMessage,
@@ -333,6 +334,11 @@ export async function POST(request: NextRequest) {
         createdById: user.profileId,
         memberIds: [...memberIds].filter((id) => id !== user.profileId), // creator is already the channel owner
       });
+
+      // PTR.1 (28 Apr 2026) — stamp hospital_slug + current_stage onto channel.data
+      // (createPatientChannel set them at create; sync helper re-reads from DB to ensure
+      // hospital_slug present + transitions can re-use this same path).
+      await syncPatientChannelMetadata(patientThreadId);
 
       // 4. Update DB with the channel ID
       await updatePatientThread(patientThreadId, {

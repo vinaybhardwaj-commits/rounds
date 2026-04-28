@@ -31,6 +31,7 @@ import {
   getDepartmentHead,
 } from '@/lib/db-v5';
 import { query, queryOne } from '@/lib/db';
+import { syncPatientChannelMetadata } from '@/lib/sync-patient-channel-metadata';
 import {
   createPatientChannel,
   sendSystemMessage,
@@ -704,6 +705,9 @@ export async function POST(request: NextRequest) {
             createdById: user.profileId,
             memberIds: [...memberIds],
           });
+
+          // PTR.1 (28 Apr 2026) — stamp hospital_slug onto channel.data.
+          await syncPatientChannelMetadata(patientResult.id);
 
           await updatePatientThread(patientResult.id, {
             getstream_channel_id: channelId as unknown as string,
