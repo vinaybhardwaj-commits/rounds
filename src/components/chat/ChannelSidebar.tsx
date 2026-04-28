@@ -215,6 +215,10 @@ export function ChannelSidebar({
       // PTR.4 (28 Apr 2026) — cross-hospital query for OPD/Pre-Adm patients.
       // Drops members filter; filters server-side by current_stage IN list.
       // On GetStream rejection, returns empty rather than failing the whole sidebar.
+      // PTR.9 (28 Apr 2026) — also log success-path count so we can distinguish
+      // "GetStream rejected the query" (warn log) vs "query succeeded with 0 results"
+      // (info log) when investigating cross-hospital visibility for hospital_bound
+      // users. Both states render an empty group; only the runtime log tells us why.
       const safeQueryCrossHospital = async (limit: number): Promise<SafeResult> => {
         try {
           const channels = await client.queryChannels(
@@ -222,10 +226,11 @@ export function ChannelSidebar({
             sort,
             { ...opts, limit }
           );
+          console.info('[PTR.9] cross-hospital query ok', { count: channels.length, userId });
           return { ok: true, type: 'patient-thread-cross', channels };
         } catch (e) {
           const err = e as { status?: number; message?: string };
-          console.warn('[PTR.4] cross-hospital query rejected', err.status, err.message);
+          console.warn('[PTR.9] cross-hospital query rejected', err.status, err.message, { userId });
           return { ok: true, type: 'patient-thread-cross', channels: [] };
         }
       };
