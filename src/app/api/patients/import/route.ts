@@ -228,7 +228,11 @@ const deptCache = new Map<string, string | null>();
 
 async function findOrCreateDoctor(
   doctorName: string,
-  specialty: string
+  specialty: string,
+  // QA.4 (28 Apr 2026) — defaultHospitalId required since MH.1 made
+  // profiles.primary_hospital_id NOT NULL. Caught by the new
+  // migration-blast-radius.sh script (v1.1 #7 missed this site).
+  defaultHospitalId: string,
 ): Promise<string | null> {
   if (!doctorName) return null;
 
@@ -287,11 +291,12 @@ async function findOrCreateDoctor(
   const deptId = await findDepartmentBySpecialty(specialty);
 
   try {
+    // QA.4 fix: INSERT now sets primary_hospital_id (MH.1 NOT NULL).
     const newProfile = await query<{ id: string }>(
-      `INSERT INTO profiles (full_name, email, role, status, department_id, designation, account_type)
-       VALUES ($1, $2, 'doctor', 'active', $3, $4, 'internal')
+      `INSERT INTO profiles (full_name, email, role, status, department_id, designation, account_type, primary_hospital_id)
+       VALUES ($1, $2, 'doctor', 'active', $3, $4, 'internal', $5::uuid)
        RETURNING id`,
-      [normalizedName, stubEmail, deptId, specialty || 'Doctor']
+      [normalizedName, stubEmail, deptId, specialty || 'Doctor', defaultHospitalId]
     );
     if (newProfile[0]) {
       // Immediately sync to GetStream so they can be added to channels
@@ -501,7 +506,7 @@ export async function POST(request: NextRequest) {
         const matchedVia = matchResult.matchedVia;
 
         // Match or create doctor (shared for both new + existing paths)
-        const doctorId = await findOrCreateDoctor(row.admitting_doctor, row.admitting_specialty);
+        const doctorId = await findOrCreateDoctor(row.admitting_doctor, row.admitting_specialty, defaultHospitalId);
         const deptId = await findDepartmentBySpecialty(row.admitting_specialty);
         const admissionDate = parseDateStr(row.admission_date);
 
