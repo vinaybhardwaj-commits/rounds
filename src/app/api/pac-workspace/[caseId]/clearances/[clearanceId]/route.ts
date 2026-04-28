@@ -80,20 +80,26 @@ export async function PATCH(
         : 'responded_at';
 
     const updated = await queryOne<PacClearanceRow>(
-      `UPDATE pac_clearances SET
-         status          = COALESCE($2, status),
-         conditions_text = COALESCE($3, conditions_text),
-         notes           = COALESCE($4, notes),
-         responded_at    = ${respondedClause}
-       WHERE id = $1::uuid
-       RETURNING
-         id::text AS id, case_id::text AS case_id, specialty, status,
-         conditions_text, task_id::text AS task_id,
-         assigned_to::text AS assigned_to,
+      `WITH upd AS (
+         UPDATE pac_clearances SET
+           status          = COALESCE($2, status),
+           conditions_text = COALESCE($3, conditions_text),
+           notes           = COALESCE($4, notes),
+           responded_at    = ${respondedClause}
+         WHERE id = $1::uuid
+         RETURNING *
+       )
+       SELECT
+         upd.id::text AS id, upd.case_id::text AS case_id, upd.specialty,
+         pcs.label AS specialty_label,
+         upd.status, upd.conditions_text, upd.task_id::text AS task_id,
+         upd.assigned_to::text AS assigned_to,
          NULL::text AS assigned_to_name,
-         requested_by::text AS requested_by,
-         requested_at::text AS requested_at,
-         responded_at::text AS responded_at, notes`,
+         upd.requested_by::text AS requested_by,
+         upd.requested_at::text AS requested_at,
+         upd.responded_at::text AS responded_at, upd.notes
+       FROM upd
+       LEFT JOIN pac_clearance_specialties pcs ON pcs.code = upd.specialty`,
       [clearanceId, body.status ?? null, body.conditions_text ?? null, body.notes ?? null],
     );
 

@@ -105,21 +105,27 @@ export async function POST(
       // explicitly re-order). Then create the linked task with source='auto'
       // and source_ref='pac_order:<id>' so retries get the unique-index nop.
       const orderRow = await queryOne<PacOrderRow>(
-        `INSERT INTO pac_orders (case_id, order_type, status, requested_by, notes)
-         VALUES ($1::uuid, $2, 'requested', $3::uuid, $4)
-         RETURNING
-           id::text AS id,
-           case_id::text AS case_id,
-           order_type,
-           status,
-           result_text,
-           result_attached_url,
-           task_id::text AS task_id,
-           requested_by::text AS requested_by,
-           requested_at::text AS requested_at,
-           reported_at::text AS reported_at,
-           reviewed_at::text AS reviewed_at,
-           notes`,
+        `WITH ins AS (
+           INSERT INTO pac_orders (case_id, order_type, status, requested_by, notes)
+           VALUES ($1::uuid, $2, 'requested', $3::uuid, $4)
+           RETURNING *
+         )
+         SELECT
+           ins.id::text AS id,
+           ins.case_id::text AS case_id,
+           ins.order_type,
+           pot.label AS order_label,
+           ins.status,
+           ins.result_text,
+           ins.result_attached_url,
+           ins.task_id::text AS task_id,
+           ins.requested_by::text AS requested_by,
+           ins.requested_at::text AS requested_at,
+           ins.reported_at::text AS reported_at,
+           ins.reviewed_at::text AS reviewed_at,
+           ins.notes
+         FROM ins
+         LEFT JOIN pac_order_types pot ON pot.code = ins.order_type`,
         [caseId, code, user.profileId, o.notes ?? null],
       );
       if (!orderRow) continue;
@@ -153,12 +159,18 @@ export async function POST(
 
       if (task) {
         const linked = await queryOne<PacOrderRow>(
-          `UPDATE pac_orders SET task_id = $2::uuid WHERE id = $1::uuid
-           RETURNING
-             id::text AS id, case_id::text AS case_id, order_type, status,
-             result_text, result_attached_url, task_id::text AS task_id,
-             requested_by::text AS requested_by, requested_at::text AS requested_at,
-             reported_at::text AS reported_at, reviewed_at::text AS reviewed_at, notes`,
+          `WITH upd AS (
+             UPDATE pac_orders SET task_id = $2::uuid WHERE id = $1::uuid RETURNING *
+           )
+           SELECT
+             upd.id::text AS id, upd.case_id::text AS case_id, upd.order_type,
+             pot.label AS order_label,
+             upd.status, upd.result_text, upd.result_attached_url,
+             upd.task_id::text AS task_id,
+             upd.requested_by::text AS requested_by, upd.requested_at::text AS requested_at,
+             upd.reported_at::text AS reported_at, upd.reviewed_at::text AS reviewed_at, upd.notes
+           FROM upd
+           LEFT JOIN pac_order_types pot ON pot.code = upd.order_type`,
           [orderRow.id, task.id],
         );
         if (linked) {

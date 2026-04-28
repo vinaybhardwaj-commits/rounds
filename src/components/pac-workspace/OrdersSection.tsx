@@ -102,7 +102,7 @@ export function OrdersSection({ caseId, orders, canWrite, pacMode, onAdded, onUp
                     <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${STATUS_CHIP[o.status]}`}>
                       {STATUS_LABEL[o.status]}
                     </span>
-                    <span className="text-sm font-medium text-gray-900 truncate">{prettyOrderType(o.order_type)}</span>
+                    <span className="text-sm font-medium text-gray-900 truncate">{o.order_label ?? prettyOrderType(o.order_type)}</span>
                   </div>
                   {o.notes && <p className="text-xs text-gray-500 mt-1 truncate">{o.notes}</p>}
                   {o.result_text && (

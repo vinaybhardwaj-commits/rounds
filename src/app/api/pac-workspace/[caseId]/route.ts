@@ -172,21 +172,23 @@ export async function GET(
     const [orders, clearances] = await Promise.all([
       query<PacOrderRow>(
         `SELECT
-           id::text AS id,
-           case_id::text AS case_id,
-           order_type,
-           status,
-           result_text,
-           result_attached_url,
-           task_id::text AS task_id,
-           requested_by::text AS requested_by,
-           requested_at::text AS requested_at,
-           reported_at::text AS reported_at,
-           reviewed_at::text AS reviewed_at,
-           notes
-         FROM pac_orders
-         WHERE case_id = $1::uuid
-         ORDER BY requested_at ASC`,
+           po.id::text AS id,
+           po.case_id::text AS case_id,
+           po.order_type,
+           pot.label AS order_label,
+           po.status,
+           po.result_text,
+           po.result_attached_url,
+           po.task_id::text AS task_id,
+           po.requested_by::text AS requested_by,
+           po.requested_at::text AS requested_at,
+           po.reported_at::text AS reported_at,
+           po.reviewed_at::text AS reviewed_at,
+           po.notes
+         FROM pac_orders po
+         LEFT JOIN pac_order_types pot ON pot.code = po.order_type
+         WHERE po.case_id = $1::uuid
+         ORDER BY po.requested_at ASC`,
         [caseId],
       ),
       query<PacClearanceRow>(
@@ -194,6 +196,7 @@ export async function GET(
            pc.id::text AS id,
            pc.case_id::text AS case_id,
            pc.specialty,
+           pcs.label AS specialty_label,
            pc.status,
            pc.conditions_text,
            pc.task_id::text AS task_id,
@@ -205,6 +208,7 @@ export async function GET(
            pc.notes
          FROM pac_clearances pc
          LEFT JOIN profiles ap ON ap.id = pc.assigned_to
+         LEFT JOIN pac_clearance_specialties pcs ON pcs.code = pc.specialty
          WHERE pc.case_id = $1::uuid
          ORDER BY pc.requested_at ASC`,
         [caseId],

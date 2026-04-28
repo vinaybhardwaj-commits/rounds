@@ -109,7 +109,7 @@ export function ClearancesSection({ caseId, clearances, canWrite, pacMode, onAdd
                         {STATUS_LABEL[c.status]}
                       </span>
                       <span className="text-sm font-medium text-gray-900 truncate">
-                        {prettySpecialty(c.specialty)}
+                        {c.specialty_label ?? prettySpecialty(c.specialty)}
                       </span>
                       {c.assigned_to_name && (
                         <span className="text-[11px] text-gray-500">→ {c.assigned_to_name}</span>

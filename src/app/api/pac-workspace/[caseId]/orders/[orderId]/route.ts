@@ -75,19 +75,26 @@ export async function PATCH(
     const reviewedAtClause = body.status === 'reviewed' ? 'COALESCE(reviewed_at, NOW())' : 'reviewed_at';
 
     const updated = await queryOne<PacOrderRow>(
-      `UPDATE pac_orders SET
-         status              = COALESCE($2, status),
-         result_text         = COALESCE($3, result_text),
-         result_attached_url = COALESCE($4, result_attached_url),
-         notes               = COALESCE($5, notes),
-         reported_at         = ${reportedAtClause},
-         reviewed_at         = ${reviewedAtClause}
-       WHERE id = $1::uuid
-       RETURNING
-         id::text AS id, case_id::text AS case_id, order_type, status,
-         result_text, result_attached_url, task_id::text AS task_id,
-         requested_by::text AS requested_by, requested_at::text AS requested_at,
-         reported_at::text AS reported_at, reviewed_at::text AS reviewed_at, notes`,
+      `WITH upd AS (
+         UPDATE pac_orders SET
+           status              = COALESCE($2, status),
+           result_text         = COALESCE($3, result_text),
+           result_attached_url = COALESCE($4, result_attached_url),
+           notes               = COALESCE($5, notes),
+           reported_at         = ${reportedAtClause},
+           reviewed_at         = ${reviewedAtClause}
+         WHERE id = $1::uuid
+         RETURNING *
+       )
+       SELECT
+         upd.id::text AS id, upd.case_id::text AS case_id, upd.order_type,
+         pot.label AS order_label,
+         upd.status, upd.result_text, upd.result_attached_url,
+         upd.task_id::text AS task_id,
+         upd.requested_by::text AS requested_by, upd.requested_at::text AS requested_at,
+         upd.reported_at::text AS reported_at, upd.reviewed_at::text AS reviewed_at, upd.notes
+       FROM upd
+       LEFT JOIN pac_order_types pot ON pot.code = upd.order_type`,
       [orderId, body.status ?? null, body.result_text ?? null, body.result_attached_url ?? null, body.notes ?? null],
     );
 

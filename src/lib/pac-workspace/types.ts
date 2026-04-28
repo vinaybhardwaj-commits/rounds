@@ -61,6 +61,7 @@ export interface PacOrderRow {
   id: string;
   case_id: string;
   order_type: string;
+  order_label: string | null;
   status: PacOrderStatus;
   result_text: string | null;
   result_attached_url: string | null;
@@ -76,6 +77,7 @@ export interface PacClearanceRow {
   id: string;
   case_id: string;
   specialty: string;
+  specialty_label: string | null;
   status: PacClearanceStatus;
   conditions_text: string | null;
   task_id: string | null;

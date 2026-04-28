@@ -111,17 +111,23 @@ export async function POST(
       const assignedTo = c.assigned_to || null;
 
       const clearanceRow = await queryOne<PacClearanceRow>(
-        `INSERT INTO pac_clearances (case_id, specialty, status, assigned_to, requested_by, notes)
-         VALUES ($1::uuid, $2, 'requested', $3::uuid, $4::uuid, $5)
-         RETURNING
-           id::text AS id, case_id::text AS case_id, specialty, status,
-           conditions_text, task_id::text AS task_id,
-           assigned_to::text AS assigned_to,
+        `WITH ins AS (
+           INSERT INTO pac_clearances (case_id, specialty, status, assigned_to, requested_by, notes)
+           VALUES ($1::uuid, $2, 'requested', $3::uuid, $4::uuid, $5)
+           RETURNING *
+         )
+         SELECT
+           ins.id::text AS id, ins.case_id::text AS case_id, ins.specialty,
+           pcs.label AS specialty_label,
+           ins.status, ins.conditions_text, ins.task_id::text AS task_id,
+           ins.assigned_to::text AS assigned_to,
            NULL::text AS assigned_to_name,
-           requested_by::text AS requested_by,
-           requested_at::text AS requested_at,
-           responded_at::text AS responded_at,
-           notes`,
+           ins.requested_by::text AS requested_by,
+           ins.requested_at::text AS requested_at,
+           ins.responded_at::text AS responded_at,
+           ins.notes
+         FROM ins
+         LEFT JOIN pac_clearance_specialties pcs ON pcs.code = ins.specialty`,
         [caseId, code, assignedTo, user.profileId, c.notes ?? null],
       );
       if (!clearanceRow) continue;
@@ -157,15 +163,20 @@ export async function POST(
 
       if (task) {
         const linked = await queryOne<PacClearanceRow>(
-          `UPDATE pac_clearances SET task_id = $2::uuid WHERE id = $1::uuid
-           RETURNING
-             id::text AS id, case_id::text AS case_id, specialty, status,
-             conditions_text, task_id::text AS task_id,
-             assigned_to::text AS assigned_to,
+          `WITH upd AS (
+             UPDATE pac_clearances SET task_id = $2::uuid WHERE id = $1::uuid RETURNING *
+           )
+           SELECT
+             upd.id::text AS id, upd.case_id::text AS case_id, upd.specialty,
+             pcs.label AS specialty_label,
+             upd.status, upd.conditions_text, upd.task_id::text AS task_id,
+             upd.assigned_to::text AS assigned_to,
              NULL::text AS assigned_to_name,
-             requested_by::text AS requested_by,
-             requested_at::text AS requested_at,
-             responded_at::text AS responded_at, notes`,
+             upd.requested_by::text AS requested_by,
+             upd.requested_at::text AS requested_at,
+             upd.responded_at::text AS responded_at, upd.notes
+           FROM upd
+           LEFT JOIN pac_clearance_specialties pcs ON pcs.code = upd.specialty`,
           [clearanceRow.id, task.id],
         );
         if (linked) {
