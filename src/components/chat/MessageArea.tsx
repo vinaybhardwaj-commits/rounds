@@ -718,6 +718,40 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
     }
   };
 
+  // CT.9 — AI parse hooks (lifted above the early return per Rules of Hooks).
+  // v1.1 (28 Apr 2026) bugfix: these were originally placed AFTER the early
+  // `if (!channel) return` block, so React saw a different number of hooks on
+  // first render (no channel) vs second render (channel selected) and threw
+  // 'Rendered more hooks than during the previous render' (#310). Every chat
+  // channel click crashed with the App error boundary. Now they run on every
+  // render and no-op when there's no channel yet.
+  // CT.9 follow-up (V — 26 Apr 2026): default flipped from OFF → ON for EHRC.
+  // Kill-switch retained: NEXT_PUBLIC_FEATURE_CHAT_TASKS_AI_PARSE_ENABLED='false'.
+  const isWAChannelForAI = channel?.type === 'whatsapp-analysis';
+  const aiParseSuggestion: ParsedChatTaskIntent | null = React.useMemo(() => {
+    if (!channel) return null;
+    const flagVal = (process.env.NEXT_PUBLIC_FEATURE_CHAT_TASKS_AI_PARSE_ENABLED || '').trim().toLowerCase();
+    const flagOff = flagVal === 'false';
+    if (flagOff) return null;
+    if (isWAChannelForAI) return null;
+    if (!messageText || dismissedSuggestionText === messageText.trim()) return null;
+    return parseChatTaskIntent(messageText);
+  }, [channel, messageText, dismissedSuggestionText, isWAChannelForAI]);
+  const lastShownTextRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!channel) return;
+    if (aiParseSuggestion && aiParseSuggestion.fullText !== lastShownTextRef.current) {
+      lastShownTextRef.current = aiParseSuggestion.fullText;
+      trackFeature('chat_task_ai_suggest_shown', {
+        channel_type: channel.type,
+        verb: aiParseSuggestion.actionVerb,
+        has_time: !!aiParseSuggestion.timeChip,
+      });
+    } else if (!aiParseSuggestion) {
+      lastShownTextRef.current = null;
+    }
+  }, [channel, aiParseSuggestion]);
+
   // No channel selected
   if (!channel) {
     return (
@@ -761,36 +795,6 @@ export function MessageArea({ channel, onOpenSidebar, onOpenThread, scrollToMess
   // WhatsApp Insights derived state (super_admin only)
   const isWAChannel = channel.type === 'whatsapp-analysis';
   const isSuperAdmin = ((client?.user as Record<string, unknown>)?.rounds_role as string) === 'super_admin';
-
-  // CT.9 — AI parse: compute the heuristic suggestion from the current composer text.
-  // CT.9 follow-up (V — 26 Apr 2026): default flipped from OFF → ON for EHRC.
-  // Kill-switch retained: set NEXT_PUBLIC_FEATURE_CHAT_TASKS_AI_PARSE_ENABLED='false'
-  // on Vercel + redeploy to disable. Empty/undefined env var = ON.
-  // Suppressed when the user dismissed THIS exact text — they can re-trigger by editing.
-  // Also suppressed in the WA Insights channel (different message model).
-  const aiParseSuggestion: ParsedChatTaskIntent | null = React.useMemo(() => {
-    const flagVal = (process.env.NEXT_PUBLIC_FEATURE_CHAT_TASKS_AI_PARSE_ENABLED || '').trim().toLowerCase();
-    const flagOff = flagVal === 'false';
-    if (flagOff) return null;
-    if (isWAChannel) return null;
-    if (!messageText || dismissedSuggestionText === messageText.trim()) return null;
-    return parseChatTaskIntent(messageText);
-  }, [messageText, dismissedSuggestionText, isWAChannel]);
-
-  // Telemetry: fire 'shown' event when a NEW suggestion appears (not on every keystroke that keeps it visible).
-  const lastShownTextRef = React.useRef<string | null>(null);
-  React.useEffect(() => {
-    if (aiParseSuggestion && aiParseSuggestion.fullText !== lastShownTextRef.current) {
-      lastShownTextRef.current = aiParseSuggestion.fullText;
-      trackFeature('chat_task_ai_suggest_shown', {
-        channel_type: channel.type,
-        verb: aiParseSuggestion.actionVerb,
-        has_time: !!aiParseSuggestion.timeChip,
-      });
-    } else if (!aiParseSuggestion) {
-      lastShownTextRef.current = null;
-    }
-  }, [aiParseSuggestion, channel.type]);
 
   return (
     <div className="flex-1 flex flex-col min-w-0">

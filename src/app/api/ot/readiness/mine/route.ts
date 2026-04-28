@@ -16,11 +16,16 @@ export const GET = withTenancy('/api/ot/readiness/mine', async (request: NextReq
 
     // Fetch items belonging to the user's role + accessible hospitals
     const items = await query(
+      // v1.1 (28 Apr 2026) — fixed broken JOIN + column. ot_readiness_items
+      // has surgery_posting_id (FK to surgery_postings), not patient_thread_id.
+      // Hospital scoping goes via surgery_postings → patient_threads.
+      // Also: column is ri.due_by, not ri.due_date.
       `SELECT ri.* FROM ot_readiness_items ri
-       JOIN patient_threads pt ON pt.id = ri.patient_thread_id
-       WHERE pt.hospital_id = ANY($1::uuid[])
+       JOIN surgery_postings sp ON sp.id = ri.surgery_posting_id
+       LEFT JOIN patient_threads pt ON pt.id = sp.patient_thread_id
+       WHERE (pt.hospital_id = ANY($1::uuid[]) OR pt.id IS NULL)
        AND ri.status IN ('pending', 'flagged')
-       ORDER BY ri.due_date ASC, ri.id`,
+       ORDER BY ri.due_by ASC NULLS LAST, ri.id`,
       [ctx.accessibleHospitalIds]
     );
 

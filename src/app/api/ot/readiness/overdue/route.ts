@@ -12,12 +12,14 @@ export const GET = withTenancy('/api/ot/readiness/overdue', async (_request: Nex
   try {
     // Get overdue items from accessible hospitals only
     const items = await query(
+      // v1.1 (28 Apr 2026) — fixed broken JOIN + column (same fix as /mine).
       `SELECT ri.* FROM ot_readiness_items ri
-       JOIN patient_threads pt ON pt.id = ri.patient_thread_id
-       WHERE pt.hospital_id = ANY($1::uuid[])
+       JOIN surgery_postings sp ON sp.id = ri.surgery_posting_id
+       LEFT JOIN patient_threads pt ON pt.id = sp.patient_thread_id
+       WHERE (pt.hospital_id = ANY($1::uuid[]) OR pt.id IS NULL)
        AND ri.status IN ('pending', 'flagged')
-       AND (ri.due_date IS NULL OR ri.due_date < NOW())
-       ORDER BY ri.due_date ASC, ri.id`,
+       AND (ri.due_by IS NULL OR ri.due_by < NOW())
+       ORDER BY ri.due_by ASC NULLS LAST, ri.id`,
       [ctx.accessibleHospitalIds]
     );
 
