@@ -58,16 +58,38 @@ export const GET = withTenancy('/api/ot/postings', async (request: NextRequest, 
       patient_thread_id: searchParams.get('patient_thread_id') || undefined,
     };
 
-    // Filter postings to only those in accessible hospitals
+    // Build parameterized WHERE clauses dynamically.
+    // Bug fix (1 May 2026): patient_thread_id was previously parsed but never
+    // applied to the SQL, so SurgeryPanel received the most-recent posting in
+    // the hospital regardless of which patient was being viewed — every
+    // patient saw the same phantom "Upcoming Surgery" card. Also fixes a
+    // latent bug where filters.date referenced $2 with no second binding.
+    // ot_room and status remain string-interpolated (pre-existing pattern;
+    // SQL injection cleanup tracked separately as v1.x).
+    const params: unknown[] = [ctx.accessibleHospitalIds];
+    const where: string[] = ['pt.hospital_id = ANY($1::uuid[])'];
+
+    if (filters.patient_thread_id) {
+      params.push(filters.patient_thread_id);
+      where.push(`sp.patient_thread_id = $${params.length}::uuid`);
+    }
+    if (filters.date) {
+      params.push(filters.date);
+      where.push(`sp.scheduled_date = $${params.length}::date`);
+    }
+    if (filters.ot_room) {
+      where.push(`sp.ot_room = ${filters.ot_room}`);
+    }
+    if (filters.status) {
+      where.push(`sp.status = '${filters.status}'`);
+    }
+
     const postings = await query(
       `SELECT sp.* FROM surgery_postings sp
        JOIN patient_threads pt ON pt.id = sp.patient_thread_id
-       WHERE pt.hospital_id = ANY($1::uuid[])
-       ${filters.date ? 'AND sp.scheduled_date = $2::date' : ''}
-       ${filters.ot_room ? `AND sp.ot_room = ${filters.ot_room}` : ''}
-       ${filters.status ? `AND sp.status = '${filters.status}'` : ''}
+       WHERE ${where.join(' AND ')}
        ORDER BY sp.scheduled_date DESC, sp.id`,
-      [ctx.accessibleHospitalIds]
+      params
     );
 
     return NextResponse.json({ success: true, data: postings });
