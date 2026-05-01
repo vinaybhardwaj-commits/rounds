@@ -517,14 +517,14 @@ export function PatientDetailView({
         {([
           { id: 'overview' as DetailTab, label: 'Overview', icon: <FileText size={14} /> },
           { id: 'files' as DetailTab, label: 'Files', icon: <Paperclip size={14} /> },
-          // 25 Apr 2026: OT tab is visible whenever the patient is at admitted+
-          // stage (matches OTPlanningPanel visibility rule). For OPD / pre_admission
-          // patients the tab is hidden to avoid noise. The tab itself handles the
-          // empty state if a surgical_case doesn't yet exist.
+          // 1 May 2026 (Bug.2 — V's request): OT Planning tab is now universal.
+          // Every patient gets it the moment they enter the system, regardless
+          // of stage. OPD / pre_admission patients with no surgical_case see a
+          // quiet "no surgery planned" empty state inside the panel; admitted+
+          // patients see the create-case affordance if backfill missed them.
+          // 25 Apr 2026 (superseded): tab was previously gated to admitted+.
           // P2-7: keep this in sync with STAGES_WITH_OT in OTPlanningPanel.tsx.
-          ...(['admitted', 'medical_management', 'pre_op', 'surgery', 'post_op', 'post_op_care', 'discharge'].includes(patient.current_stage)
-            ? [{ id: 'ot' as DetailTab, label: 'OT Planning', icon: <Stethoscope size={14} /> }]
-            : []),
+          { id: 'ot' as DetailTab, label: 'OT Planning', icon: <Stethoscope size={14} /> },
           // GLASS.10.5 — per-patient audit timeline (every-user view).
           { id: 'activity' as DetailTab, label: 'Activity', icon: <ShieldCheck size={14} /> },
         ]).map(tab => (

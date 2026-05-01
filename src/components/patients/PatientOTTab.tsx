@@ -15,9 +15,11 @@
 //   - If no case exists, shows the same "Create surgical case" empty state
 //     as the panel — consistent UX.
 //
-// This tab is gated by the parent: PatientDetailView only renders the OT tab
-// button when the patient is at admitted+ stage OR a case exists. (Avoids
-// noise on pre_admission patients.)
+// 1 May 2026 (Bug.2): tab is now universal — every patient gets it. For
+// OPD / pre_admission patients with no case, this tab renders a quiet
+// "no surgery planned" empty state (no Create button — the Marketing
+// Handoff and Surgery Booking forms are the right entry points at those
+// stages).
 // =============================================================================
 
 import { useState, useCallback } from 'react';
@@ -58,6 +60,13 @@ const STATE_TONE: Record<string, string> = {
   cancelled: 'bg-red-100 text-red-800',
 };
 
+// 1 May 2026 (Bug.2): mirrors the same set in OTPlanningPanel.tsx. Stages
+// where a missing surgical_case is unexpected and the create-case button is
+// offered. Earlier stages (opd / pre_admission) get a quiet empty state.
+const STAGES_OFFERING_CREATE_CASE = new Set([
+  'admitted', 'medical_management', 'pre_op', 'surgery', 'post_op', 'post_op_care', 'discharge',
+]);
+
 function StatePill({ state }: { state: string }) {
   const tone = STATE_TONE[state] || 'bg-gray-100 text-gray-700';
   return (
@@ -97,6 +106,28 @@ export function PatientOTTab({
   }
 
   if (!caseRow) {
+    if (!STAGES_OFFERING_CREATE_CASE.has(patientStage)) {
+      // OPD / pre_admission flavor — quiet, neutral, no Create button.
+      return (
+        <div className="p-6">
+          <div className="mx-auto max-w-md rounded-xl border border-gray-100 bg-gray-50 p-5">
+            <div className="flex items-start gap-3">
+              <Stethoscope className="h-6 w-6 text-gray-400 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="text-base font-semibold text-gray-700">No surgery planned</h3>
+                <p className="mt-1.5 text-sm text-gray-500">
+                  {patientName} is at the <strong>{patientStage.replace(/_/g, ' ')}</strong> stage and
+                  doesn&apos;t have a surgical plan yet. Submit a Marketing Handoff (with surgery planned)
+                  or a Surgery Booking form to capture OT planning details — they&apos;ll appear here
+                  automatically.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    // Admitted+ flavor — backfill miss, amber + create-case affordance.
     return (
       <div className="p-6">
         <div className="mx-auto max-w-md rounded-xl border border-amber-200 bg-amber-50 p-5">

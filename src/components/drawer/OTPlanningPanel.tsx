@@ -10,11 +10,15 @@
 // now always renders for those patients.
 //
 // Behaviors:
-//   - Patient at OPD / pre_admission with NO case: render nothing (case isn't
-//     relevant yet)
-//   - Patient at admitted+ with NO case: render empty state with a "Create
-//     surgical case" button (POST /api/cases) — covers any future patient
-//     edge case where backfill missed
+//   - Patient at OPD / pre_admission with NO case: render quiet "no surgery
+//     planned" empty state. Hint: surgery is captured via Marketing Handoff
+//     (with surgery_planned=true) or the standalone Surgery Booking form;
+//     either will create a surgical_cases row that this panel renders.
+//     1 May 2026: previously rendered nothing here; V's request — every
+//     patient must have access to the OT planning surface from intake.
+//   - Patient at admitted+ with NO case: render amber empty state with a
+//     "Create surgical case" button (POST /api/cases) — covers any future
+//     patient edge case where backfill missed
 //   - Patient with an active case: render the state pill + a row of deep-link
 //     buttons (Equipment Kanban, Anaesthetist Queue, OT Calendar, Full Case
 //     Drawer) + the embedded CaseDrawer (mode="panel") below
@@ -36,9 +40,23 @@ interface OTPlanningPanelProps {
   patientStage: string;
 }
 
+// Stages where the panel renders something even without a surgical_case.
+// 1 May 2026 (Bug.2): added 'opd' and 'pre_admission' so the surface is
+// universal from intake. Empty state below distinguishes pre-admission
+// (quiet "no surgery planned") from admitted+ (amber + create-case button).
 const STAGES_WITH_OT = new Set([
+  'opd', 'pre_admission',
   // 26 Apr 2026 audit fix (P2-7 / D-D): include medical_management — a
   // surgical patient stabilizing pre-op shouldn't lose access to OT planning.
+  'admitted', 'medical_management', 'pre_op', 'surgery', 'post_op', 'post_op_care', 'discharge',
+]);
+
+// Stages that show the create-case affordance (and the amber tone) when no
+// case row exists. OPD / pre_admission patients fall outside this set —
+// surgical_cases get created automatically by Marketing Handoff
+// (surgery_planned=true) or by the Surgery Booking form, so a manual
+// Create button at those early stages would be premature.
+const STAGES_OFFERING_CREATE_CASE = new Set([
   'admitted', 'medical_management', 'pre_op', 'surgery', 'post_op', 'post_op_care', 'discharge',
 ]);
 
@@ -100,9 +118,30 @@ export default function OTPlanningPanel({
   if (caseLoading) return null;
   if (!caseRow && !STAGES_WITH_OT.has(patientStage)) return null;
 
-  // Empty state: admitted+ but no case (could happen for new patients
-  // post-backfill if some ingest path missed creating a case).
+  // Empty state — two flavors. OPD / pre_admission gets a quiet neutral
+  // panel: no surgery is planned yet, and the affordance to capture one is
+  // the Marketing Handoff or Surgery Booking form, not a manual create.
+  // Admitted+ with no case is unexpected (backfill missed) and gets the
+  // amber-toned create-case affordance.
   if (!caseRow) {
+    if (!STAGES_OFFERING_CREATE_CASE.has(patientStage)) {
+      // Pre-admission flavor — quiet "no surgery planned" empty state.
+      return (
+        <div className="mx-4 mb-3 rounded-xl border border-gray-100 bg-gray-50 p-4">
+          <div className="flex items-start gap-3">
+            <Stethoscope className="h-5 w-5 text-gray-400 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-gray-700">No surgery planned</h3>
+              <p className="mt-1 text-xs text-gray-500">
+                Submit a Marketing Handoff (with surgery planned) or a Surgery Booking
+                form to add OT planning details. They&apos;ll appear here automatically.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    // Admitted+ flavor — backfill miss, amber + create-case button.
     return (
       <div className="mx-4 mb-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
         <div className="flex items-start gap-3">
