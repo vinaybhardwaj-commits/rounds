@@ -25,6 +25,7 @@ import {
   Grid3x3,
   ShieldCheck,
   Network,
+  Settings,
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -108,6 +109,15 @@ const navItems: NavItem[] = [
     label: 'Migrations',
     href: '/admin/migrate-page',
     icon: <Database size={iconSize} />,
+    requiresRole: 'super_admin',
+  },
+
+  // GENERAL — app-wide settings + module toggles (1 May 2026, sub-sprint D.2)
+  {
+    group: 'GENERAL',
+    label: 'Settings',
+    href: '/admin/settings',
+    icon: <Settings size={iconSize} />,
     requiresRole: 'super_admin',
   },
 ];
