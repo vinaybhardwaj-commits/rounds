@@ -253,10 +253,16 @@ export const PAC_STATUS_COLORS: Record<PacStatus, { bg: string; text: string }> 
   inpatient_pac_passed: { bg: 'bg-emerald-100', text: 'text-emerald-700' },
 };
 
-// Stages where PAC status is relevant (Pre-Op and above)
+// Stages where PAC status / PAC workspace is relevant.
+// 1 May 2026 (sub-sprint A): expanded to all stages from intake onward.
+// V's mental model — every patient not yet in surgery is "pre-op" and may
+// need PAC. Modules should be available from the moment a patient enters
+// Rounds, not gated to a discrete pre_op journey stage.
+// Surgery and beyond are kept so historical PAC records still render.
 export const PAC_RELEVANT_STAGES: PatientStage[] = [
-  'pre_op', 'surgery', 'post_op', 'discharge', 'post_discharge',
-  'medical_management', 'post_op_care', 'long_term_followup',
+  'opd', 'pre_admission', 'admitted', 'medical_management',
+  'pre_op', 'surgery', 'post_op', 'post_op_care',
+  'discharge', 'post_discharge', 'long_term_followup',
 ];
 
 // ============================================
