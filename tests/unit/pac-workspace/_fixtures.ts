@@ -77,3 +77,20 @@ export function merge(
 ): Record<string, FactValue> {
   return Object.assign({}, ...parts);
 }
+
+/** medication.notes free-text — matches what the form-registry's textarea emits. */
+export function withMedication(text: string): Record<string, FactValue> {
+  return { 'medication.notes': v(text) };
+}
+
+/** Set a `{value: false}` fact (e.g., habit_stopped.anticoagulant=false). */
+export function withFalse(key: string): Record<string, FactValue> {
+  return { [key]: { value: false } };
+}
+
+/** surgery.urgency — 'elective' | 'urgent' | 'emergency'. */
+export function withUrgency(
+  urg: 'elective' | 'urgent' | 'emergency'
+): Record<string, FactValue> {
+  return { 'surgery.urgency': v(urg) };
+}
