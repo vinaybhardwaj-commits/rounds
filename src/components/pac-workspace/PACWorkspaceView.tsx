@@ -43,6 +43,7 @@ import { SuggestionsInbox } from './v2/SuggestionsInbox';
 import { DiagnosticsSection } from './v2/DiagnosticsSection';
 import { PacVisitSchedulingCard } from './v2/PacVisitSchedulingCard';
 import { DeadlineStrip } from './v2/DeadlineStrip';
+import { AsaChip } from './v2/AsaChip';
 import { usePacWorkspaceV2Enabled } from '@/components/FeatureFlagsProvider';
 
 const PAC_WRITE_ROLES = new Set([
@@ -197,6 +198,16 @@ export function PACWorkspaceView({ caseId, userRole }: Props) {
                 <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 uppercase tracking-wide">
                   {progress.sub_state.replace(/_/g, ' ')}
                 </span>
+                {v2Enabled && (
+                  <AsaChip
+                    caseId={caseId}
+                    asaGrade={progress.asa_grade ?? null}
+                    asaSource={progress.asa_source ?? null}
+                    asaOverrideReason={progress.asa_override_reason ?? null}
+                    canWrite={canWrite}
+                    onOverridden={load}
+                  />
+                )}
               </div>
             </div>
           </div>

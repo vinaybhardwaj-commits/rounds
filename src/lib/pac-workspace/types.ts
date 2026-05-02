@@ -55,6 +55,19 @@ export interface PacWorkspaceProgressRow {
   sla_deadline_at: string | null;
   created_at: string;
   updated_at: string;
+  // PCW2.0 columns surfaced through GET in PCW2.9. All optional so legacy
+  // payloads without these fields keep typing.
+  asa_grade?: 1 | 2 | 3 | 4 | 5 | null;
+  asa_source?: 'inferred' | 'coordinator' | 'anaesthetist' | null;
+  asa_override_reason?: string | null;
+  resolution_state?:
+    | 'none'
+    | 'active_for_surgery'
+    | 'active_for_optimization'
+    | 'completed'
+    | 'cancelled'
+    | 'superseded'
+    | null;
 }
 
 export interface PacOrderRow {

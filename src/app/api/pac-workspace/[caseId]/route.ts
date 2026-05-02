@@ -124,7 +124,11 @@ export async function GET(
          anaesthetist_id::text AS anaesthetist_id,
          sla_deadline_at::text AS sla_deadline_at,
          created_at::text AS created_at,
-         updated_at::text AS updated_at
+         updated_at::text AS updated_at,
+         asa_grade,
+         asa_source,
+         asa_override_reason,
+         resolution_state
        FROM pac_workspace_progress
        WHERE case_id = $1::uuid AND archived_at IS NULL`,
       [caseId],
