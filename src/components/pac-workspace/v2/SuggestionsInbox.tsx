@@ -1,22 +1,25 @@
 'use client';
 
 // =============================================================================
-// SuggestionsInbox — top-of-workspace block (PCW2.4a)
+// SuggestionsInbox — top-of-workspace block (PCW2.4a + 2.4b)
 //
 // Per PRD §8.1:
 //   • Visible only when ≥ 1 pending suggestion exists.
 //   • When 0 pending: collapses to a single line "✓ All SOP suggestions
 //     reviewed · Skipped (N) — view".
 //   • Sort: REQUIRED first (by created_at asc), then RECOMMENDED, then INFO.
-//   • Action buttons disabled in PCW2.4a; PCW2.4b wires the click handlers
-//     + Skip/AlreadyDone modals + bulk Accept All.
+//
+// PCW2.4b wires the click handlers + Skip/AlreadyDone modals + bulk Accept
+// All. Skipped drawer renders inline.
 //
 // Mounted by PACWorkspaceView when usePacWorkspaceV2Enabled() returns true.
 // =============================================================================
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, Loader2, RefreshCw, Sparkles } from 'lucide-react';
 import { SuggestionCard, type SuggestionData } from './SuggestionCard';
+import { SkipModal } from './SkipModal';
+import { AlreadyDoneModal } from './AlreadyDoneModal';
 
 interface SuggestionsResponse {
   caseId: string;
@@ -36,18 +39,36 @@ interface SuggestionsResponse {
 interface Props {
   caseId: string;
   /**
-   * When true, the inbox renders action buttons enabled. PCW2.4a uses false
-   * (read-only); PCW2.4b will pass true and wire the modal handlers.
+   * When true, the inbox renders action buttons enabled. PCW2.4a defaulted
+   * to false (read-only); PCW2.4b defaults to true now that decision API
+   * + modals are live.
    */
   actionsEnabled?: boolean;
 }
 
-export function SuggestionsInbox({ caseId, actionsEnabled = false }: Props) {
+type ModalState =
+  | { kind: 'skip'; suggestion: SuggestionData }
+  | { kind: 'already_done'; suggestion: SuggestionData }
+  | null;
+
+/** Suggestions whose accept path doesn't insert a section row — bulk accept skips them. */
+function isAsaOrInfoOnly(s: SuggestionData): boolean {
+  return (
+    s.routes_to === 'asa_review' ||
+    s.routes_to === 'info_only' ||
+    s.routes_to === 'pac_visit'
+  );
+}
+
+export function SuggestionsInbox({ caseId, actionsEnabled = true }: Props) {
   const [data, setData] = useState<SuggestionsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [showSkipped, setShowSkipped] = useState(false);
+  const [modal, setModal] = useState<ModalState>(null);
+  const [actionInFlight, setActionInFlight] = useState<string | null>(null);
+  const [bulkInFlight, setBulkInFlight] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -94,6 +115,77 @@ export function SuggestionsInbox({ caseId, actionsEnabled = false }: Props) {
       setRefreshing(false);
     }
   }, [caseId, load]);
+
+  // PCW2.4b — direct accept (no modal): info_only ack, asa_review ack,
+  // pac_visit ack, plus single-button accept on the card.
+  const handleAccept = useCallback(
+    async (s: SuggestionData) => {
+      setActionInFlight(s.id);
+      setError(null);
+      try {
+        const res = await fetch(
+          `/api/pac-workspace/${caseId}/suggestions/${s.id}/decision`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'accept' }),
+          }
+        );
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+          throw new Error(json.error || `HTTP ${res.status}`);
+        }
+        await load();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setActionInFlight(null);
+      }
+    },
+    [caseId, load]
+  );
+
+  const handleSkip = useCallback((s: SuggestionData) => {
+    setModal({ kind: 'skip', suggestion: s });
+  }, []);
+
+  const handleAlreadyDone = useCallback((s: SuggestionData) => {
+    setModal({ kind: 'already_done', suggestion: s });
+  }, []);
+
+  const handleModalSubmitted = useCallback(async () => {
+    setModal(null);
+    await load();
+  }, [load]);
+
+  const handleBulkAccept = useCallback(async () => {
+    if (!data) return;
+    const requiredIds = data.pending
+      .filter((s) => s.severity === 'required' && !isAsaOrInfoOnly(s))
+      .map((s) => s.id);
+    if (requiredIds.length === 0) return;
+    setBulkInFlight(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/pac-workspace/${caseId}/suggestions/bulk-accept`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ suggestion_ids: requiredIds }),
+        }
+      );
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || `HTTP ${res.status}`);
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBulkInFlight(false);
+    }
+  }, [caseId, data, load]);
 
   // Loading state — render a thin placeholder so the layout doesn't jump.
   if (loading) {
@@ -207,8 +299,17 @@ export function SuggestionsInbox({ caseId, actionsEnabled = false }: Props) {
       {/* Cards (already sorted REQUIRED→RECOMMENDED→INFO by API) */}
       <div className="divide-y divide-gray-100">
         {data.pending.map((s) => (
-          <div key={s.id} className="px-3">
-            <SuggestionCard suggestion={s} actionsEnabled={actionsEnabled} />
+          <div
+            key={s.id}
+            className={`px-3 ${actionInFlight === s.id ? 'opacity-60' : ''}`}
+          >
+            <SuggestionCard
+              suggestion={s}
+              actionsEnabled={actionsEnabled && actionInFlight !== s.id}
+              onAccept={handleAccept}
+              onAlreadyDone={handleAlreadyDone}
+              onSkip={handleSkip}
+            />
           </div>
         ))}
       </div>
@@ -217,11 +318,13 @@ export function SuggestionsInbox({ caseId, actionsEnabled = false }: Props) {
       <footer className="flex items-center justify-between border-t border-gray-100 px-3 py-2">
         <button
           type="button"
-          disabled
-          title="Bulk action lands in PCW2.4b"
-          className="rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white opacity-50 cursor-not-allowed"
+          onClick={handleBulkAccept}
+          disabled={
+            !actionsEnabled || bulkInFlight || data.counts.requiredPending === 0
+          }
+          className="rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-gray-300"
         >
-          Accept all required ({data.counts.requiredPending})
+          {bulkInFlight ? 'Accepting…' : `Accept all required (${data.counts.requiredPending})`}
         </button>
         {skippedCount > 0 && (
           <button
@@ -234,7 +337,7 @@ export function SuggestionsInbox({ caseId, actionsEnabled = false }: Props) {
         )}
       </footer>
 
-      {/* Skipped drawer — read-only in PCW2.4a */}
+      {/* Skipped drawer — read-only display */}
       {showSkipped && skippedCount > 0 && (
         <div className="border-t border-dashed border-gray-200 bg-gray-50">
           <div className="px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-gray-500">
@@ -248,6 +351,24 @@ export function SuggestionsInbox({ caseId, actionsEnabled = false }: Props) {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Modals — single instance via modal state */}
+      {modal?.kind === 'skip' && (
+        <SkipModal
+          caseId={caseId}
+          suggestion={modal.suggestion}
+          onClose={() => setModal(null)}
+          onSubmitted={handleModalSubmitted}
+        />
+      )}
+      {modal?.kind === 'already_done' && (
+        <AlreadyDoneModal
+          caseId={caseId}
+          suggestion={modal.suggestion}
+          onClose={() => setModal(null)}
+          onSubmitted={handleModalSubmitted}
+        />
       )}
     </section>
   );
