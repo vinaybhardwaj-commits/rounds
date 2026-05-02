@@ -15,16 +15,19 @@
 
 import { useState } from 'react';
 import { FlaskConical, CheckCircle2 } from 'lucide-react';
-import type { PacOrderRow } from '@/lib/pac-workspace/types';
+import type { PacOrderRow, PacAppointmentRow } from '@/lib/pac-workspace/types';
 import {
   getResultMapping,
   FREE_TEXT_FALLBACK,
 } from '@/lib/pac-workspace/result-mapping';
 import { ResultEntryModal } from './ResultEntryModal';
+import { ScheduleChip } from './ScheduleChip';
+import { ScheduleModal } from './ScheduleModal';
 
 interface Props {
   caseId: string;
   orders: PacOrderRow[];
+  appointments: PacAppointmentRow[];
   canWrite: boolean;
   onUpdated: () => void;
 }
@@ -74,9 +77,22 @@ function previewValue(o: PacOrderRow): string | null {
   return null;
 }
 
-export function DiagnosticsSection({ caseId, orders, canWrite, onUpdated }: Props) {
+export function DiagnosticsSection({ caseId, orders, appointments, canWrite, onUpdated }: Props) {
   const [modalOrder, setModalOrder] = useState<PacOrderRow | null>(null);
+  const [scheduleFor, setScheduleFor] = useState<{ order: PacOrderRow; existing: PacAppointmentRow | null } | null>(null);
   const diagnostics = orders.filter((o) => o.kind === 'diagnostic');
+
+  // Index appointments by parent_id for fast per-row lookup.
+  const appointmentByParentId = new Map<string, PacAppointmentRow>();
+  for (const a of appointments) {
+    if (a.parent_type === 'diagnostic' && a.parent_id) {
+      const existing = appointmentByParentId.get(a.parent_id);
+      // Latest active wins; statuses already filtered by API.
+      if (!existing || (a.scheduled_at ?? '') > (existing.scheduled_at ?? '')) {
+        appointmentByParentId.set(a.parent_id, a);
+      }
+    }
+  }
 
   if (diagnostics.length === 0) {
     return (
@@ -140,16 +156,26 @@ export function DiagnosticsSection({ caseId, orders, canWrite, onUpdated }: Prop
                   </div>
                 )}
               </div>
-              {canWrite && (
-                <button
-                  type="button"
-                  onClick={() => setModalOrder(o)}
-                  disabled={!canWrite}
-                  className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {hasResult ? 'Update result' : 'Enter result'}
-                </button>
-              )}
+              <div className="flex flex-col items-end gap-1">
+                {canWrite && (
+                  <button
+                    type="button"
+                    onClick={() => setModalOrder(o)}
+                    disabled={!canWrite}
+                    className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {hasResult ? 'Update result' : 'Enter result'}
+                  </button>
+                )}
+                <ScheduleChip
+                  caseId={caseId}
+                  appointment={appointmentByParentId.get(o.id) ?? null}
+                  canWrite={canWrite}
+                  onSchedule={() => setScheduleFor({ order: o, existing: null })}
+                  onReschedule={(a) => setScheduleFor({ order: o, existing: a })}
+                  onChanged={onUpdated}
+                />
+              </div>
             </li>
           );
         })}
@@ -162,6 +188,24 @@ export function DiagnosticsSection({ caseId, orders, canWrite, onUpdated }: Prop
           onClose={() => setModalOrder(null)}
           onSubmitted={() => {
             setModalOrder(null);
+            onUpdated();
+          }}
+        />
+      )}
+      {scheduleFor && (
+        <ScheduleModal
+          caseId={caseId}
+          parent_type="diagnostic"
+          parent_id={scheduleFor.order.id}
+          parent_label={
+            scheduleFor.order.order_label ||
+            getResultMapping(scheduleFor.order.order_type)?.label ||
+            scheduleFor.order.order_type
+          }
+          existing={scheduleFor.existing}
+          onClose={() => setScheduleFor(null)}
+          onSubmitted={() => {
+            setScheduleFor(null);
             onUpdated();
           }}
         />

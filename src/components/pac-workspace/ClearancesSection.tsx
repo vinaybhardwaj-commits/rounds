@@ -8,7 +8,9 @@
 import { useCallback, useState } from 'react';
 import { ShieldCheck, Plus, Loader2, Check } from 'lucide-react';
 import { AddClearanceModal } from './AddClearanceModal';
-import type { PacClearanceRow, PacClearanceStatus, PacMode } from '@/lib/pac-workspace/types';
+import type { PacClearanceRow, PacClearanceStatus, PacMode, PacAppointmentRow } from '@/lib/pac-workspace/types';
+import { ScheduleChip } from './v2/ScheduleChip';
+import { ScheduleModal } from './v2/ScheduleModal';
 
 const STATUS_CHIP: Record<PacClearanceStatus, string> = {
   requested:               'bg-gray-100 text-gray-700',
@@ -39,9 +41,11 @@ interface Props {
   pacMode: PacMode;
   onAdded: () => void;
   onUpdated: () => void;
+  /** PCW2.7b — when true, renders an inline ScheduleChip per clearance row. */
+  appointments?: import('@/lib/pac-workspace/types').PacAppointmentRow[];
 }
 
-export function ClearancesSection({ caseId, clearances, canWrite, pacMode, onAdded, onUpdated }: Props) {
+export function ClearancesSection({ caseId, clearances, canWrite, pacMode, onAdded, onUpdated, appointments = [] }: Props) {
   const [picking, setPicking] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [conditionsForId, setConditionsForId] = useState<string | null>(null);
@@ -121,6 +125,17 @@ export function ClearancesSection({ caseId, clearances, canWrite, pacMode, onAdd
                       </p>
                     )}
                     {c.notes && <p className="text-xs text-gray-500 mt-1">{c.notes}</p>}
+                    {/* PCW2.7b — inline scheduling chip when v2 passes appointments. */}
+                    {appointments.length > 0 && (
+                      <ClearanceScheduleSlot
+                        caseId={caseId}
+                        clearanceId={c.id}
+                        clearanceLabel={c.specialty_label ?? prettySpecialty(c.specialty)}
+                        appointments={appointments}
+                        canWrite={canWrite}
+                        onChanged={onUpdated}
+                      />
+                    )}
                   </div>
                   {canWrite && !terminal && (
                     <div className="flex flex-col gap-1">
@@ -206,4 +221,59 @@ export function ClearancesSection({ caseId, clearances, canWrite, pacMode, onAdd
 
 function prettySpecialty(code: string): string {
   return code.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// PCW2.7b — Inline scheduling slot inside a clearance row. Mounts a
+// ScheduleChip + ScheduleModal scoped to this clearance.
+function ClearanceScheduleSlot({
+  caseId,
+  clearanceId,
+  clearanceLabel,
+  appointments,
+  canWrite,
+  onChanged,
+}: {
+  caseId: string;
+  clearanceId: string;
+  clearanceLabel: string;
+  appointments: PacAppointmentRow[];
+  canWrite: boolean;
+  onChanged: () => void;
+}) {
+  const [scheduling, setScheduling] = useState<{ existing: PacAppointmentRow | null } | null>(null);
+  const matching = appointments.filter(
+    (a) => a.parent_type === 'clearance' && a.parent_id === clearanceId
+  );
+  const current =
+    matching.length > 0
+      ? matching.reduce((best, a) =>
+          (a.scheduled_at ?? '') > (best.scheduled_at ?? '') ? a : best
+        )
+      : null;
+  return (
+    <div className="mt-1.5">
+      <ScheduleChip
+        caseId={caseId}
+        appointment={current}
+        canWrite={canWrite}
+        onSchedule={() => setScheduling({ existing: null })}
+        onReschedule={(a) => setScheduling({ existing: a })}
+        onChanged={onChanged}
+      />
+      {scheduling && (
+        <ScheduleModal
+          caseId={caseId}
+          parent_type="clearance"
+          parent_id={clearanceId}
+          parent_label={clearanceLabel}
+          existing={scheduling.existing}
+          onClose={() => setScheduling(null)}
+          onSubmitted={() => {
+            setScheduling(null);
+            onChanged();
+          }}
+        />
+      )}
+    </div>
+  );
 }

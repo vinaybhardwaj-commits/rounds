@@ -41,6 +41,7 @@ import { ChecklistSection } from './ChecklistSection';
 import { AnaesthetistPublishSection } from './AnaesthetistPublishSection';
 import { SuggestionsInbox } from './v2/SuggestionsInbox';
 import { DiagnosticsSection } from './v2/DiagnosticsSection';
+import { PacVisitSchedulingCard } from './v2/PacVisitSchedulingCard';
 import { usePacWorkspaceV2Enabled } from '@/components/FeatureFlagsProvider';
 
 const PAC_WRITE_ROLES = new Set([
@@ -223,9 +224,19 @@ export function PACWorkspaceView({ caseId, userRole }: Props) {
             appear twice. When the flag is off, the v1 Orders section
             shows everything as before. */}
         {v2Enabled && (
+          <PacVisitSchedulingCard
+            caseId={caseId}
+            appointments={payload.appointments ?? []}
+            canWrite={canWrite}
+            onUpdated={load}
+          />
+        )}
+
+        {v2Enabled && (
           <DiagnosticsSection
             caseId={caseId}
             orders={payload.orders}
+            appointments={payload.appointments ?? []}
             canWrite={canWrite}
             onUpdated={load}
           />
@@ -248,6 +259,7 @@ export function PACWorkspaceView({ caseId, userRole }: Props) {
           pacMode={progress.pac_mode}
           onAdded={load}
           onUpdated={load}
+          appointments={v2Enabled ? (payload.appointments ?? []) : undefined}
         />
         <ChecklistSection
           caseId={caseId}
