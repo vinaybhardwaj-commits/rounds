@@ -46,7 +46,26 @@ interface Body {
   conditions?: string;
   notes?: string;
   kx_pac_record_id?: string;
+  // PCW2.11 — gate override per PRD §15.5. When pending REQUIRED suggestions
+  // exist, anaesthetist must pass override_pending_required=true with a
+  // free-text override_reason; audit pac.publish.override_pending_required
+  // captures it.
+  override_pending_required?: boolean;
+  override_reason?: string;
 }
+
+// PCW2.11 — outcome → resolution_state map per PRD §11.
+// 'fit' / 'fit_conds' → active_for_surgery (read-only with day-of carve-outs).
+// 'defer' → active_for_optimization (workspace stays editable for the
+// optimisation work; coordinator continues until anaesthetist re-publishes).
+// 'unfit' is treated like defer until manual cancel — surgery isn't
+// happening but workspace can't auto-cancel without an explicit decision.
+const RESOLUTION_BY_OUTCOME: Record<string, string> = {
+  fit: 'active_for_surgery',
+  fit_conds: 'active_for_surgery',
+  defer: 'active_for_optimization',
+  unfit: 'active_for_optimization',
+};
 
 export async function POST(
   request: NextRequest,
@@ -95,12 +114,20 @@ export async function POST(
       ? body.kx_pac_record_id.trim()
       : null;
 
-    // Tenancy + load existing state.
-    const ctx = await queryOne<{ hospital_id: string; from_state: string; patient_thread_id: string | null }>(
+    // Tenancy + load existing state. We also load the current resolution_state
+    // off pac_workspace_progress so we can revert it on guaranteed-audit rollback.
+    const ctx = await queryOne<{
+      hospital_id: string;
+      from_state: string;
+      patient_thread_id: string | null;
+      prior_resolution_state: string | null;
+    }>(
       `SELECT sc.hospital_id::text AS hospital_id,
               sc.state AS from_state,
-              sc.patient_thread_id::text AS patient_thread_id
+              sc.patient_thread_id::text AS patient_thread_id,
+              pwp.resolution_state AS prior_resolution_state
          FROM surgical_cases sc
+         LEFT JOIN pac_workspace_progress pwp ON pwp.case_id = sc.id
         WHERE sc.id = $1::uuid
           AND sc.archived_at IS NULL
           AND sc.hospital_id = ANY(user_accessible_hospital_ids($2::uuid))`,
@@ -116,6 +143,58 @@ export async function POST(
       );
     }
 
+    // PCW2.11 — pending REQUIRED suggestions gate per PRD §15.5.
+    // Hard block unless anaesthetist passes override_pending_required=true +
+    // an override_reason. Soft warn-only on RECOMMENDED — those don't gate.
+    const pendingReq = await queryOne<{ n: number; rules: string[] }>(
+      `SELECT COUNT(*)::int AS n,
+              COALESCE(array_agg(rule_id ORDER BY rule_id), ARRAY[]::text[]) AS rules
+         FROM pac_suggestions
+        WHERE case_id = $1
+          AND status = 'pending'
+          AND severity = 'required'`,
+      [caseId]
+    );
+    const pendingRequiredCount = pendingReq?.n ?? 0;
+    if (pendingRequiredCount > 0) {
+      if (!body.override_pending_required) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `${pendingRequiredCount} REQUIRED suggestions still pending; pass override_pending_required=true + override_reason to publish anyway.`,
+            data: {
+              pending_required_count: pendingRequiredCount,
+              pending_required_rules: pendingReq?.rules ?? [],
+            },
+          },
+          { status: 409 },
+        );
+      }
+      if (!body.override_reason || body.override_reason.trim().length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'override_reason required when override_pending_required=true' },
+          { status: 400 },
+        );
+      }
+      // Override audit row (separate from the success audit below). Best-effort.
+      audit({
+        actorId: user.profileId,
+        actorRole: user.role,
+        hospitalId: ctx.hospital_id,
+        action: 'pac.publish.override_pending_required',
+        targetType: 'surgical_case',
+        targetId: caseId,
+        summary: `Anaesthetist override: published with ${pendingRequiredCount} REQUIRED pending — ${body.override_reason.trim()}`,
+        payloadAfter: {
+          pending_required_count: pendingRequiredCount,
+          pending_required_rules: pendingReq?.rules ?? [],
+          override_reason: body.override_reason.trim(),
+          outcome,
+        },
+        request,
+      }).catch((e) => console.error('[audit] pac.publish.override_pending_required failed:', e));
+    }
+
     // Atomic publish via CTE — pac_events + state transition + sub_state update + log.
     // Conditions text is folded into the pac_events.notes column as a structured prefix
     // so historic queries still see the same row shape; the workspace stores it
@@ -126,7 +205,12 @@ export async function POST(
         : `Conditions: ${conditions}`
       : (notes || null);
 
-    const result = await queryOne<{ from_state: string; to_state: string; sub_state: string }>(
+    const result = await queryOne<{
+      from_state: string;
+      to_state: string;
+      sub_state: string;
+      resolution_state: string;
+    }>(
       `WITH pe AS (
          INSERT INTO pac_events (case_id, anaesthetist_id, outcome, notes, kx_pac_record_id)
          VALUES ($1::uuid, $2::uuid, $3, $4, $5)
@@ -149,17 +233,30 @@ export async function POST(
        ),
        pwp AS (
          UPDATE pac_workspace_progress
-            SET sub_state       = 'published',
-                anaesthetist_id = COALESCE(anaesthetist_id, $2::uuid),
-                updated_at      = NOW(),
-                updated_by      = $2::uuid
+            SET sub_state        = 'published',
+                anaesthetist_id  = COALESCE(anaesthetist_id, $2::uuid),
+                resolution_state = $8,
+                updated_at       = NOW(),
+                updated_by       = $2::uuid
           WHERE case_id = (SELECT case_id FROM pe)
-          RETURNING sub_state
+          RETURNING sub_state, resolution_state
        )
-       SELECT $6 AS from_state, sc_upd.state AS to_state, COALESCE(pwp.sub_state, 'published') AS sub_state
+       SELECT $6 AS from_state,
+              sc_upd.state AS to_state,
+              COALESCE(pwp.sub_state, 'published') AS sub_state,
+              COALESCE(pwp.resolution_state, $8) AS resolution_state
          FROM sc_upd
          LEFT JOIN pwp ON TRUE`,
-      [caseId, user.profileId, outcome, eventsNotes, kxPacRecordId, ctx.from_state, !!conditions],
+      [
+        caseId,
+        user.profileId,
+        outcome,
+        eventsNotes,
+        kxPacRecordId,
+        ctx.from_state,
+        !!conditions,
+        RESOLUTION_BY_OUTCOME[outcome],
+      ],
     );
 
     if (!result) {
@@ -179,8 +276,18 @@ export async function POST(
         targetType: 'surgical_case',
         targetId: caseId,
         summary: `Anaesthetist published PAC outcome: ${outcome}`,
-        payloadBefore: { state: ctx.from_state, sub_state: 'pre_publish' },
-        payloadAfter: { state: outcome, sub_state: 'published', has_conditions: !!conditions },
+        payloadBefore: {
+          state: ctx.from_state,
+          sub_state: 'pre_publish',
+          resolution_state: ctx.prior_resolution_state,
+        },
+        payloadAfter: {
+          state: outcome,
+          sub_state: 'published',
+          has_conditions: !!conditions,
+          resolution_state: RESOLUTION_BY_OUTCOME[outcome],
+          pending_required_overridden: !!body.override_pending_required,
+        },
         request,
         mode: 'guaranteed',
       });
@@ -195,8 +302,12 @@ export async function POST(
           [caseId, ctx.from_state, outcome],
         );
         await query(
-          `UPDATE pac_workspace_progress SET sub_state = 'anaesthetist_examined', updated_at = NOW() WHERE case_id = $1::uuid AND sub_state = 'published'`,
-          [caseId],
+          `UPDATE pac_workspace_progress
+              SET sub_state        = 'anaesthetist_examined',
+                  resolution_state = $2,
+                  updated_at       = NOW()
+            WHERE case_id = $1::uuid AND sub_state = 'published'`,
+          [caseId, ctx.prior_resolution_state],
         );
       } catch (rbErr) {
         console.error('[audit:guaranteed] rollback failed too:', rbErr instanceof Error ? rbErr.message : rbErr);
@@ -244,6 +355,7 @@ export async function POST(
         from_state: result.from_state,
         to_state: result.to_state,
         sub_state: result.sub_state,
+        resolution_state: result.resolution_state,
       },
     });
   } catch (error) {
