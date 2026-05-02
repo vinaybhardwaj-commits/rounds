@@ -71,6 +71,13 @@ export interface PacOrderRow {
   reported_at: string | null;
   reviewed_at: string | null;
   notes: string | null;
+  // PCW2.0 columns surfaced through GET in PCW2.5. All optional so the v1
+  // path doesn't break when the DB returns NULL for legacy rows.
+  kind?: 'order' | 'diagnostic' | null;
+  result_value?: Record<string, unknown> | null;
+  result_received_at?: string | null;
+  done_at?: string | null;
+  done_at_source?: 'ehrc' | 'external' | null;
 }
 
 export interface PacClearanceRow {

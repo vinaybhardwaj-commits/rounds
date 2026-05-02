@@ -40,9 +40,18 @@ interface Props {
   pacMode: PacMode;
   onAdded: () => void;
   onUpdated: () => void;
+  /**
+   * PCW2.5 — when true, hide rows with kind='diagnostic'. v2 workspace
+   * renders DiagnosticsSection above OrdersSection, so the orders list
+   * here should only show kind='order' (or null for legacy rows).
+   */
+  excludeDiagnostic?: boolean;
 }
 
-export function OrdersSection({ caseId, orders, canWrite, pacMode, onAdded, onUpdated }: Props) {
+export function OrdersSection({ caseId, orders: rawOrders, canWrite, pacMode, onAdded, onUpdated, excludeDiagnostic = false }: Props) {
+  const orders = excludeDiagnostic
+    ? rawOrders.filter((o) => o.kind !== 'diagnostic')
+    : rawOrders;
   const [picking, setPicking] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
 

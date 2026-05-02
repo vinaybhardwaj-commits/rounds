@@ -212,7 +212,12 @@ export async function GET(
            po.requested_at::text AS requested_at,
            po.reported_at::text AS reported_at,
            po.reviewed_at::text AS reviewed_at,
-           po.notes
+           po.notes,
+           po.kind,
+           po.result_value,
+           po.result_received_at::text AS result_received_at,
+           po.done_at::text AS done_at,
+           po.done_at_source
          FROM pac_orders po
          LEFT JOIN pac_order_types pot ON pot.code = po.order_type
          WHERE po.case_id = $1::uuid

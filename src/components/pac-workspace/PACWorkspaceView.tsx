@@ -40,6 +40,7 @@ import { ClearancesSection } from './ClearancesSection';
 import { ChecklistSection } from './ChecklistSection';
 import { AnaesthetistPublishSection } from './AnaesthetistPublishSection';
 import { SuggestionsInbox } from './v2/SuggestionsInbox';
+import { DiagnosticsSection } from './v2/DiagnosticsSection';
 import { usePacWorkspaceV2Enabled } from '@/components/FeatureFlagsProvider';
 
 const PAC_WRITE_ROLES = new Set([
@@ -210,6 +211,20 @@ export function PACWorkspaceView({ caseId, userRole }: Props) {
           <PatientContextBanner ctx={payload.patient_context} />
         )}
 
+        {/* PCW2.5 — Diagnostics section (kind='diagnostic' rows). Renders
+            above the v1 Orders section when v2 flag is on. v1 OrdersSection
+            then receives excludeDiagnostic=true so the same rows don't
+            appear twice. When the flag is off, the v1 Orders section
+            shows everything as before. */}
+        {v2Enabled && (
+          <DiagnosticsSection
+            caseId={caseId}
+            orders={payload.orders}
+            canWrite={canWrite}
+            onUpdated={load}
+          />
+        )}
+
         {/* PCW.2 LIVE sections */}
         <OrdersSection
           caseId={caseId}
@@ -218,6 +233,7 @@ export function PACWorkspaceView({ caseId, userRole }: Props) {
           pacMode={progress.pac_mode}
           onAdded={load}
           onUpdated={load}
+          excludeDiagnostic={v2Enabled}
         />
         <ClearancesSection
           caseId={caseId}
