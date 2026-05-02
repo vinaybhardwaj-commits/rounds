@@ -21,10 +21,12 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 
 export interface FeatureFlags {
   ot_planning_enabled: boolean;
+  pac_workspace_v2_enabled: boolean;
 }
 
 const DEFAULT_FLAGS: FeatureFlags = {
   ot_planning_enabled: false,
+  pac_workspace_v2_enabled: false,
 };
 
 interface ContextValue {
@@ -92,4 +94,9 @@ export function useFeatureFlag(key: keyof FeatureFlags): boolean {
 /** Convenience hook for the most-checked flag. Defaults to false (hidden). */
 export function useOtPlanningEnabled(): boolean {
   return useFeatureFlag('ot_planning_enabled');
+}
+
+/** PCW2.4 — gates the v2 Smart Suggestions inbox in PACWorkspaceView. */
+export function usePacWorkspaceV2Enabled(): boolean {
+  return useFeatureFlag('pac_workspace_v2_enabled');
 }

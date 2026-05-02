@@ -39,6 +39,8 @@ import { OrdersSection } from './OrdersSection';
 import { ClearancesSection } from './ClearancesSection';
 import { ChecklistSection } from './ChecklistSection';
 import { AnaesthetistPublishSection } from './AnaesthetistPublishSection';
+import { SuggestionsInbox } from './v2/SuggestionsInbox';
+import { usePacWorkspaceV2Enabled } from '@/components/FeatureFlagsProvider';
 
 const PAC_WRITE_ROLES = new Set([
   'super_admin',
@@ -58,6 +60,7 @@ export function PACWorkspaceView({ caseId, userRole }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [savingMode, setSavingMode] = useState(false);
   const canWrite = PAC_WRITE_ROLES.has(userRole);
+  const v2Enabled = usePacWorkspaceV2Enabled();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -189,6 +192,11 @@ export function PACWorkspaceView({ caseId, userRole }: Props) {
             </div>
           </div>
         </section>
+
+        {/* PCW2.4a — Smart Suggestions inbox (gated on pac_workspace_v2_enabled).
+            When the flag is OFF, users see the v1 workspace exactly as before.
+            When ON, the inbox renders above the mode picker per PRD §8.1. */}
+        {v2Enabled && <SuggestionsInbox caseId={caseId} />}
 
         {/* Mode picker — LIVE in PCW.1 */}
         <ModeSection
