@@ -148,8 +148,9 @@ export async function PATCH(
     // 25 Apr 2026 — auto-create surgical_case when patient enters admitted+/OT
     // stages. Universal coverage so no admitted patient is ever without an OT
     // tracking row (was previously only created via Marketing Handoff submit).
+    // 1 May 2026 (sub-sprint C): pre_op dropped — stage retired.
     if (
-      ['admitted', 'pre_op', 'surgery'].includes(newStage) &&
+      ['admitted', 'surgery'].includes(newStage) &&
       patient.hospital_id &&
       process.env.FEATURE_CASE_MODEL_ENABLED === 'true'
     ) {

@@ -18,7 +18,7 @@ import {
   Archive,
 } from 'lucide-react';
 import type { PatientStage, FormType } from '@/types';
-import { PATIENT_STAGE_LABELS, PATIENT_STAGE_COLORS } from '@/types';
+import { PATIENT_STAGE_LABELS, PATIENT_STAGE_COLORS, DEPRECATED_STAGES } from '@/types';
 import { FORMS_BY_STAGE, FORM_TYPE_LABELS } from '@/lib/form-registry';
 import { OTActionBanner } from '@/components/ot/OTActionBanner';
 import { HospitalPicker } from '@/components/HospitalPicker';
@@ -638,7 +638,12 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
             }`}>
             All{(stageCounts.total || patients.length) > 0 ? ` (${stageCounts.total || patients.length})` : ''}
           </button>
-          {(Object.entries(PATIENT_STAGE_LABELS) as [PatientStage, string][]).map(([key, label]) => {
+          {/* 1 May 2026 (sub-sprint C): hide deprecated stages from the
+              tab strip. PATIENT_STAGE_LABELS still contains pre_op for
+              historical data rendering, but new tabs filter it out. */}
+          {(Object.entries(PATIENT_STAGE_LABELS) as [PatientStage, string][])
+            .filter(([key]) => !DEPRECATED_STAGES.has(key))
+            .map(([key, label]) => {
             const count = stageCounts[key] || 0;
             return (
               <button key={key} onClick={() => setStageFilter(key)}
@@ -1065,7 +1070,9 @@ export function PatientsView({ onOpenPatient, onNavigateToChannel, onViewOTItems
                     <label className="block text-sm font-medium text-gray-700 mb-1">Starting Stage</label>
                     <select value={fStage} onChange={e => setFStage(e.target.value as PatientStage)}
                       className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white">
-                      {(Object.entries(PATIENT_STAGE_LABELS) as [PatientStage, string][]).map(([k, v]) => (
+                      {(Object.entries(PATIENT_STAGE_LABELS) as [PatientStage, string][])
+                        .filter(([k]) => !DEPRECATED_STAGES.has(k))
+                        .map(([k, v]) => (
                         <option key={k} value={k}>{v}</option>
                       ))}
                     </select>

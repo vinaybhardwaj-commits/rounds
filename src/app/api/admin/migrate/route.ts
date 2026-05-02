@@ -1129,6 +1129,22 @@ export async function POST() {
 
     await run('pac_coordinator_workspace_v1_marker', `INSERT INTO _migrations (name) VALUES ('v21-pac-coordinator-workspace-v1') ON CONFLICT (name) DO NOTHING`);
 
+    // 22. Retire pre_op patient stage (1 May 2026 — sub-sprint C)
+    // V's mental model: every patient not yet in surgery is "pre-op".
+    // The discrete pre_op stage between admitted and surgery is redundant
+    // and has been removed from UI and form-registry. This migration moves
+    // any existing patients still in pre_op state to admitted so they
+    // continue to surface in the patient list (the pre_op tab is gone).
+    // Idempotent — re-running affects 0 rows after first execution.
+    await run(
+      'retire_pre_op_stage',
+      `UPDATE patient_threads SET current_stage = 'admitted', updated_at = NOW() WHERE current_stage = 'pre_op'`,
+    );
+    await run(
+      'retire_pre_op_stage_marker',
+      `INSERT INTO _migrations (name) VALUES ('v22-retire-pre-op-stage') ON CONFLICT (name) DO NOTHING`,
+    );
+
     // 9. Verify
     const tables = await sql`
       SELECT table_name FROM information_schema.tables

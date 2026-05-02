@@ -44,9 +44,9 @@ const SCHEDULE_FROM = new Set([
   'draft', 'intake', 'pac_scheduled', 'pac_done',
   'fit', 'fit_conds', 'optimizing', 'defer', 'scheduled',
 ]);
-const PRE_OP_BLOCKING_STAGES = new Set([
-  'opd', 'pre_admission', 'admitted', 'medical_management',
-]);
+// 1 May 2026 (sub-sprint C): PRE_OP_BLOCKING_STAGES set + auto-advance to
+// 'pre_op' removed. The pre_op stage is retired; OT booking no longer
+// moves the patient through any journey stage.
 
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -188,28 +188,14 @@ export async function POST(
       ]
     );
 
-    // Patient stage move (separate statement; non-fatal if it fails).
-    let stageAdvanced = false;
-    try {
-      const pt = await queryOne<{ current_stage: string }>(
-        `SELECT current_stage FROM patient_threads WHERE id = $1`,
-        [c.patient_thread_id]
-      );
-      if (pt && PRE_OP_BLOCKING_STAGES.has(pt.current_stage)) {
-        await query(
-          `UPDATE patient_threads SET current_stage = 'pre_op', updated_at = NOW() WHERE id = $1`,
-          [c.patient_thread_id]
-        );
-        stageAdvanced = true;
-        // PTR.2 (28 Apr 2026) — stamp current_stage='pre_op' onto channel.data
-        // for PTR.3 sidebar grouping.
-        syncPatientChannelMetadata(c.patient_thread_id).catch((e) =>
-          console.error('[ptr.2] ot-booking sync failed', e)
-        );
-      }
-    } catch (e) {
-      console.error('[ot-booking] stage advance failed:', e);
-    }
+    // 1 May 2026 (sub-sprint C): patient-stage auto-advance removed.
+    // Previously OT booking bumped current_stage to 'pre_op' if the patient
+    // was in opd/pre_admission/admitted/medical_management. Per V's
+    // direction, the pre_op stage is retired and booking no longer moves
+    // the patient through any stage — booking creates the OT appointment;
+    // the patient stays at admitted (or earlier) until they actually go
+    // into surgery (manual transition or future day-of trigger).
+    const stageAdvanced = false;
 
 
     // GLASS.4 audit wiring — GUARANTEED mode (OT booking is reversible but critical)

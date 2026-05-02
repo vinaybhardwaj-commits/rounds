@@ -200,13 +200,20 @@ export const PATIENT_STAGE_LABELS: Record<PatientStage, string> = {
   long_term_followup: 'Long Term Follow-up',
 };
 
-// Valid stage transitions (shared between API route + slash commands)
+// Valid stage transitions (shared between API route + slash commands).
+// 1 May 2026 (sub-sprint C): the 'pre_op' stage is retired from the
+// patient journey per V's request — the concept "patient not yet in
+// surgery" is true from intake onward, so a discrete pre_op bucket
+// between admitted and surgery is redundant. Admitted patients now
+// transition directly to surgery. The pre_op key is retained here for
+// any legacy patients still in that state until the migration moves
+// them to admitted (run /api/admin/migrate as super_admin).
 export const VALID_STAGE_TRANSITIONS: Record<PatientStage, PatientStage[]> = {
   opd: ['pre_admission', 'admitted'],
   pre_admission: ['admitted', 'opd'],
-  admitted: ['pre_op', 'medical_management', 'discharge'],
+  admitted: ['surgery', 'medical_management', 'discharge'],
   medical_management: ['discharge', 'admitted'],
-  pre_op: ['surgery', 'admitted'],
+  pre_op: ['surgery', 'admitted'], // retained for legacy data only; new patients no longer enter this stage.
   surgery: ['post_op'],
   post_op: ['discharge', 'surgery'],
   discharge: ['post_discharge', 'post_op_care', 'long_term_followup', 'admitted'],
@@ -214,6 +221,18 @@ export const VALID_STAGE_TRANSITIONS: Record<PatientStage, PatientStage[]> = {
   post_op_care: ['discharge'],
   long_term_followup: ['discharge'],
 };
+
+// 1 May 2026 (sub-sprint C): stages excluded from new UI surfaces (tabs,
+// progress bars, kanbans). Kept in PatientStage / PATIENT_STAGE_LABELS
+// for historical data rendering, but new patients should never see them.
+export const DEPRECATED_STAGES: ReadonlySet<PatientStage> = new Set(['pre_op']);
+
+// Helper: stages to render in the patient list tab strip and progress bar.
+export const STAGES_FOR_NAVIGATION: PatientStage[] = (
+  ['opd', 'pre_admission', 'admitted', 'medical_management',
+   'surgery', 'post_op', 'post_op_care',
+   'discharge', 'post_discharge', 'long_term_followup'] as const
+).filter(s => !DEPRECATED_STAGES.has(s as PatientStage)) as PatientStage[];
 
 export const PATIENT_STAGE_COLORS: Record<PatientStage, string> = {
   opd: '#6B7280',

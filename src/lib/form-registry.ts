@@ -639,7 +639,8 @@ export const SURGERY_POSTING: FormSchema = {
   title: 'Surgery Posting',
   description: 'Post a patient for surgery. Generates a readiness checklist that must be confirmed before the OT slot is locked.',
   version: 1,
-  stages: ['admitted', 'pre_op'],
+  // 1 May 2026 (sub-sprint C): pre_op dropped — stage retired.
+  stages: ['admitted'],
   submitterRoles: ['clinical_care', 'department_head', 'super_admin'],
   requiresPatient: true,
   sections: [
@@ -870,7 +871,8 @@ export const FINANCIAL_COUNSELING: FormSchema = {
   title: 'Financial Counseling',
   description: 'Capture financial discussion, insurance details, room rent eligibility, and patient consent before admission or when clinical circumstances change.',
   version: 4,
-  stages: ['opd', 'pre_admission', 'admitted', 'pre_op', 'surgery', 'post_op'],
+  // 1 May 2026 (sub-sprint C): pre_op dropped — stage retired.
+  stages: ['opd', 'pre_admission', 'admitted', 'surgery', 'post_op'],
   submitterRoles: ['billing_executive', 'insurance_coordinator', 'customer_care', 'marketing_sales', 'super_admin'],
   requiresPatient: true,
   sections: [
@@ -1102,8 +1104,8 @@ export const FINANCIAL_COUNSELING: FormSchema = {
 // 5. OT_BILLING_CLEARANCE
 // Finance confirms billing before surgery.
 // 1 May 2026 (sub-sprint A): opened to all pre-surgery stages — billing
-// clearance can be initiated as soon as the surgical plan is captured,
-// not only after the legacy pre_op stage transition.
+// clearance can be initiated as soon as the surgical plan is captured.
+// 1 May 2026 (sub-sprint C): pre_op dropped — that stage is retired.
 // -------------------------------------------
 
 export const OT_BILLING_CLEARANCE: FormSchema = {
@@ -1111,7 +1113,7 @@ export const OT_BILLING_CLEARANCE: FormSchema = {
   title: 'OT Billing Clearance',
   description: 'Finance team confirms billing clearance before surgery can proceed.',
   version: 1,
-  stages: ['opd', 'pre_admission', 'admitted', 'pre_op'],
+  stages: ['opd', 'pre_admission', 'admitted'],
   submitterRoles: ['billing_executive', 'super_admin'],
   requiresPatient: true,
   sections: [
@@ -1268,7 +1270,11 @@ export const PRE_OP_NURSING_CHECKLIST: FormSchema = {
   title: 'Pre-Op Nursing Checklist',
   description: 'Nursing team confirms patient is ready to go to OT.',
   version: 1,
-  stages: ['pre_op'],
+  // 23 Apr 2026: pruned from FORMS_BY_STAGE (UI hidden); schema kept for
+  // historical submissions only.
+  // 1 May 2026 (sub-sprint C): pre_op stage retired; stages now reflects
+  // admitted-time use if this form is ever re-introduced.
+  stages: ['admitted'],
   submitterRoles: ['nurse', 'super_admin'],
   requiresPatient: true,
   sections: [
@@ -1434,7 +1440,8 @@ export const NURSING_SHIFT_HANDOFF: FormSchema = {
   title: 'Nursing Shift Handoff',
   description: 'Structured handoff between nursing shifts for continuity of care.',
   version: 1,
-  stages: ['admitted', 'pre_op', 'post_op'],
+  // 1 May 2026 (sub-sprint C): pre_op dropped — stage retired.
+  stages: ['admitted', 'post_op'],
   submitterRoles: ['nurse', 'super_admin'],
   requiresPatient: true,
   sections: [
@@ -1839,7 +1846,8 @@ export const PAC_CLEARANCE: FormSchema = {
   // 1 May 2026 (sub-sprint A): opened to all pre-surgery stages. PAC can
   // be scheduled at OPD-time for elective surgical patients per V's
   // workflow — see /pac-workspace/[caseId] (PCW.1, 29 Apr 2026).
-  stages: ['opd', 'pre_admission', 'admitted', 'pre_op'],
+  // 1 May 2026 (sub-sprint C): pre_op dropped — stage retired.
+  stages: ['opd', 'pre_admission', 'admitted'],
   submitterRoles: ['anesthesiologist', 'pac_coordinator', 'super_admin'],
   requiresPatient: true,
   sections: [
@@ -1965,7 +1973,8 @@ const SURGERY_BOOKING: FormSchema = {
   // booking can begin from intake — surgery_planned=true on the Marketing
   // Handoff already creates the surgical_case at OPD/Pre-Admission;
   // Surgery Booking is the same domain, just a standalone form path.
-  stages: ['opd', 'pre_admission', 'admitted', 'pre_op'],
+  // 1 May 2026 (sub-sprint C): pre_op dropped — stage retired.
+  stages: ['opd', 'pre_admission', 'admitted'],
   submitterRoles: ['super_admin', 'clinical_care', 'ot_coordinator', 'doctor', 'nursing'],
   requiresPatient: true,
   version: 1,
@@ -2129,16 +2138,15 @@ export const FORMS_BY_STAGE: Record<string, FormType[]> = {
   // so historical submissions still render correctly; they're just hidden from the stage picker.
   // Surgery-day safety will move to the state machine's day-of verification flow in Sprint 3.
   // 1 May 2026 (sub-sprint A): pre-surgical modules (Surgery Booking,
-  // OT Billing Clearance, PAC Clearance) now visible from OPD onward.
-  // V's request: every patient should be able to start surgery planning
-  // from the moment they enter Rounds. Marketing Handoff + Admission
-  // Advice remain capped at OPD/Pre-Admission since they're handoff-time
-  // forms. Admission Checklist stays at admitted-only (it confirms
-  // admission readiness, not surgery planning).
+  // OT Billing Clearance, PAC Clearance) visible from OPD onward.
+  // 1 May 2026 (sub-sprint C): pre_op key dropped from FORMS_BY_STAGE —
+  // the stage is retired from the patient journey. Legacy patients
+  // still in pre_op state will be migrated to admitted; meanwhile any
+  // form picker queried with stage='pre_op' falls back to []. Admission
+  // Checklist stays at admitted-only.
   opd: ['consolidated_marketing_handoff', 'admission_advice', 'surgery_booking', 'ot_billing_clearance', 'pac_clearance'],
   pre_admission: ['consolidated_marketing_handoff', 'admission_advice', 'surgery_booking', 'ot_billing_clearance', 'pac_clearance'],
   admitted: ['financial_counseling', 'surgery_booking', 'ot_billing_clearance', 'pac_clearance', 'admission_checklist'],
-  pre_op: ['financial_counseling', 'surgery_booking', 'ot_billing_clearance', 'pac_clearance'],
   surgery: [],
   post_op: [],
   discharge: ['discharge_readiness'],

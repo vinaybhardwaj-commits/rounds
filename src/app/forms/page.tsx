@@ -54,7 +54,8 @@ function FormsPage() {
       .catch(() => {});
   }, [patientId]);
 
-  const stageOrder = ['opd', 'pre_admission', 'admitted', 'pre_op', 'surgery', 'post_op', 'discharge', 'post_discharge', 'any'];
+  // 1 May 2026 (sub-sprint C): pre_op removed — stage retired from journey.
+  const stageOrder = ['opd', 'pre_admission', 'admitted', 'surgery', 'post_op', 'discharge', 'post_discharge', 'any'];
 
   return (
     <div className="min-h-screen bg-gray-50">

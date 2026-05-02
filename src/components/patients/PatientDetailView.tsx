@@ -59,11 +59,12 @@ import PatientFormSubmissions from './PatientFormSubmissions';
 type DetailTab = 'overview' | 'files' | 'ot' | 'activity';
 
 // ── Ordered stages for the progress bar ──
+// 1 May 2026 (sub-sprint C): 'pre_op' removed from the journey progress
+// bar. Admitted now sits directly before surgery on the linear path.
 const STAGES_ORDERED: PatientStage[] = [
   'opd',
   'pre_admission',
   'admitted',
-  'pre_op',
   'surgery',
   'post_op',
   'discharge',
@@ -77,13 +78,17 @@ const BRANCH_STAGES: PatientStage[] = [
   'long_term_followup',
 ];
 
-// Valid stage transitions (mirror of backend)
+// Valid stage transitions (mirror of backend).
+// 1 May 2026 (sub-sprint C): 'pre_op' retired from the journey — admitted
+// transitions directly to surgery. pre_op key retained for legacy data
+// (any patient still in pre_op state can advance to surgery or roll back
+// to admitted) until the migration completes.
 const VALID_TRANSITIONS: Record<string, string[]> = {
   opd: ['pre_admission', 'admitted'],
   pre_admission: ['admitted', 'opd'],
-  admitted: ['pre_op', 'medical_management', 'discharge'],
+  admitted: ['surgery', 'medical_management', 'discharge'],
   medical_management: ['discharge', 'admitted'],
-  pre_op: ['surgery', 'admitted'],
+  pre_op: ['surgery', 'admitted'], // legacy-only
   surgery: ['post_op'],
   post_op: ['discharge', 'surgery'],
   discharge: ['post_discharge', 'post_op_care', 'long_term_followup', 'admitted'],

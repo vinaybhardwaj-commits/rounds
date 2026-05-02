@@ -64,15 +64,19 @@ type ViewState = 'list' | 'pick-patient' | 'fill' | 'success';
 // nursing_shift_handoff from FORMS_BY_STAGE in form-registry.ts but missed this
 // component-local array. Sprint 2 follow-up #28 (24 Apr) removes them here too.
 
+// 1 May 2026 (sub-sprints A + C): per-form stage allowlists synced with
+// form-registry.ts. Surgery Booking, OT Billing Clearance, PAC Clearance
+// opened to OPD onward (sub-sprint A). pre_op dropped — stage retired
+// from the patient journey (sub-sprint C).
 const ALL_FORMS: { type: FormType; stages: string[] }[] = [
   { type: 'consolidated_marketing_handoff', stages: ['opd', 'pre_admission'] },
   { type: 'admission_advice', stages: ['opd', 'pre_admission'] },
-  { type: 'financial_counseling', stages: ['admitted', 'pre_op'] },
-  { type: 'surgery_booking', stages: ['admitted', 'pre_op'] },
+  { type: 'financial_counseling', stages: ['opd', 'pre_admission', 'admitted', 'surgery', 'post_op'] },
+  { type: 'surgery_booking', stages: ['opd', 'pre_admission', 'admitted'] },
   { type: 'admission_checklist', stages: ['admitted'] },
-  { type: 'surgery_posting', stages: ['pre_op'] },
-  { type: 'ot_billing_clearance', stages: ['pre_op'] },
-  { type: 'pac_clearance', stages: ['pre_op'] },
+  { type: 'surgery_posting', stages: ['admitted'] },
+  { type: 'ot_billing_clearance', stages: ['opd', 'pre_admission', 'admitted'] },
+  { type: 'pac_clearance', stages: ['opd', 'pre_admission', 'admitted'] },
   { type: 'discharge_readiness', stages: ['discharge'] },
   { type: 'post_discharge_followup', stages: ['post_discharge'] },
   { type: 'daily_department_update', stages: ['any'] },
