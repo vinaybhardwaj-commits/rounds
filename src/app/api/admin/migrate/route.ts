@@ -1145,6 +1145,32 @@ export async function POST() {
       `INSERT INTO _migrations (name) VALUES ('v22-retire-pre-op-stage') ON CONFLICT (name) DO NOTHING`,
     );
 
+    // 23. Feature flag infrastructure (1 May 2026 — sub-sprint D.1)
+    // Single key/value table for global app settings, primarily used as
+    // feature flags. JSONB value lets us store booleans, strings, numbers,
+    // or richer objects under a single shape. Idempotent — re-running
+    // doesn't overwrite existing values (ON CONFLICT DO NOTHING on the
+    // seed). Updates via PATCH /api/admin/settings (super_admin only).
+    await run('app_settings', `
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key VARCHAR(100) PRIMARY KEY,
+        value JSONB NOT NULL,
+        description TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_by UUID REFERENCES profiles(id)
+      )
+    `);
+    await run(
+      'seed_ot_planning_enabled',
+      `INSERT INTO app_settings (key, value, description) VALUES
+        ('ot_planning_enabled', 'false'::jsonb, 'Master toggle for the OT Planning module — when false, all OT-related UI surfaces (patient chart panel, bottom-nav tab, /ot-management, /ot-calendar, /equipment-kanban, /anaesthetist-queue, /pac-workspace, /case/[id]) are hidden. Background data pipelines continue running so feeders like Marketing Handoff still write surgical_cases. Flip via /admin/settings (super_admin).')
+       ON CONFLICT (key) DO NOTHING`,
+    );
+    await run(
+      'feature_flag_infra_marker',
+      `INSERT INTO _migrations (name) VALUES ('v23-feature-flag-infra') ON CONFLICT (name) DO NOTHING`,
+    );
+
     // 9. Verify
     const tables = await sql`
       SELECT table_name FROM information_schema.tables
