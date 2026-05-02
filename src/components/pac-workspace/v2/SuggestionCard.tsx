@@ -35,6 +35,8 @@ export interface SuggestionData {
   recency_window_days: number | null;
   decision_reason_code: string | null;
   decision_reason_notes: string | null;
+  /** PCW2.6 — populated when modal originally flagged "already done"; non-null after resurrection too. */
+  already_done_evidence?: Record<string, unknown> | null;
 }
 
 interface Props {
@@ -110,6 +112,9 @@ export function SuggestionCard({
   const isAsaReview = s.routes_to === 'asa_review';
   const isInfoOnly = s.routes_to === 'info_only';
   const isSkipped = s.status === 'skipped';
+  // PCW2.6 — resurrected = pending again but evidence shows it was once done.
+  const isResurrected = s.status === 'pending' && s.already_done_evidence != null;
+  const evidenceDoneAt = (s.already_done_evidence as { done_at?: string } | null | undefined)?.done_at ?? null;
 
   const headline = payloadHeadline(s);
 
@@ -151,6 +156,18 @@ export function SuggestionCard({
             {isSkipped && (
               <span className="ml-1 inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 uppercase tracking-wide">
                 Skipped
+              </span>
+            )}
+            {isResurrected && (
+              <span
+                className="ml-1 inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 uppercase tracking-wide"
+                title={
+                  evidenceDoneAt
+                    ? `Auto-resurrected — previously done ${evidenceDoneAt}, recency window expired`
+                    : 'Auto-resurrected'
+                }
+              >
+                Previously done — re-verify
               </span>
             )}
           </div>

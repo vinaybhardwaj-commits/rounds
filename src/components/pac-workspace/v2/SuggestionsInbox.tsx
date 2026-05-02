@@ -44,6 +44,13 @@ interface Props {
    * + modals are live.
    */
   actionsEnabled?: boolean;
+  /**
+   * PCW2.6 — bumped by parent (PACWorkspaceView) on every workspace reload
+   * (e.g. after a result entry submit). Inbox useEffect on this triggers a
+   * fresh /suggestions fetch so freshly-fired Layer 3 cards appear without
+   * the coordinator clicking Recompute. Optional; defaults to 0.
+   */
+  reloadKey?: number;
 }
 
 type ModalState =
@@ -60,7 +67,7 @@ function isAsaOrInfoOnly(s: SuggestionData): boolean {
   );
 }
 
-export function SuggestionsInbox({ caseId, actionsEnabled = true }: Props) {
+export function SuggestionsInbox({ caseId, actionsEnabled = true, reloadKey = 0 }: Props) {
   const [data, setData] = useState<SuggestionsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +99,14 @@ export function SuggestionsInbox({ caseId, actionsEnabled = true }: Props) {
   useEffect(() => {
     load();
   }, [load]);
+
+  // PCW2.6 — refetch when parent bumps reloadKey (e.g. after result entry).
+  // Skip the initial mount fire (the load() effect above handles it).
+  useEffect(() => {
+    if (reloadKey === 0) return;
+    setRefreshing(true);
+    load();
+  }, [reloadKey, load]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);

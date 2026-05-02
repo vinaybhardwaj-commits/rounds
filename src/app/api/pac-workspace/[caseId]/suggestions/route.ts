@@ -45,6 +45,8 @@ interface SuggestionRow {
   decided_at: string | null;
   decision_reason_code: string | null;
   decision_reason_notes: string | null;
+  /** PCW2.6 — populated by Already-Done modal (PCW2.4b); used to detect resurrected rows. */
+  already_done_evidence: Record<string, unknown> | null;
   parent_section_item_id: string | null;
   created_at: string;
   updated_at: string;
@@ -89,6 +91,7 @@ export async function GET(
       `SELECT id, rule_id, rule_version, severity, status, routes_to,
               proposed_payload, reason_text, sop_reference, recency_window_days,
               decided_by, decided_at, decision_reason_code, decision_reason_notes,
+              already_done_evidence,
               parent_section_item_id, created_at::text AS created_at,
               updated_at::text AS updated_at
          FROM pac_suggestions

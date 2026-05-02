@@ -62,6 +62,9 @@ export function PACWorkspaceView({ caseId, userRole }: Props) {
   const [savingMode, setSavingMode] = useState(false);
   const canWrite = PAC_WRITE_ROLES.has(userRole);
   const v2Enabled = usePacWorkspaceV2Enabled();
+  // PCW2.6 — bumped on every workspace reload so SuggestionsInbox refetches.
+  // Fixes the PCW2.5 paper-cut where result entry didn't trigger inbox reload.
+  const [inboxReloadKey, setInboxReloadKey] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -73,6 +76,9 @@ export function PACWorkspaceView({ caseId, userRole }: Props) {
         throw new Error(json.error || `HTTP ${res.status}`);
       }
       setPayload(json.data as PacWorkspacePayload);
+      // PCW2.6 — bump inbox reload key so SuggestionsInbox refetches its
+      // own /suggestions endpoint after every PACWorkspaceView reload.
+      setInboxReloadKey((k) => k + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -197,7 +203,7 @@ export function PACWorkspaceView({ caseId, userRole }: Props) {
         {/* PCW2.4a — Smart Suggestions inbox (gated on pac_workspace_v2_enabled).
             When the flag is OFF, users see the v1 workspace exactly as before.
             When ON, the inbox renders above the mode picker per PRD §8.1. */}
-        {v2Enabled && <SuggestionsInbox caseId={caseId} />}
+        {v2Enabled && <SuggestionsInbox caseId={caseId} reloadKey={inboxReloadKey} />}
 
         {/* Mode picker — LIVE in PCW.1 */}
         <ModeSection
