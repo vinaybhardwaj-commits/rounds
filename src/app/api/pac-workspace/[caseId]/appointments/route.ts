@@ -23,11 +23,44 @@ import { getCurrentUser } from '@/lib/auth';
 import { query as sqlQuery, queryOne } from '@/lib/db';
 import { hasRole } from '@/lib/roles';
 import { audit } from '@/lib/audit';
+import { sendSystemMessage } from '@/lib/getstream';
 import type {
   PacAppointmentRow,
   PacAppointmentParentType,
   PacAppointmentModality,
 } from '@/lib/pac-workspace/types';
+
+const MODALITY_LABEL: Record<string, string> = {
+  in_person_opd: 'in-person OPD',
+  bedside: 'bedside',
+  telephonic: 'telephonic',
+  video: 'video',
+  walk_in: 'walk-in',
+  paper: 'paper screening',
+};
+
+function buildScheduleMessage(args: {
+  parent_type: PacAppointmentParentType;
+  parent_label: string;
+  scheduled_at: string | null;
+  provider_name: string | null;
+  modality: PacAppointmentModality | null;
+  isReschedule?: boolean;
+}): string {
+  const ts = args.scheduled_at
+    ? new Date(args.scheduled_at).toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: false,
+      })
+    : 'TBD';
+  const provider = args.provider_name ? ` with ${args.provider_name}` : '';
+  const modality = args.modality ? ` (${MODALITY_LABEL[args.modality] ?? args.modality})` : '';
+  const verb = args.isReschedule ? '🔄 rescheduled' : '🗓 scheduled';
+  return `${verb} ${args.parent_label} — ${ts}${provider}${modality}`;
+}
 
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const PAC_WRITE_ROLES = ['ip_coordinator', 'pac_coordinator', 'anesthesiologist'] as const;
@@ -145,8 +178,36 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Insert failed' }, { status: 500 });
     }
 
-    // 2.7b will hook a GetStream system message ("Cardiology clearance scheduled
-    // for 3 May 11:00 with Dr Suresh K") here. PCW2.7a is API-only.
+    // PCW2.8 — GetStream system message to the patient thread channel.
+    // Best-effort; failure logs but doesn't roll back the appointment.
+    try {
+      const channelRow = await queryOne<{ getstream_channel_id: string | null; patient_name: string | null }>(
+        `SELECT pt.getstream_channel_id, pt.patient_name
+           FROM surgical_cases sc
+           JOIN patient_threads pt ON pt.id = sc.patient_thread_id
+          WHERE sc.id = $1`,
+        [caseId]
+      );
+      if (channelRow?.getstream_channel_id) {
+        const parentLabelMap: Record<PacAppointmentParentType, string> = {
+          pac_visit: 'PAC visit',
+          clearance: body.provider_specialty
+            ? `${body.provider_specialty} clearance`
+            : 'Specialist clearance',
+          diagnostic: 'Diagnostic',
+        };
+        const msg = buildScheduleMessage({
+          parent_type: body.parent_type,
+          parent_label: parentLabelMap[body.parent_type],
+          scheduled_at: body.scheduled_at ?? null,
+          provider_name: body.provider_name ?? null,
+          modality: body.modality ?? null,
+        });
+        await sendSystemMessage('patient-thread', channelRow.getstream_channel_id, msg);
+      }
+    } catch (gsErr) {
+      console.error('[pcw2.8] GetStream system message (create) failed (non-fatal):', (gsErr as Error).message);
+    }
 
     audit({
       actorId: user.profileId,
