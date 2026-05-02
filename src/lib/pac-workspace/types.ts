@@ -133,9 +133,53 @@ export interface PacWorkspacePayload {
   progress: PacWorkspaceProgressRow;
   orders: PacOrderRow[];
   clearances: PacClearanceRow[];
+  /** PCW2.7 — pac_appointments rows for this case (all parent_types). */
+  appointments?: PacAppointmentRow[];
   patient_context: PacPatientContext | null;
   channel_id: string | null;
   generated_at: string;
+}
+
+/** PCW2.7 — pac_appointments table from PCW2.0 schema. */
+export type PacAppointmentParentType = 'pac_visit' | 'clearance' | 'diagnostic';
+
+export type PacAppointmentModality =
+  | 'in_person_opd'
+  | 'bedside'
+  | 'telephonic'
+  | 'video'
+  | 'paper'
+  | 'walk_in';
+
+export type PacAppointmentStatus =
+  | 'scheduled'
+  | 'confirmed'
+  | 'in_progress'
+  | 'completed'
+  | 'no_show'
+  | 'rescheduled'
+  | 'cancelled';
+
+export interface PacAppointmentRow {
+  id: string;
+  case_id: string;
+  parent_type: PacAppointmentParentType;
+  /** UUID of the pac_clearances row (when parent_type='clearance'),
+   * pac_orders row (when 'diagnostic'), or NULL for 'pac_visit'. */
+  parent_id: string | null;
+  scheduled_at: string | null;
+  modality: PacAppointmentModality | null;
+  provider_id: string | null;
+  provider_name: string | null;
+  provider_specialty: string | null;
+  location: string | null;
+  status: PacAppointmentStatus;
+  deadline_at: string | null;
+  expected_duration_min: number | null;
+  notes: string | null;
+  cancelled_reason: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface PacChecklistTemplate {

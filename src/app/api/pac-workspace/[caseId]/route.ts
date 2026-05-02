@@ -32,6 +32,7 @@ import type {
   PacWorkspacePayload,
   PacChecklistItem,
   PacPatientContext,
+  PacAppointmentRow,
 } from '@/lib/pac-workspace/types';
 
 export const dynamic = 'force-dynamic';
@@ -196,8 +197,8 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Failed to initialise workspace' }, { status: 500 });
     }
 
-    // ── 3. Load orders + clearances (likely empty in PCW.1 since UI ships in PCW.2) ──
-    const [orders, clearances] = await Promise.all([
+    // ── 3. Load orders + clearances + appointments (PCW2.7) ──
+    const [orders, clearances, appointments] = await Promise.all([
       query<PacOrderRow>(
         `SELECT
            po.id::text AS id,
@@ -246,6 +247,20 @@ export async function GET(
          ORDER BY pc.requested_at ASC`,
         [caseId],
       ),
+      query<PacAppointmentRow>(
+        `SELECT id::text AS id, case_id::text AS case_id, parent_type,
+                parent_id::text AS parent_id, scheduled_at::text AS scheduled_at,
+                modality, provider_id::text AS provider_id, provider_name,
+                provider_specialty, location, status,
+                deadline_at::text AS deadline_at, expected_duration_min,
+                notes, cancelled_reason,
+                created_at::text AS created_at, updated_at::text AS updated_at
+           FROM pac_appointments
+          WHERE case_id = $1::uuid
+            AND status NOT IN ('cancelled', 'rescheduled')
+          ORDER BY scheduled_at ASC NULLS LAST, created_at DESC`,
+        [caseId],
+      ),
     ]);
 
     // ── 4. GetStream channel — best-effort ──────────────────────────────────
@@ -269,6 +284,7 @@ export async function GET(
       progress: { ...progress, checklist_state: ensureChecklistArray(progress.checklist_state) },
       orders,
       clearances,
+      appointments,
       patient_context: patientContext,
       channel_id: channelId,
       generated_at: new Date().toISOString(),
