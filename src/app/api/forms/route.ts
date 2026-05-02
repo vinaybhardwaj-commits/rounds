@@ -22,6 +22,7 @@ import { calculateMilestoneAttribution } from '@/lib/billing-metrics';
 import { audit } from '@/lib/audit';
 import { validateDoctorHospitalAffiliation } from '@/lib/validate-doctor-hospital';
 import { writePacFacts, lookupCaseForPatient } from '@/lib/pac-workspace/facts';
+import { recomputeNonFatal } from '@/lib/pac-workspace/engine-persistence';
 import type { FormType, FormStatus } from '@/types';
 import { ROOM_RENT_ELIGIBILITY_PCT } from '@/types';
 
@@ -283,6 +284,10 @@ export async function POST(request: NextRequest) {
               console.log(
                 `[pcw2.1] wrote ${written.written} pac_facts rows for case ${caseInsert.id} from handoff ${formId}`
               );
+              // PCW2.3 — recompute suggestions after fact write. Non-fatal:
+              // if engine throws, the form submit + case create + fact
+              // write all stay committed.
+              await recomputeNonFatal(caseInsert.id, 'consolidated_marketing_handoff');
             } catch (factErr) {
               console.error(
                 '[pcw2.1] pac_facts write failed (non-fatal):',
@@ -744,6 +749,8 @@ export async function POST(request: NextRequest) {
           console.log(
             `[pcw2.1] wrote ${written.written} pac_facts rows for case ${caseId} from surgery_booking ${formId}`
           );
+          // PCW2.3 — recompute after fact write. Non-fatal.
+          await recomputeNonFatal(caseId, 'surgery_booking');
         }
       } catch (factErr) {
         console.error(

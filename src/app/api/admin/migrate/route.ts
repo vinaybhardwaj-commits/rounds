@@ -9,6 +9,11 @@
 import { NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { getCurrentUser } from '@/lib/auth';
+import {
+  backfillFacts,
+  backfillSuggestions,
+  backfillResolutionState,
+} from '@/lib/pac-workspace/backfill';
 
 export async function POST() {
   try {
@@ -1391,6 +1396,67 @@ export async function POST() {
     await run(
       'pac_workspace_v2_marker',
       `INSERT INTO _migrations (name) VALUES ('v24-pac-workspace-v2') ON CONFLICT (name) DO NOTHING`,
+    );
+
+    // 34-36. PCW2.3 backfill steps (deferred from PCW2.0 amendment 1).
+    // Each guarded by a row in _migrations so re-runs are no-ops. The TS
+    // backfill calls are wrapped in try/catch — failures don't tear down
+    // the migrate run; they just leave the marker absent so a subsequent
+    // run can retry.
+    async function runBackfill(
+      marker: string,
+      label: string,
+      fn: () => Promise<unknown>
+    ): Promise<void> {
+      try {
+        const exists = await sql`SELECT 1 FROM _migrations WHERE name = ${marker} LIMIT 1`;
+        if ((exists as unknown[]).length > 0) {
+          results.push(`⏭ ${label} (already applied)`);
+          return;
+        }
+        const summary = await fn();
+        await sql`INSERT INTO _migrations (name) VALUES (${marker}) ON CONFLICT (name) DO NOTHING`;
+        const summaryStr =
+          summary && typeof summary === 'object'
+            ? JSON.stringify(summary)
+            : String(summary);
+        results.push(`✅ ${label} ${summaryStr}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[Migrate backfill] ${label} failed:`, msg.substring(0, 300));
+        results.push(`❌ ${label}: ${msg.substring(0, 200)}`);
+      }
+    }
+
+    // 34. pac_facts backfill (PRD migration step 30)
+    await runBackfill(
+      'v25-pac-v2-facts-backfill',
+      'pac_v2_facts_backfill',
+      backfillFacts
+    );
+
+    // 35. pac_suggestions backfill (PRD migration step 31).
+    // Depends on facts being present + the engine (PCW2.2). Per PRD §15.9:
+    // "Each patient has at least 1 pending pac_suggestions row" after this.
+    await runBackfill(
+      'v25-pac-v2-suggestions-backfill',
+      'pac_v2_suggestions_backfill',
+      backfillSuggestions
+    );
+
+    // 36. resolution_state backfill (PRD migration step 32).
+    // Pure SQL behind the function — sets active_for_surgery / cancelled
+    // on existing pac_workspace_progress rows derived from sub_state.
+    await runBackfill(
+      'v25-pac-v2-resolution-backfill',
+      'pac_v2_resolution_backfill',
+      backfillResolutionState
+    );
+
+    // 37. PCW2.3 marker
+    await run(
+      'pac_workspace_v2_engine_marker',
+      `INSERT INTO _migrations (name) VALUES ('v25-pac-workspace-v2-engine') ON CONFLICT (name) DO NOTHING`,
     );
 
     // 9. Verify

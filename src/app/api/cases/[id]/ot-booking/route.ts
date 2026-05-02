@@ -32,6 +32,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { query, queryOne } from '@/lib/db';
 import { audit } from '@/lib/audit';
 import { writePacFacts } from '@/lib/pac-workspace/facts';
+import { recomputeNonFatal } from '@/lib/pac-workspace/engine-persistence';
 
 // 26 Apr 2026 follow-up F3: V widened the gate.
 // 'consultant' and 'surgeon' are not yet in UserRole enum — they remain
@@ -238,6 +239,8 @@ export async function POST(
           `[pcw2.1] wrote ${written.written} pac_facts rows for case ${caseId} from ot_booking`
         );
       }
+      // PCW2.3 — recompute after fact write. Non-fatal.
+      await recomputeNonFatal(caseId, 'ot_booking');
     } catch (factErr) {
       console.error(
         '[pcw2.1] pac_facts write failed (non-fatal) for ot_booking:',
