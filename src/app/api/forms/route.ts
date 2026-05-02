@@ -21,6 +21,7 @@ import { getOrCreateClaim, logClaimEvent, postClaimMessage } from '@/lib/insuran
 import { calculateMilestoneAttribution } from '@/lib/billing-metrics';
 import { audit } from '@/lib/audit';
 import { validateDoctorHospitalAffiliation } from '@/lib/validate-doctor-hospital';
+import { writePacFacts, lookupCaseForPatient } from '@/lib/pac-workspace/facts';
 import type { FormType, FormStatus } from '@/types';
 import { ROOM_RENT_ELIGIBILITY_PCT } from '@/types';
 
@@ -262,6 +263,31 @@ export async function POST(request: NextRequest) {
               );
             } catch (taskErr) {
               console.error('[Sprint1.CaseModel] auto-task insert failed (non-fatal):', (taskErr as Error).message);
+            }
+
+            // ── PCW2.1 (2 May 2026) — pac_facts extraction hook ──
+            // Per PRD §5.1: extract surgery + comorbidity + habit + medication
+            // facts from Section C of consolidated_marketing_handoff and
+            // persist to pac_facts. The rule engine (PCW2.2+) reads these.
+            // Non-fatal: a fact-write failure must not tear down the form
+            // submit. Lives inside the FEATURE_CASE_MODEL_ENABLED gate
+            // because pac_facts requires a case_id, and case creation is
+            // the same flag.
+            try {
+              const written = await writePacFacts({
+                caseId: caseInsert.id,
+                sourceFormType: 'consolidated_marketing_handoff',
+                sourceFormSubmissionId: formId,
+                formData: form_data,
+              });
+              console.log(
+                `[pcw2.1] wrote ${written.written} pac_facts rows for case ${caseInsert.id} from handoff ${formId}`
+              );
+            } catch (factErr) {
+              console.error(
+                '[pcw2.1] pac_facts write failed (non-fatal):',
+                (factErr as Error).message
+              );
             }
           }
         }
@@ -685,6 +711,45 @@ export async function POST(request: NextRequest) {
       } catch (err) {
         console.error('[SurgeryBooking] Routing hook error:', err);
         // Non-fatal — form submission still succeeds
+      }
+    }
+
+    // ── PCW2.1 (2 May 2026) — Surgery Booking (Standalone) → pac_facts ──
+    // Mirrors Section C of consolidated_marketing_handoff. Idempotent with
+    // the consolidated handoff path (latest non-null wins via supersede-
+    // first). Standalone surgery_booking has no case-creation path of its
+    // own — we look up the case by patient_thread_id; if none exists, we
+    // skip-with-warn (no auto-create — that's marketing handoff's job).
+    // Non-fatal: a fact-write failure must not tear down the form submit.
+    if (
+      form_type === 'surgery_booking' &&
+      status !== 'draft' &&
+      process.env.FEATURE_CASE_MODEL_ENABLED === 'true' &&
+      body.patient_thread_id
+    ) {
+      try {
+        const caseId = await lookupCaseForPatient(body.patient_thread_id);
+        if (!caseId) {
+          console.warn(
+            '[pcw2.1] no case for surgery_booking submission, skipping pac_facts',
+            { patient_thread_id: body.patient_thread_id, form_submission_id: formId }
+          );
+        } else {
+          const written = await writePacFacts({
+            caseId,
+            sourceFormType: 'surgery_booking',
+            sourceFormSubmissionId: formId,
+            formData: form_data,
+          });
+          console.log(
+            `[pcw2.1] wrote ${written.written} pac_facts rows for case ${caseId} from surgery_booking ${formId}`
+          );
+        }
+      } catch (factErr) {
+        console.error(
+          '[pcw2.1] pac_facts write failed (non-fatal) for surgery_booking:',
+          (factErr as Error).message
+        );
       }
     }
 

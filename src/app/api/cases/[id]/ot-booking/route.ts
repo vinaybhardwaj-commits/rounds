@@ -31,6 +31,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { query, queryOne } from '@/lib/db';
 import { audit } from '@/lib/audit';
+import { writePacFacts } from '@/lib/pac-workspace/facts';
 
 // 26 Apr 2026 follow-up F3: V widened the gate.
 // 'consultant' and 'surgeon' are not yet in UserRole enum — they remain
@@ -216,6 +217,32 @@ export async function POST(
     } catch (auditErr) {
       console.error('[audit:guaranteed] case.book_ot:', auditErr instanceof Error ? auditErr.message : auditErr);
       return NextResponse.json({ success: false, error: 'Audit logging failed; please retry. Mutation may need manual rollback.' }, { status: 503 });
+    }
+
+    // ── PCW2.1 (2 May 2026) — pac_facts hook for ot_booking ──
+    // Per PRD §5.1 ot_booking row: writes surgery.anaesthesia_type,
+    // surgery.equipment_status, surgery.consumables_status, surgery.target_date,
+    // surgery.ot_room, and risk.flagged_high_risk (if computed). source_form_
+    // submission_id is NULL since ot_booking is not a form_submission row.
+    // Non-fatal: a fact-write failure must not invalidate a successfully-
+    // committed (and audited) booking.
+    try {
+      const written = await writePacFacts({
+        caseId,
+        sourceFormType: 'ot_booking',
+        sourceFormSubmissionId: null,
+        formData: body as Record<string, unknown>,
+      });
+      if (written.written > 0) {
+        console.log(
+          `[pcw2.1] wrote ${written.written} pac_facts rows for case ${caseId} from ot_booking`
+        );
+      }
+    } catch (factErr) {
+      console.error(
+        '[pcw2.1] pac_facts write failed (non-fatal) for ot_booking:',
+        (factErr as Error).message
+      );
     }
 
     return NextResponse.json({
