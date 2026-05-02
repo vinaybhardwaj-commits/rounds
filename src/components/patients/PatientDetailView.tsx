@@ -927,9 +927,12 @@ export function PatientDetailView({
             case exists yet (OPD/Pre-Admission patient with no surgery
             planned), shows a quiet neutral panel pointing at the right
             entry forms.
-            Sub-sprint D.3 (1 May 2026): hidden when ot_planning_enabled
-            is off — the workspace it links to is itself blocked. */}
-        {showPac && otPlanningEnabled && (
+            Sub-sprint D.4 (1 May 2026): independent of ot_planning_enabled.
+            PAC Workspace is its own clinical surface — V wants it visible
+            on every pre-surgery patient's chart from intake onward,
+            regardless of the OT module's master toggle. The OT Planning
+            panel + bottom-nav + /ot-management routes remain gated. */}
+        {showPac && (
           <div className="mx-4 mb-4">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
               PAC Status
