@@ -1171,6 +1171,228 @@ export async function POST() {
       `INSERT INTO _migrations (name) VALUES ('v23-feature-flag-infra') ON CONFLICT (name) DO NOTHING`,
     );
 
+    // 24-29. PAC Workspace v2 schema (2 May 2026 — sub-sprint PCW2.0)
+    // PRD: Daily Dash EHRC/PAC-WORKSPACE-V2-PRD.md §4
+    // UX: Daily Dash EHRC/PAC-WORKSPACE-V2-UX-SPEC.md
+    //
+    // PCW2.0 ships the schema foundation: 6 columns added to existing
+    // pac_workspace_progress, 5 to pac_orders, 3 to pac_clearances, plus
+    // 3 new tables (pac_facts, pac_suggestions, pac_appointments) and the
+    // ot_workspace_v2_enabled feature flag seeded false.
+    //
+    // Steps are ordered for FK safety: pac_appointments table is created
+    // BEFORE pac_orders + pac_clearances column additions that FK to it.
+    //
+    // Backfill steps from PRD §4.4 (steps 30-32: pac_facts backfill,
+    // pac_suggestions backfill, resolution_state backfill) are DEFERRED to
+    // sub-sprint PCW2.3 (engine persistence) — backfilling suggestions
+    // requires the rule engine which doesn't exist until PCW2.2. Steps
+    // 30-32 will be appended to this migrate route at PCW2.3 ship time.
+
+    // 24. pac_workspace_progress new columns
+    await run('pac_v2_workspace_resolution_state', `
+      ALTER TABLE pac_workspace_progress ADD COLUMN IF NOT EXISTS resolution_state TEXT NOT NULL DEFAULT 'none'
+    `);
+    await run('pac_v2_workspace_resolution_state_check', `
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pac_workspace_progress_resolution_state_check') THEN
+          ALTER TABLE pac_workspace_progress ADD CONSTRAINT pac_workspace_progress_resolution_state_check
+            CHECK (resolution_state IN ('none', 'active_for_surgery', 'active_for_optimization', 'completed', 'cancelled', 'superseded'));
+        END IF;
+      END $$
+    `);
+    await run('pac_v2_workspace_published_outcome_id', `
+      ALTER TABLE pac_workspace_progress ADD COLUMN IF NOT EXISTS published_outcome_id UUID REFERENCES pac_events(id)
+    `);
+    await run('pac_v2_workspace_asa_grade', `
+      ALTER TABLE pac_workspace_progress ADD COLUMN IF NOT EXISTS asa_grade INT
+    `);
+    await run('pac_v2_workspace_asa_grade_check', `
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pac_workspace_progress_asa_grade_check') THEN
+          ALTER TABLE pac_workspace_progress ADD CONSTRAINT pac_workspace_progress_asa_grade_check
+            CHECK (asa_grade IS NULL OR asa_grade BETWEEN 1 AND 6);
+        END IF;
+      END $$
+    `);
+    await run('pac_v2_workspace_asa_source', `
+      ALTER TABLE pac_workspace_progress ADD COLUMN IF NOT EXISTS asa_source TEXT
+    `);
+    await run('pac_v2_workspace_asa_source_check', `
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pac_workspace_progress_asa_source_check') THEN
+          ALTER TABLE pac_workspace_progress ADD CONSTRAINT pac_workspace_progress_asa_source_check
+            CHECK (asa_source IS NULL OR asa_source IN ('inferred', 'coordinator', 'anaesthetist'));
+        END IF;
+      END $$
+    `);
+    await run('pac_v2_workspace_asa_inferred_facts', `
+      ALTER TABLE pac_workspace_progress ADD COLUMN IF NOT EXISTS asa_inferred_facts JSONB
+    `);
+    await run('pac_v2_workspace_asa_override_reason', `
+      ALTER TABLE pac_workspace_progress ADD COLUMN IF NOT EXISTS asa_override_reason TEXT
+    `);
+
+    // 27. pac_facts table (created early; no FK dependencies on this sprint's tables)
+    await run('pac_v2_facts_table', `
+      CREATE TABLE IF NOT EXISTS pac_facts (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        case_id UUID NOT NULL REFERENCES surgical_cases(id) ON DELETE CASCADE,
+        fact_key TEXT NOT NULL,
+        fact_value JSONB NOT NULL,
+        source_form_type TEXT,
+        source_form_submission_id UUID REFERENCES form_submissions(id),
+        captured_at TIMESTAMPTZ,
+        superseded_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run('pac_v2_facts_unique_idx', `
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_pac_facts_unique
+        ON pac_facts (case_id, fact_key, source_form_submission_id)
+    `);
+    await run('pac_v2_facts_active_idx', `
+      CREATE INDEX IF NOT EXISTS idx_pac_facts_active
+        ON pac_facts (case_id, fact_key) WHERE superseded_at IS NULL
+    `);
+
+    // 28. pac_suggestions table
+    await run('pac_v2_suggestions_table', `
+      CREATE TABLE IF NOT EXISTS pac_suggestions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        case_id UUID NOT NULL REFERENCES surgical_cases(id) ON DELETE CASCADE,
+        rule_id TEXT NOT NULL,
+        rule_version INT NOT NULL DEFAULT 1,
+        severity TEXT NOT NULL CHECK (severity IN ('required', 'recommended', 'info')),
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'already_done', 'skipped', 'auto_dismissed', 'superseded')),
+        routes_to TEXT NOT NULL CHECK (routes_to IN ('diagnostic', 'clearance', 'order', 'pac_visit', 'asa_review', 'info_only')),
+        proposed_payload JSONB,
+        fact_snapshot JSONB,
+        reason_text TEXT,
+        sop_reference TEXT,
+        recency_window_days INT,
+        decided_by UUID REFERENCES profiles(id),
+        decided_at TIMESTAMPTZ,
+        decision_reason_code TEXT,
+        decision_reason_notes TEXT,
+        already_done_evidence JSONB,
+        parent_section_item_id UUID,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await run('pac_v2_suggestions_unique_active_idx', `
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_pac_suggestions_unique_active
+        ON pac_suggestions (case_id, rule_id)
+        WHERE status NOT IN ('superseded', 'auto_dismissed')
+    `);
+    await run('pac_v2_suggestions_status_idx', `
+      CREATE INDEX IF NOT EXISTS idx_pac_suggestions_status
+        ON pac_suggestions (case_id, status)
+    `);
+    await run('pac_v2_suggestions_pending_idx', `
+      CREATE INDEX IF NOT EXISTS idx_pac_suggestions_pending_severity
+        ON pac_suggestions (case_id, severity, status) WHERE status = 'pending'
+    `);
+    await run('pac_v2_suggestions_resurrection_idx', `
+      CREATE INDEX IF NOT EXISTS idx_pac_suggestions_resurrection
+        ON pac_suggestions (status, recency_window_days) WHERE status = 'already_done'
+    `);
+
+    // 29. pac_appointments table (created BEFORE pac_orders/pac_clearances column adds for FK safety)
+    await run('pac_v2_appointments_table', `
+      CREATE TABLE IF NOT EXISTS pac_appointments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        case_id UUID NOT NULL REFERENCES surgical_cases(id) ON DELETE CASCADE,
+        parent_type TEXT NOT NULL CHECK (parent_type IN ('pac_visit', 'clearance', 'diagnostic')),
+        parent_id UUID,
+        scheduled_at TIMESTAMPTZ,
+        modality TEXT CHECK (modality IS NULL OR modality IN ('in_person_opd', 'bedside', 'telephonic', 'video', 'paper', 'walk_in')),
+        provider_id UUID,
+        provider_name TEXT,
+        provider_specialty TEXT,
+        location TEXT,
+        status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'confirmed', 'in_progress', 'completed', 'no_show', 'rescheduled', 'cancelled')),
+        deadline_at TIMESTAMPTZ,
+        expected_duration_min INT DEFAULT 20,
+        notes TEXT,
+        cancelled_reason TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_by UUID REFERENCES profiles(id),
+        updated_by UUID REFERENCES profiles(id)
+      )
+    `);
+    await run('pac_v2_appointments_status_idx', `
+      CREATE INDEX IF NOT EXISTS idx_pac_appointments_status
+        ON pac_appointments (case_id, parent_type, status)
+    `);
+    await run('pac_v2_appointments_deadline_idx', `
+      CREATE INDEX IF NOT EXISTS idx_pac_appointments_deadline
+        ON pac_appointments (deadline_at) WHERE status = 'scheduled'
+    `);
+
+    // 25. pac_orders new columns (FK to pac_appointments now safe)
+    await run('pac_v2_orders_kind', `
+      ALTER TABLE pac_orders ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'order'
+    `);
+    await run('pac_v2_orders_kind_check', `
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pac_orders_kind_check') THEN
+          ALTER TABLE pac_orders ADD CONSTRAINT pac_orders_kind_check
+            CHECK (kind IN ('diagnostic', 'order'));
+        END IF;
+      END $$
+    `);
+    await run('pac_v2_orders_current_appointment_id', `
+      ALTER TABLE pac_orders ADD COLUMN IF NOT EXISTS current_appointment_id UUID REFERENCES pac_appointments(id)
+    `);
+    await run('pac_v2_orders_result_value', `
+      ALTER TABLE pac_orders ADD COLUMN IF NOT EXISTS result_value JSONB
+    `);
+    await run('pac_v2_orders_result_received_at', `
+      ALTER TABLE pac_orders ADD COLUMN IF NOT EXISTS result_received_at TIMESTAMPTZ
+    `);
+    await run('pac_v2_orders_done_at', `
+      ALTER TABLE pac_orders ADD COLUMN IF NOT EXISTS done_at TIMESTAMPTZ
+    `);
+    await run('pac_v2_orders_done_at_source', `
+      ALTER TABLE pac_orders ADD COLUMN IF NOT EXISTS done_at_source TEXT
+    `);
+    await run('pac_v2_orders_done_at_source_check', `
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pac_orders_done_at_source_check') THEN
+          ALTER TABLE pac_orders ADD CONSTRAINT pac_orders_done_at_source_check
+            CHECK (done_at_source IS NULL OR done_at_source IN ('ehrc', 'external'));
+        END IF;
+      END $$
+    `);
+
+    // 26. pac_clearances new columns
+    await run('pac_v2_clearances_current_appointment_id', `
+      ALTER TABLE pac_clearances ADD COLUMN IF NOT EXISTS current_appointment_id UUID REFERENCES pac_appointments(id)
+    `);
+    await run('pac_v2_clearances_document_url', `
+      ALTER TABLE pac_clearances ADD COLUMN IF NOT EXISTS clearance_document_url TEXT
+    `);
+    await run('pac_v2_clearances_received_at', `
+      ALTER TABLE pac_clearances ADD COLUMN IF NOT EXISTS clearance_received_at TIMESTAMPTZ
+    `);
+
+    // PCW2.0 feature flag seed (independent of ot_planning_enabled, default OFF)
+    await run(
+      'pac_v2_seed_flag',
+      `INSERT INTO app_settings (key, value, description) VALUES
+        ('pac_workspace_v2_enabled', 'false'::jsonb, 'Master toggle for PAC Workspace v2 — when false, users see the legacy v1 workspace; when true, the new fact-driven orchestration workspace renders. v2 introduces Smart Suggestions, ASA inference, deadline strip, scheduling, and time-travel resurrection. Independent of ot_planning_enabled. Flip via /admin/settings (super_admin).')
+       ON CONFLICT (key) DO NOTHING`,
+    );
+
+    // 33. PCW2.0 marker
+    await run(
+      'pac_workspace_v2_marker',
+      `INSERT INTO _migrations (name) VALUES ('v24-pac-workspace-v2') ON CONFLICT (name) DO NOTHING`,
+    );
+
     // 9. Verify
     const tables = await sql`
       SELECT table_name FROM information_schema.tables

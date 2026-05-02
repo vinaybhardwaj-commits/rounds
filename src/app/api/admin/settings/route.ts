@@ -19,10 +19,13 @@ import { audit } from '@/lib/audit';
 export const dynamic = 'force-dynamic';
 
 // Allowlist of mutable settings. Adding a new feature flag requires:
-//   1. Add the seed row in /api/admin/migrate (step 23 area)
+//   1. Add the seed row in /api/admin/migrate
 //   2. Add the key here so PATCH accepts it
+//   3. Add a KEY_META entry in /admin/settings/page.tsx for the toggle UI
 const MUTABLE_KEYS = new Set<string>([
   'ot_planning_enabled',
+  // 2 May 2026 (PCW2.0): PAC Workspace v2 master toggle.
+  'pac_workspace_v2_enabled',
 ]);
 
 interface SettingsRow {

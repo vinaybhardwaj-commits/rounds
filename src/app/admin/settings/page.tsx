@@ -15,7 +15,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { AdminShell } from '@/components/admin/AdminShell';
-import { Settings, Loader2, RefreshCw, AlertCircle, CheckCircle, Stethoscope } from 'lucide-react';
+import { Settings, Loader2, RefreshCw, AlertCircle, CheckCircle, Stethoscope, ClipboardList } from 'lucide-react';
 
 interface SettingsRow {
   key: string;
@@ -44,8 +44,18 @@ interface KeyMeta {
 const KEY_META: Record<string, KeyMeta> = {
   ot_planning_enabled: {
     label: 'OT Planning module',
-    helpText: 'When ON, the OT Planning surfaces (patient chart panel, bottom-nav OT tab, /ot-management, /ot-calendar, /equipment-kanban, /anaesthetist-queue, /pac-workspace, /case/[id]) are visible to all users. When OFF, those surfaces are hidden across the entire app — background data pipelines (Marketing Handoff → surgical_cases write, etc) keep running silently so no data is lost.',
+    helpText: 'When ON, the OT Planning surfaces (patient chart panel, bottom-nav OT tab, /ot-management, /ot-calendar, /equipment-kanban, /anaesthetist-queue, /case/[id]) are visible to all users. When OFF, those surfaces are hidden across the entire app — background data pipelines keep running silently so no data is lost. PAC Workspace is independent of this flag.',
     icon: <Stethoscope size={16} className="text-blue-600" />,
+    controlType: 'toggle',
+    groupLabel: 'Modules',
+  },
+  // 2 May 2026 (PCW2.0): PAC Workspace v2 master toggle.
+  // Independent of ot_planning_enabled. When OFF, users see the legacy v1
+  // workspace. When ON, the new fact-driven orchestration workspace renders.
+  pac_workspace_v2_enabled: {
+    label: 'PAC Workspace v2 (smart orchestration)',
+    helpText: 'When ON, the upgraded PAC Workspace shows fact-driven Smart Suggestions, ASA inference, deadline strip, appointment scheduling, and time-travel resurrection on stale tests. Built per the EHRC Pre-Op Assessment SOP v5. When OFF, users see the original v1 workspace. Independent of OT Planning toggle. Recommended: leave OFF until v2 build is complete.',
+    icon: <ClipboardList size={16} className="text-emerald-600" />,
     controlType: 'toggle',
     groupLabel: 'Modules',
   },
