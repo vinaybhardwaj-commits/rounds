@@ -8,6 +8,8 @@
 // ============================================
 
 import { useState, useEffect, useCallback } from 'react';
+// 1 May 2026 (sub-sprint B): client-side nav to the PAC Workspace.
+import Link from 'next/link';
 import { CLINICAL_SPECIALTIES, isCanonicalSpecialty } from '@/lib/clinical-specialties';
 import {
   ArrowLeft,
@@ -33,9 +35,13 @@ import type { PatientStage, FormType, FormStatus, PacStatus } from '@/types';
 import {
   PATIENT_STAGE_LABELS,
   PATIENT_STAGE_COLORS,
-  PAC_STATUS_LABELS,
-  PAC_STATUS_COLORS,
   PAC_RELEVANT_STAGES,
+  // PAC_STATUS_LABELS / PAC_STATUS_COLORS removed in sub-sprint B —
+  // the legacy patient_threads.pac_status dropdown is replaced by a
+  // link to /pac-workspace/[caseId]. Status indicator derives from
+  // surgical_cases.state (the workspace's source of truth). The legacy
+  // field is now a denormalized cache stamped server-side on workspace
+  // publish (see /api/pac-workspace/[caseId]/publish).
 } from '@/types';
 import { FORM_TYPE_LABELS, FORMS_BY_STAGE, ALL_FORM_TYPES } from '@/lib/form-registry';
 import { PredictionCard } from '@/components/ai/PredictionCard';
@@ -157,6 +163,50 @@ function getFinancialBadge(category: string | null): { label: string; className:
     case 'credit': return { label: 'Credit', className: 'bg-amber-100 text-amber-700' };
     default: return null;
   }
+}
+
+// 1 May 2026 (sub-sprint B): PAC status indicator chip for the workspace
+// link. State values come from surgical_cases.state — workspace publish
+// transitions to fit / fit_conds / defer / unfit; pre-publish flow uses
+// pac_scheduled / pac_done; case-creation flow uses draft / intake.
+// All other states (scheduled, in_theatre, completed, etc.) collapse to
+// "Cleared" since they're post-PAC milestones.
+function PacStatusIndicator({ state }: { state: string }) {
+  const config = (() => {
+    switch (state) {
+      case 'fit':
+      case 'fit_conds':
+        return { dot: 'bg-emerald-500', label: 'Cleared', tone: 'text-emerald-700 bg-emerald-50' };
+      case 'defer':
+        return { dot: 'bg-orange-500', label: 'Deferred', tone: 'text-orange-700 bg-orange-50' };
+      case 'unfit':
+        return { dot: 'bg-red-500', label: 'Unfit', tone: 'text-red-700 bg-red-50' };
+      case 'pac_scheduled':
+      case 'pac_done':
+      case 'optimizing':
+        return { dot: 'bg-amber-400', label: 'In progress', tone: 'text-amber-700 bg-amber-50' };
+      case 'draft':
+      case 'intake':
+        return { dot: 'bg-gray-300', label: 'Pending', tone: 'text-gray-600 bg-gray-100' };
+      case 'scheduled':
+      case 'confirmed':
+      case 'verified':
+      case 'in_theatre':
+      case 'completed':
+        return { dot: 'bg-emerald-500', label: 'Cleared', tone: 'text-emerald-700 bg-emerald-50' };
+      case 'postponed':
+      case 'cancelled':
+        return { dot: 'bg-gray-400', label: state.charAt(0).toUpperCase() + state.slice(1), tone: 'text-gray-600 bg-gray-100' };
+      default:
+        return { dot: 'bg-gray-300', label: 'Pending', tone: 'text-gray-600 bg-gray-100' };
+    }
+  })();
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${config.tone}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${config.dot}`} />
+      {config.label}
+    </span>
+  );
 }
 
 function daysSince(dateStr: string): number {
@@ -373,27 +423,12 @@ export function PatientDetailView({
     }
   };
 
-  // ── PAC Status handler ──
-  const handlePacChange = async (newStatus: string) => {
-    if (!patient) return;
-    try {
-      const res = await fetch(`/api/patients/${patient.id}/pac-status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pac_status: newStatus || null }),
-      });
-      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-      const data = await res.json();
-      if (data.success) {
-        showToast('success', 'PAC status updated');
-        fetchPatient();
-      } else {
-        showToast('error', data.error || 'Failed to update PAC status');
-      }
-    } catch {
-      showToast('error', 'Network error');
-    }
-  };
+  // 1 May 2026 (sub-sprint B): handlePacChange removed. PAC is now edited
+  // via /pac-workspace/[caseId] (PCW.1 workspace). The legacy
+  // /api/patients/[id]/pac-status endpoint stays in place for any external
+  // callers but is no longer wired to the patient overview UI; on workspace
+  // publish, the server-side stamps patient_threads.pac_status as a
+  // denormalized cache to keep reports backward-compatible.
 
   const handleAdvanceStage = async (newStage: PatientStage) => {
     if (!patient) return;
@@ -874,32 +909,38 @@ export function PatientDetailView({
           </div>
         </div>
 
-        {/* ── PAC Status (Pre-Op and above) ── */}
+        {/* ── PAC Status — sub-sprint B (1 May 2026) ──
+            Replaces the legacy dropdown with a link to the PAC Workspace
+            (PCW.1, 29 Apr 2026). Status indicator derives from
+            surgical_cases.state, which the workspace owns. If no surgical
+            case exists yet (OPD/Pre-Admission patient with no surgery
+            planned), shows a quiet neutral panel pointing at the right
+            entry forms. */}
         {showPac && (
           <div className="mx-4 mb-4">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
               PAC Status
             </h3>
-            <div className="bg-white rounded-xl border border-gray-100 p-3">
-              <div className="flex items-center gap-2.5">
+            {!surgicalCase.caseRow ? (
+              <div className="bg-gray-50 rounded-xl border border-gray-100 p-3 flex items-center gap-2.5">
                 <Stethoscope size={14} className="text-gray-400 shrink-0" />
-                <select
-                  value={patient.pac_status || ''}
-                  onChange={e => handlePacChange(e.target.value)}
-                  className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-even-blue outline-none"
-                >
-                  <option value="">— Not Set —</option>
-                  {Object.entries(PAC_STATUS_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </select>
-                {patient.pac_status && (
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold shrink-0 ${PAC_STATUS_COLORS[patient.pac_status]?.bg || ''} ${PAC_STATUS_COLORS[patient.pac_status]?.text || ''}`}>
-                    {PAC_STATUS_LABELS[patient.pac_status] || patient.pac_status}
-                  </span>
-                )}
+                <p className="text-xs text-gray-500 flex-1">
+                  No PAC scheduled yet. The PAC Workspace becomes available once a surgical case exists — submit a Marketing Handoff (with surgery planned) or a Surgery Booking form, or use the Create button on the OT Planning panel above.
+                </p>
               </div>
-            </div>
+            ) : (
+              <Link
+                href={`/pac-workspace/${surgicalCase.caseRow.id}`}
+                className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-2.5 hover:bg-gray-50 hover:border-even-blue/30 transition-colors"
+              >
+                <Stethoscope size={14} className="text-even-blue shrink-0" />
+                <span className="flex-1 text-sm font-medium text-even-navy">
+                  Open PAC Workspace
+                </span>
+                <PacStatusIndicator state={surgicalCase.caseRow.state} />
+                <ChevronRight size={16} className="text-gray-300 shrink-0" />
+              </Link>
+            )}
           </div>
         )}
 

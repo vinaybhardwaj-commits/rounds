@@ -207,6 +207,35 @@ export async function POST(
       );
     }
 
+    // 1 May 2026 (sub-sprint B): keep the legacy patient_threads.pac_status
+    // field in sync as a denormalized cache. Reports / queries that read it
+    // continue to work; the workspace remains the source of truth via
+    // surgical_cases.state. Only stamps on cleared outcomes (fit / fit_conds);
+    // defer and unfit don't map cleanly to the legacy 4-value enum
+    // (telemed_pac_pending / inpatient_pac_pending / telemed_pac_passed /
+    // inpatient_pac_passed) and are left for the caller to manage.
+    // Failure here is non-fatal — the workspace state is correct and the
+    // sync can be re-run from any subsequent publish.
+    if ((outcome === 'fit' || outcome === 'fit_conds') && ctx.patient_thread_id) {
+      try {
+        const wp = await queryOne<{ mode: string | null }>(
+          `SELECT mode FROM pac_workspace_progress WHERE case_id = $1::uuid LIMIT 1`,
+          [caseId],
+        );
+        const isRemote = wp?.mode === 'telephonic_video' || wp?.mode === 'paper_questionnaire';
+        const newPacStatus = isRemote ? 'telemed_pac_passed' : 'inpatient_pac_passed';
+        await query(
+          `UPDATE patient_threads SET pac_status = $1, updated_at = NOW() WHERE id = $2::uuid`,
+          [newPacStatus, ctx.patient_thread_id],
+        );
+      } catch (syncErr) {
+        console.warn(
+          '[pac_status sync] non-fatal; workspace state is canonical:',
+          syncErr instanceof Error ? syncErr.message : syncErr,
+        );
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
