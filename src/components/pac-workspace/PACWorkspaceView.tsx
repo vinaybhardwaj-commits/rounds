@@ -44,6 +44,7 @@ import { DiagnosticsSection } from './v2/DiagnosticsSection';
 import { PacVisitSchedulingCard } from './v2/PacVisitSchedulingCard';
 import { DeadlineStrip } from './v2/DeadlineStrip';
 import { AsaChip } from './v2/AsaChip';
+import { ResolutionBanner } from './v2/ResolutionBanner';
 import { usePacWorkspaceV2Enabled } from '@/components/FeatureFlagsProvider';
 
 const PAC_WRITE_ROLES = new Set([
@@ -216,6 +217,10 @@ export function PACWorkspaceView({ caseId, userRole }: Props) {
         {/* PCW2.4a — Smart Suggestions inbox (gated on pac_workspace_v2_enabled).
             When the flag is OFF, users see the v1 workspace exactly as before.
             When ON, the inbox renders above the mode picker per PRD §8.1. */}
+        {v2Enabled && (
+          <ResolutionBanner state={progress.resolution_state ?? 'none'} />
+        )}
+
         {v2Enabled && (
           <DeadlineStrip
             otDate={patient.planned_surgery_date}
