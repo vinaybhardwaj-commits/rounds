@@ -1,6 +1,8 @@
 'use client';
 
 import { Users, MessageSquare, ClipboardCheck, UserCircle, ClipboardList, Stethoscope } from 'lucide-react';
+// 1 May 2026 (sub-sprint D.3): hide OT tab when ot_planning_enabled is off.
+import { useOtPlanningEnabled } from '@/components/FeatureFlagsProvider';
 
 export type TabId = 'patients' | 'chat' | 'forms' | 'tasks' | 'ot' | 'me';
 
@@ -20,10 +22,12 @@ const TABS: { id: TabId; label: string; icon: typeof Users }[] = [
 ];
 
 export function BottomTabBar({ activeTab, onTabChange, badges = {} }: BottomTabBarProps) {
+  const otEnabled = useOtPlanningEnabled();
+  const visibleTabs = TABS.filter(t => t.id !== 'ot' || otEnabled);
   return (
     <nav className="shrink-0 z-40 bg-white border-t border-gray-200 safe-bottom">
       <div className="flex items-center justify-around h-14 max-w-lg mx-auto pb-[env(safe-area-inset-bottom,0px)]">
-        {TABS.map(tab => {
+        {visibleTabs.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           const badge = badges[tab.id];

@@ -55,6 +55,8 @@ import { PatientActivityTab } from './PatientActivityTab';
 import { useSurgicalCase } from '@/lib/hooks/useSurgicalCase';
 import FCVersionHistory from '@/components/forms/FCVersionHistory';
 import PatientFormSubmissions from './PatientFormSubmissions';
+// 1 May 2026 (sub-sprint D.3): hide OT/PAC sections when the master flag is off.
+import { useOtPlanningEnabled } from '@/components/FeatureFlagsProvider';
 
 type DetailTab = 'overview' | 'files' | 'ot' | 'activity';
 
@@ -227,6 +229,12 @@ export function PatientDetailView({
   userRole = '',
   userId = '',
 }: PatientDetailViewProps) {
+  // 1 May 2026 (sub-sprint D.3): when ot_planning_enabled is false, the OT
+  // Planning tab + inline panel + PAC Status section are hidden.
+  // Background data pipelines (Marketing Handoff → surgical_cases write,
+  // PAC Workspace publish → patient_threads.pac_status sync) keep running
+  // silently because the flag only gates UI surfaces, not write paths.
+  const otPlanningEnabled = useOtPlanningEnabled();
   const [patient, setPatient] = useState<PatientDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [advancing, setAdvancing] = useState(false);
@@ -557,14 +565,12 @@ export function PatientDetailView({
         {([
           { id: 'overview' as DetailTab, label: 'Overview', icon: <FileText size={14} /> },
           { id: 'files' as DetailTab, label: 'Files', icon: <Paperclip size={14} /> },
-          // 1 May 2026 (Bug.2 — V's request): OT Planning tab is now universal.
-          // Every patient gets it the moment they enter the system, regardless
-          // of stage. OPD / pre_admission patients with no surgical_case see a
-          // quiet "no surgery planned" empty state inside the panel; admitted+
-          // patients see the create-case affordance if backfill missed them.
-          // 25 Apr 2026 (superseded): tab was previously gated to admitted+.
-          // P2-7: keep this in sync with STAGES_WITH_OT in OTPlanningPanel.tsx.
-          { id: 'ot' as DetailTab, label: 'OT Planning', icon: <Stethoscope size={14} /> },
+          // 1 May 2026 (Bug.2): OT Planning tab universal across all stages.
+          // 1 May 2026 (sub-sprint D.3): tab gated by ot_planning_enabled
+          // master flag. When OFF, the tab disappears entirely.
+          ...(otPlanningEnabled
+            ? [{ id: 'ot' as DetailTab, label: 'OT Planning', icon: <Stethoscope size={14} /> }]
+            : []),
           // GLASS.10.5 — per-patient audit timeline (every-user view).
           { id: 'activity' as DetailTab, label: 'Activity', icon: <ShieldCheck size={14} /> },
         ]).map(tab => (
@@ -920,8 +926,10 @@ export function PatientDetailView({
             surgical_cases.state, which the workspace owns. If no surgical
             case exists yet (OPD/Pre-Admission patient with no surgery
             planned), shows a quiet neutral panel pointing at the right
-            entry forms. */}
-        {showPac && (
+            entry forms.
+            Sub-sprint D.3 (1 May 2026): hidden when ot_planning_enabled
+            is off — the workspace it links to is itself blocked. */}
+        {showPac && otPlanningEnabled && (
           <div className="mx-4 mb-4">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
               PAC Status
@@ -1205,11 +1213,11 @@ export function PatientDetailView({
           </div>
         )}
 
-        {/* ── OT Planning Panel (25 Apr 2026 — replaces CasePanel) ── */}
-        {/* Universal: shows for admitted+ stages with deep-links + embedded
-            CaseDrawer; empty-state with "Create surgical case" button if no
-            case exists yet. Renders nothing for opd/pre_admission patients. */}
-        {patient && (
+        {/* ── OT Planning Panel (25 Apr 2026 — replaces CasePanel) ──
+            Sub-sprint D.3 (1 May 2026): hidden when ot_planning_enabled
+            is off. Background pipelines that write to surgical_cases
+            still run; the panel just doesn't render. */}
+        {patient && otPlanningEnabled && (
           <OTPlanningPanel
             patientThreadId={patient.id}
             patientStage={patient.current_stage}
@@ -1220,8 +1228,11 @@ export function PatientDetailView({
           />
         )}
 
-        {/* ── Surgery Panel (legacy OT Readiness, surgery_postings table) ── */}
-        {patient && userRole && userId && (
+        {/* ── Surgery Panel (legacy OT Readiness, surgery_postings table) ──
+            Sub-sprint D.3 (1 May 2026): also hidden under the OT flag —
+            it's part of the OT module surface even though it reads from
+            a different table. */}
+        {patient && userRole && userId && otPlanningEnabled && (
           <SurgeryPanel
             patientThreadId={patient.id}
             userRole={userRole}

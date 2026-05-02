@@ -5,6 +5,8 @@ import { AuthProvider } from '@/components/layout/AuthProvider';
 import { ServiceWorkerRegistration } from '@/components/pwa/ServiceWorkerRegistration';
 import { InstallPrompt } from '@/components/pwa/InstallPrompt';
 import { ErrorReporterInit } from '@/components/ErrorReporterInit';
+// 1 May 2026 (sub-sprint D.3): client-side feature flag context.
+import { FeatureFlagsProvider } from '@/components/FeatureFlagsProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -36,7 +38,9 @@ export default function RootLayout({
         <ServiceWorkerRegistration />
         <InstallPrompt />
         <ErrorReporterInit />
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <FeatureFlagsProvider>{children}</FeatureFlagsProvider>
+        </AuthProvider>
       </body>
     </html>
   );
