@@ -10,11 +10,27 @@
 import type { PacRule } from '../engine-types';
 import { LAYER1_RULES } from './layer1-asa';
 import { LAYER2_RULES } from './layer2-comorbidities';
+import {
+  LAYER3_RULES,
+  NPO_RULES,
+  TRANSFER_RULES,
+  PREOP_CHECKLIST_RULES,
+} from './layer3-and-sections';
 
 export const ALL_RULES: readonly PacRule[] = [
   ...LAYER1_RULES,
   ...LAYER2_RULES,
-  // PCW2.2c appends LAYER3_RULES, NPO_RULES, TRANSFER_RULES, PREOP_CHECKLIST_RULES.
+  ...LAYER3_RULES,
+  ...NPO_RULES,
+  ...TRANSFER_RULES,
+  ...PREOP_CHECKLIST_RULES,
 ];
 
-export { LAYER1_RULES, LAYER2_RULES };
+export {
+  LAYER1_RULES,
+  LAYER2_RULES,
+  LAYER3_RULES,
+  NPO_RULES,
+  TRANSFER_RULES,
+  PREOP_CHECKLIST_RULES,
+};
