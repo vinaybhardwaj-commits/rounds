@@ -31,6 +31,8 @@ import { useState, useCallback } from 'react';
 import { ExternalLink, Stethoscope, ClipboardList, Calendar, AlertCircle, Plus } from 'lucide-react';
 // 26 Apr 2026 audit fix (P2-3): client-side nav, no full reload.
 import Link from 'next/link';
+// 7 May 2026 (demo unblock): auto-nav to /pac-workspace/[caseId] after create.
+import { useRouter } from 'next/navigation';
 import CaseDrawer from './CaseDrawer';
 // 26 Apr 2026 V's modal-redesign bug — inline equipment-request entry point.
 import EquipmentRequestModal from '../ot/EquipmentRequestModal';
@@ -51,12 +53,17 @@ const STAGES_WITH_OT = new Set([
   'admitted', 'medical_management', 'pre_op', 'surgery', 'post_op', 'post_op_care', 'discharge',
 ]);
 
-// Stages that show the create-case affordance (and the amber tone) when no
-// case row exists. OPD / pre_admission patients fall outside this set —
-// surgical_cases get created automatically by Marketing Handoff
-// (surgery_planned=true) or by the Surgery Booking form, so a manual
-// Create button at those early stages would be premature.
+// 7 May 2026 (demo unblock) — Create-case CTA now offered universally,
+// including OPD / pre_admission. Previously gated to admitted+ on the theory
+// that Marketing Handoff was the primary entry point at early stages, but the
+// gate prevented stage-1 demo flows ("show me PAC Workspace v2 from any
+// patient"). createCase() is idempotent server-side — it returns the
+// existing case if one was already auto-created from a Marketing Handoff —
+// so universal exposure is safe. Post-create, the panel auto-navigates to
+// /pac-workspace/[caseId] so a single click takes the demo from any patient
+// straight into the PAC Workspace v2 inbox.
 const STAGES_OFFERING_CREATE_CASE = new Set([
+  'opd', 'pre_admission',
   'admitted', 'medical_management', 'pre_op', 'surgery', 'post_op', 'post_op_care', 'discharge',
 ]);
 
@@ -99,20 +106,25 @@ export default function OTPlanningPanel({
   // patientThreadId is unused now that the parent fetches the case but we
   // keep it on the props interface so the parent's API doesn't change.
   void patientThreadId;
+  const router = useRouter();
 
   // 26 Apr 2026 FU3: case is parent-fetched; create handler delegates up.
+  // 7 May 2026 (demo unblock): on successful create, immediately navigate to
+  // /pac-workspace/[caseId] so OT Planning + PAC Workspace v2 form a single
+  // demo flow from any patient regardless of stage.
   const createCase = useCallback(async () => {
     setCreating(true);
     setError(null);
     try {
       const out = await onCreateCase();
       if (!out) throw new Error('Failed to create case');
+      router.push(`/pac-workspace/${out.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setCreating(false);
     }
-  }, [onCreateCase]);
+  }, [onCreateCase, router]);
 
   // Don't render at all on early stages without a case (avoids noise).
   if (caseLoading) return null;
@@ -185,6 +197,13 @@ export default function OTPlanningPanel({
 
       {/* Deep-link row — quick access to OT surfaces */}
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 pb-3">
+        {/* 7 May 2026 (demo unblock): primary CTA to PAC Workspace v2. */}
+        <Link
+          href={`/pac-workspace/${caseRow.id}`}
+          className="inline-flex items-center gap-1 rounded-md border border-emerald-700 bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-emerald-800"
+        >
+          <Stethoscope className="h-3 w-3" /> PAC Workspace
+        </Link>
         <Link
           href={`/case/${caseRow.id}`}
           className="inline-flex items-center gap-1 rounded-md border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50"
